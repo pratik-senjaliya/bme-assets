@@ -64,9 +64,11 @@ npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 
 ## Status
 
-- [x] Phase 0 scaffold written (not yet installed/run — first `npm install` happens on the developer's machine)
-- [ ] Phase 0 verified locally (health page shows Database: up)
-- [ ] Phase 1 Foundation — next. See `docs/implementation-plan.md`.
+- [x] Phase 0 scaffold; verified (health shows Database: up)
+- [x] Phase 1 Foundation built: full schema + migration, seed, auth, permissions, audit, settings/setup/users/roles APIs, web shell + admin screens. `npm test -w apps/api` needs a seeded DB.
+- [ ] Phase 2 Asset register — next. See `docs/implementation-plan.md`.
+
+Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, nursing@ `demo.local`.
 
 Update this Status section at the end of each phase.
 
