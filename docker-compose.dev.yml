@@ -1,0 +1,15 @@
+# Local development database only. Apps run with npm, not Docker, during development.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bme
+      POSTGRES_PASSWORD: bme
+      POSTGRES_DB: bme
+    ports:
+      - "5432:5432"
+    volumes:
+      - bme-db:/var/lib/postgresql/data
+
+volumes:
+  bme-db:

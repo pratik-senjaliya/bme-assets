@@ -1,0 +1,11 @@
+// Phase 0: connection only. Phase 1 adds all tables from docs/architecture.md in one migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
