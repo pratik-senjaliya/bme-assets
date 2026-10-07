@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { Prisma } from '@prisma/client';
+import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 
 export class HttpError extends Error {
@@ -23,6 +24,11 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   }
   if (err instanceof ZodError) {
     res.status(400).json({ error: { message: 'Validation failed', details: err.flatten() } });
+    return;
+  }
+  if (err instanceof MulterError) {
+    const tooBig = err.code === 'LIMIT_FILE_SIZE';
+    res.status(tooBig ? 413 : 400).json({ error: { message: tooBig ? 'That file is too large' : 'Upload failed' } });
     return;
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {

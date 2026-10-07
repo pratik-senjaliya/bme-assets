@@ -178,3 +178,154 @@ export type SettingsResponse = {
   patternLocked: boolean;
   reminderDays: number[];
 };
+
+// ---------- Assets ----------
+
+export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const;
+export type Criticality = (typeof CRITICALITIES)[number];
+export const ASSET_STATUSES = ['active', 'not_in_use', 'condemned'] as const;
+export type AssetStatus = (typeof ASSET_STATUSES)[number];
+export const ATTACHMENT_KINDS = ['po', 'installation_report', 'photo', 'manual', 'certificate'] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+export const CONTRACT_TYPES = ['warranty', 'cmc', 'amc', 'in_house'] as const;
+export type ContractType = (typeof CONTRACT_TYPES)[number];
+
+// YYYY-MM-DD that is a real calendar date.
+export const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-07')
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Not a real date');
+
+// Empty text from a form becomes null; undefined stays undefined so partial updates leave it alone.
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v === '' ? null : v));
+
+const assetFields = {
+  equipmentTypeId: z.string().uuid(),
+  name: z.string().trim().min(1, 'Enter a name').max(150),
+  make: optionalText(100),
+  model: optionalText(100),
+  serialNo: optionalText(100),
+  departmentId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  criticality: z.enum(CRITICALITIES).default('medium'),
+  installationDate: isoDateSchema.nullish(),
+  warrantyMonths: z.number().int().min(0).max(240).nullish(),
+  pmsFrequencyMonths: z.number().int().min(1).max(120).nullish(),
+};
+
+export const createAssetSchema = z.object(assetFields);
+export type CreateAssetInput = z.infer<typeof createAssetSchema>;
+
+// Condemnation goes through the approval flow, so it is not a status you can set here.
+export const updateAssetSchema = z.object(assetFields).partial().extend({ status: z.enum(['active', 'not_in_use']).optional() });
+export type UpdateAssetInput = z.infer<typeof updateAssetSchema>;
+
+// Changing these needs HOD approval (they decide the asset's identity and place).
+export const KEY_FIELDS = ['serialNo', 'equipmentTypeId', 'departmentId', 'locationId'] as const;
+
+export const assetListQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  departmentId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
+  equipmentTypeId: z.string().uuid().optional(),
+  criticality: z.enum(CRITICALITIES).optional(),
+  // Condemned and not-in-use assets leave the active list; ask for them explicitly.
+  status: z.enum([...ASSET_STATUSES, 'all']).default('active'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type AssetListQuery = z.infer<typeof assetListQuerySchema>;
+
+export type Paged<T> = { items: T[]; total: number; page: number; pageSize: number };
+
+export type WarrantyStatus = 'none' | 'active' | 'expiring' | 'expired';
+
+export type AssetRow = {
+  id: string;
+  assetCode: string;
+  name: string;
+  make: string | null;
+  model: string | null;
+  serialNo: string | null;
+  equipmentTypeId: string;
+  equipmentTypeName: string;
+  departmentId: string;
+  departmentName: string;
+  locationId: string;
+  locationName: string;
+  criticality: Criticality;
+  status: AssetStatus;
+  installationDate: string | null;
+  warrantyEnd: string | null;
+  warrantyStatus: WarrantyStatus;
+  ageMonths: number | null;
+  nextPmsDue: string | null;
+  nextCalibrationDue: string | null;
+};
+
+export type AssetDetail = AssetRow & {
+  warrantyMonths: number | null;
+  pmsFrequencyMonths: number | null;
+  createdAt: string;
+};
+
+// Returned by PATCH /assets/:id. pendingApproval = key-field changes were sent to the HOD, not applied.
+export type UpdateAssetResponse = { asset: AssetDetail; pendingApproval: boolean };
+
+export const purchaseOrderSchema = z.object({
+  poNumber: z.string().trim().min(1, 'Enter the PO number').max(60),
+  poDate: isoDateSchema,
+  vendor: z.string().trim().min(1, 'Enter the vendor').max(150),
+  cost: z.number().min(0).max(1_000_000_000),
+});
+export type PurchaseOrderInput = z.infer<typeof purchaseOrderSchema>;
+export type PurchaseOrderRow = { id: string; poNumber: string; poDate: string; vendor: string; cost: number };
+
+export const serviceContractSchema = z
+  .object({
+    type: z.enum(CONTRACT_TYPES),
+    vendor: z.string().trim().min(1, 'Enter the vendor').max(150),
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
+    cost: z.number().min(0).max(1_000_000_000).nullish(),
+  })
+  .refine((c) => c.endDate >= c.startDate, { message: 'End date cannot be before the start date', path: ['endDate'] });
+export type ServiceContractInput = z.infer<typeof serviceContractSchema>;
+export type ServiceContractRow = {
+  id: string;
+  type: ContractType;
+  vendor: string;
+  startDate: string;
+  endDate: string;
+  cost: number | null;
+};
+
+export const attachmentUploadSchema = z.object({ kind: z.enum(ATTACHMENT_KINDS) });
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export type AttachmentRow = {
+  id: string;
+  kind: AttachmentKind | 'eol_letter';
+  fileName: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+};
+
+export type TimelineEvent = {
+  date: string; // ISO date or date-time
+  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint';
+  title: string;
+  detail?: string | null;
+};
+
+export type ImportError = { row: number; field?: string; message: string };
+export type ImportResult = { ok: boolean; dryRun: boolean; total: number; created: number; errors: ImportError[] };

@@ -5,6 +5,8 @@ if (process.env.NODE_ENV === 'production' && jwtSecret.startsWith('change-me')) 
 }
 
 export const config = {
+  // Decides "today" for date locks, warranty status and due dates.
+  timezone: process.env.APP_TIMEZONE ?? 'Asia/Kolkata',
   jwtSecret,
   webOrigin: process.env.WEB_ORIGIN,
   // Session length in hours. Long enough for a shift.
