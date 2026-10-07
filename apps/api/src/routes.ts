@@ -4,6 +4,8 @@ import { authenticate } from './lib/auth';
 import { prisma } from './lib/prisma';
 import { assetsRouter, attachmentsRouter } from './modules/assets/assets.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { complaintsRouter } from './modules/complaints/complaints.routes';
+import { expensesRouter } from './modules/expenses/expenses.routes';
 import { importRouter } from './modules/import/import.routes';
 import { rolesRouter } from './modules/roles/roles.routes';
 import { settingsRouter } from './modules/settings/settings.routes';
@@ -28,6 +30,8 @@ v1.use('/auth', authRouter);
 // Everything below needs a signed-in user; each route then declares its own permission.
 v1.use(authenticate);
 v1.use('/assets', assetsRouter);
+v1.use('/assets', expensesRouter); // /assets/:id/expenses
+v1.use('/complaints', complaintsRouter);
 v1.use('/attachments', attachmentsRouter);
 v1.use('/import', importRouter);
 v1.use('/users', usersRouter);

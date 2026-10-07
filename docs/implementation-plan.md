@@ -37,10 +37,10 @@ Goal: four seeded users log in; each sees only what the role allows; every chang
 
 ## Phase 3 — Complaints, expenses, first demo (~1 week)
 
-- [ ] Complaints API (department-limited create, start, resolve), server timestamps, sequence numbers
-- [ ] Response time and downtime with tests
-- [ ] Service expenses API
-- [ ] Web: nursing equipment list + complaint form; biomedical complaint board; asset complaint/expense tabs
+- [x] Complaints API (department-limited create, start, resolve), server timestamps, sequence numbers
+- [x] Response time and downtime with tests
+- [x] Service expenses API
+- [x] Web: nursing equipment list + complaint form; biomedical complaint board; asset complaint/expense tabs
 - [ ] Deploy: migrate Supabase, Render (API), Vercel (web, API_URL rewrite), demo logins + click path
 - Check: full complaint round trip on the live link
 

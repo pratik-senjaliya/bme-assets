@@ -11,17 +11,25 @@ import { useState } from 'react';
 import {
   ATTACHMENT_KINDS,
   CONTRACT_TYPES,
+  EXPENSE_TYPES,
   MAX_UPLOAD_BYTES,
+  createExpenseSchema,
   purchaseOrderSchema,
   serviceContractSchema,
   type AssetDetail,
   type AttachmentRow,
+  type ComplaintRow,
+  type ExpenseList,
+  type ExpenseRow,
+  type Paged,
   type PurchaseOrderRow,
   type ServiceContractRow,
   type TimelineEvent,
 } from '@bme/shared';
+import { ComplaintsTable } from '@/components/ComplaintsTable';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
+import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { CriticalityTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -44,6 +52,8 @@ export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
   const asset = useFetch<AssetDetail>(`/assets/${id}`);
+  const [raising, setRaising] = useState(false);
+  const [complaintsVersion, setComplaintsVersion] = useState(0);
 
   if (asset.error) {
     return <Result status="404" title="Asset not found" subTitle="It may not exist, or it belongs to another department." extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
@@ -57,7 +67,20 @@ export default function AssetDetailPage() {
         title={a.assetCode}
         subtitle={a.name}
         crumbs={['Assets', a.assetCode]}
-        action={can('asset.edit') && <Link href={`/assets/${a.id}/edit`}><Button type="primary">Edit asset</Button></Link>}
+        action={
+          <Space>
+            {can('complaint.create') && a.status !== 'condemned' && (
+              <Button type={can('asset.edit') ? 'default' : 'primary'} onClick={() => setRaising(true)}>
+                Raise complaint
+              </Button>
+            )}
+            {can('asset.edit') && (
+              <Link href={`/assets/${a.id}/edit`}>
+                <Button type="primary">Edit asset</Button>
+              </Link>
+            )}
+          </Space>
+        }
       />
       <Card style={{ marginBottom: 16 }}>
         <Space size={[32, 16]} wrap align="start">
@@ -78,9 +101,17 @@ export default function AssetDetailPage() {
         items={[
           { key: 'overview', label: 'Overview', children: <Overview a={a} /> },
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
+          ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsTable assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
+          ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} /> }] : []),
           { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit')} /> },
           { key: 'documents', label: 'Documents', children: <DocumentsTab id={a.id} canEdit={can('asset.edit')} /> },
         ]}
+      />
+      <RaiseComplaintModal
+        open={raising}
+        asset={{ id: a.id, assetCode: a.assetCode, name: a.name }}
+        onClose={() => setRaising(false)}
+        onRaised={() => setComplaintsVersion((v) => v + 1)}
       />
     </>
   );
@@ -327,5 +358,96 @@ function DocumentsTab({ id, canEdit }: { id: string; canEdit: boolean }) {
         ]}
       />
     </Space>
+  );
+}
+
+// ---------- Expenses ----------
+
+function ExpensesTab({ id }: { id: string }) {
+  const { message } = App.useApp();
+  const expenses = useFetch<ExpenseList>(`/assets/${id}/expenses`);
+  const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?assetId=${id}&pageSize=100`);
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form] = Form.useForm();
+
+  async function save() {
+    const v = form.getFieldsValue();
+    const input = parseForm(form, createExpenseSchema, {
+      ...v,
+      date: v.date ? v.date.format('YYYY-MM-DD') : undefined,
+      amount: v.amount ?? undefined,
+      complaintId: v.complaintId ?? null,
+    });
+    if (!input) return;
+    setSaving(true);
+    try {
+      await api(`/assets/${id}/expenses`, { body: input });
+      message.success('Expense added');
+      setAdding(false);
+      expenses.reload();
+    } catch (e) {
+      if (!showApiFieldErrors(form, e)) message.error(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card
+      title={`Service expenses${expenses.data ? ` · total ${formatMoney(expenses.data.total)}` : ''}`}
+      extra={
+        <Button
+          onClick={() => {
+            form.resetFields();
+            form.setFieldsValue({ type: 'repair', date: dayjs() });
+            setAdding(true);
+          }}
+        >
+          Add expense
+        </Button>
+      }
+    >
+      <DataTable<ExpenseRow>
+        rows={expenses.data?.items ?? null}
+        loading={expenses.loading}
+        error={expenses.error}
+        onRetry={expenses.reload}
+        emptyText="No expenses recorded for this equipment."
+        columns={[
+          { title: 'Date', dataIndex: 'date', render: formatDate },
+          { title: 'Type', dataIndex: 'type', render: (t: string) => (t === 'spare_part' ? 'Spare part' : 'Repair') },
+          { title: 'Description', dataIndex: 'description' },
+          { title: 'Vendor', dataIndex: 'vendor', render: (v: string | null) => v ?? '—' },
+          { title: 'Complaint', dataIndex: 'complaintNo', render: (v: string | null) => v ?? '—' },
+          { title: 'Amount', dataIndex: 'amount', align: 'right', render: formatMoney },
+        ]}
+      />
+      <Modal open={adding} title="Add expense" okText="Save" confirmLoading={saving} onOk={save} onCancel={() => setAdding(false)} destroyOnHidden>
+        <Form form={form} layout="vertical" requiredMark>
+          <Form.Item label="Type" name="type" rules={[{ required: true }]}>
+            <Select options={EXPENSE_TYPES.map((t) => ({ value: t, label: t === 'spare_part' ? 'Spare part' : 'Repair' }))} />
+          </Form.Item>
+          <Form.Item label="What was paid for?" name="description" rules={[{ required: true, message: 'Describe it' }]}>
+            <Input maxLength={500} />
+          </Form.Item>
+          <Form.Item label="Amount (₹)" name="amount" rules={[{ required: true, message: 'Enter the amount' }]}>
+            <InputNumber min={0} prefix="₹" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Date" name="date" rules={[{ required: true, message: 'Pick the date' }]}>
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+          </Form.Item>
+          <Form.Item label="Vendor" name="vendor">
+            <Input maxLength={150} />
+          </Form.Item>
+          <Form.Item label="Linked complaint" name="complaintId" extra="Optional. Link the cost to a breakdown.">
+            <Select
+              allowClear
+              options={(complaints.data?.items ?? []).map((c) => ({ value: c.id, label: `${c.complaintNo} · ${c.description.slice(0, 40)}` }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </Card>
   );
 }

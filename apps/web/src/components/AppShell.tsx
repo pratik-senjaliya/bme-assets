@@ -3,6 +3,7 @@
 import {
   ApartmentOutlined,
   BarcodeOutlined,
+  ToolOutlined,
   DashboardOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
@@ -24,6 +25,7 @@ type Item = { href: string; label: string; icon: ReactNode; permission?: Permiss
 const MAIN: Item[] = [
   { href: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
   { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
+  { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
 ];
 const ADMIN: Item[] = [
   { href: '/admin/users', label: 'Users', icon: <TeamOutlined />, permission: 'user.manage' },

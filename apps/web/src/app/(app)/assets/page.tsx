@@ -9,6 +9,7 @@ import { ASSET_STATUSES, CRITICALITIES, type AssetRow, type Paged } from '@bme/s
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { CriticalityTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
+import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -27,6 +28,7 @@ function AssetList() {
   const params = useSearchParams();
   const q = Object.fromEntries(params.entries());
   const [search, setSearch] = useState(q.search ?? '');
+  const [complaintFor, setComplaintFor] = useState<AssetRow | null>(null);
 
   const departments = useFetch<Option[]>('/departments');
   const types = useFetch<Option[]>('/equipment-types');
@@ -173,9 +175,10 @@ function AssetList() {
                 menu={{
                   items: [
                     { key: 'view', label: 'View' },
+                    ...(can('complaint.create') ? [{ key: 'complaint', label: 'Raise complaint' }] : []),
                     ...(can('asset.edit') ? [{ key: 'edit', label: 'Edit' }] : []),
                   ],
-                  onClick: ({ key }) => router.push(key === 'edit' ? `/assets/${row.id}/edit` : `/assets/${row.id}`),
+                  onClick: ({ key }) => (key === 'complaint' ? setComplaintFor(row) : router.push(key === 'edit' ? `/assets/${row.id}/edit` : `/assets/${row.id}`)),
                 }}
               >
                 <Button type="text" aria-label={`Actions for ${row.assetCode}`} icon={<MoreOutlined />} />
@@ -184,6 +187,7 @@ function AssetList() {
           },
         ]}
       />
+      <RaiseComplaintModal open={!!complaintFor} asset={complaintFor ?? undefined} onClose={() => setComplaintFor(null)} />
     </>
   );
 }

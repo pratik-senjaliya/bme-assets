@@ -2,10 +2,12 @@ import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import type { AssetDetail, AssetRow, Criticality, WarrantyStatus } from '@bme/shared';
 import { auditMany } from '../../lib/audit';
+import { currentUser, departmentScope } from '../../lib/auth';
 import { formatAssetCode } from '../../lib/assetCode';
 import { addMonths, daysBetween, isoDateOrNull, parseDate, todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
+import { idOf } from '../../lib/validate';
 
 type Db = Prisma.TransactionClient;
 
@@ -158,3 +160,11 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
 
 // Long enough for large imports while other creates wait on the counter row.
 export const CREATE_TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
+
+// The one way to load an asset for a request. Department scope is applied here, so nursing never sees
+// another department's asset, and a foreign id looks exactly like a missing one (404).
+export async function findScopedAsset(req: Request, id: string = idOf(req)) {
+  const asset = await prisma.asset.findFirst({ where: { id, ...departmentScope(currentUser(req)) }, include: assetInclude });
+  if (!asset) throw new HttpError(404, 'Asset not found');
+  return asset;
+}

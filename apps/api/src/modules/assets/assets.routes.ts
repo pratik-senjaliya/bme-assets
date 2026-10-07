@@ -36,6 +36,7 @@ import {
   assertSerialFree,
   assetInclude,
   createAssets,
+  findScopedAsset,
   toAssetDetail,
   toAssetRow,
   warrantyEndFor,
@@ -43,16 +44,7 @@ import {
 
 export const assetsRouter = Router();
 
-// Department scope is applied here for every asset lookup: nursing never sees another department's
-// asset, and a foreign id looks exactly like a missing one (404).
-async function findScoped(req: Request) {
-  const asset = await prisma.asset.findFirst({
-    where: { id: idOf(req), ...departmentScope(currentUser(req)) },
-    include: assetInclude,
-  });
-  if (!asset) throw new HttpError(404, 'Asset not found');
-  return asset;
-}
+const findScoped = (req: Request) => findScopedAsset(req);
 
 const detail = async (id: string) =>
   toAssetDetail(await prisma.asset.findUniqueOrThrow({ where: { id }, include: assetInclude }));

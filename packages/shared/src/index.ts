@@ -329,3 +329,78 @@ export type TimelineEvent = {
 
 export type ImportError = { row: number; field?: string; message: string };
 export type ImportResult = { ok: boolean; dryRun: boolean; total: number; created: number; errors: ImportError[] };
+
+// ---------- Complaints ----------
+
+export const COMPLAINT_STATUSES = ['open', 'in_progress', 'resolved'] as const;
+export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
+
+// The department and the time are set by the server; the browser only says which asset and what is wrong.
+export const createComplaintSchema = z.object({
+  assetId: z.string().uuid('Choose the equipment'),
+  description: z.string().trim().min(5, 'Describe the problem in a few words').max(2000),
+});
+export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
+
+export const resolveComplaintSchema = z.object({
+  resolutionNotes: z.string().trim().min(3, 'Say what was done').max(2000),
+});
+export type ResolveComplaintInput = z.infer<typeof resolveComplaintSchema>;
+
+export const complaintListQuerySchema = z.object({
+  status: z.enum(COMPLAINT_STATUSES).optional(),
+  assetId: z.string().uuid().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type ComplaintListQuery = z.infer<typeof complaintListQuerySchema>;
+
+export type ComplaintRow = {
+  id: string;
+  complaintNo: string;
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  criticality: Criticality;
+  departmentId: string;
+  departmentName: string;
+  raisedByName: string;
+  description: string;
+  status: ComplaintStatus;
+  raisedAt: string;
+  startedAt: string | null;
+  startedByName: string | null;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  resolutionNotes: string | null;
+  // started − raised, resolved − raised (seconds); null until that step has happened.
+  responseSeconds: number | null;
+  downtimeSeconds: number | null;
+};
+
+// ---------- Service expenses ----------
+
+export const EXPENSE_TYPES = ['repair', 'spare_part'] as const;
+export type ExpenseType = (typeof EXPENSE_TYPES)[number];
+
+export const createExpenseSchema = z.object({
+  type: z.enum(EXPENSE_TYPES),
+  description: z.string().trim().min(2, 'Describe what was paid for').max(500),
+  amount: z.number().positive('Enter an amount above zero').max(1_000_000_000),
+  date: isoDateSchema,
+  vendor: optionalText(150),
+  complaintId: z.string().uuid().nullish(),
+});
+export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
+
+export type ExpenseRow = {
+  id: string;
+  type: ExpenseType;
+  description: string;
+  amount: number;
+  date: string;
+  vendor: string | null;
+  complaintId: string | null;
+  complaintNo: string | null;
+};
+export type ExpenseList = { items: ExpenseRow[]; total: number };
