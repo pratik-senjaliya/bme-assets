@@ -43,8 +43,16 @@ The free plan sleeps after ~15 minutes idle; the first request after that takes 
 ## 3. Vercel (web)
 
 1. Import the repo; set **Root Directory** to `apps/web` and keep "Include source files outside of the Root Directory" on. `apps/web/vercel.json` sets the install and build commands.
-2. Environment variable (needed at **build** time, because the rewrite is baked in): `API_URL` = `https://<api>.onrender.com`.
+2. Environment variable `API_URL` = `https://<api>.onrender.com` (Production and Preview). It is read at **runtime** by the `/api/v1` proxy function, so changing it needs no rebuild, only a new deployment or an env redeploy.
 3. Deploy, then put the Vercel URL into Render's `WEB_ORIGIN`.
+
+### How the services connect (bindings)
+
+| Caller | Target | Binding | Where it is read |
+|---|---|---|---|
+| web | api | `API_URL` | `apps/web/src/app/api/v1/[...path]/route.ts`, per request |
+
+The browser never learns the API address: it calls `/api/v1/*` on the web origin and the proxy forwards to `API_URL` + `api/v1/...`. Bindings are read inside functions only, never at build time (`next.config.ts` has no API address) and never in middleware (there is none). Vercel limits a function's request body to 4.5 MB, so uploads over that (the app allows 10 MB) only work where the proxy is not a Vercel function (self-hosted `next start`, i.e. on-prem Docker) or if the browser reaches the API without that hop.
 
 ## Demo logins (password `Demo@1234`)
 

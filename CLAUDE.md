@@ -33,7 +33,7 @@ A web app for a hospital's **biomedical engineering (BME) department** to track 
 
 ## Stack
 
-- `apps/web` — Next.js 15 (App Router) + TypeScript; Ant Design from Phase 1. Browser calls `/api/v1/*` on its own origin; `next.config.ts` rewrites to the API (`API_URL`).
+- `apps/web` — Next.js 15 (App Router) + TypeScript; Ant Design from Phase 1. Browser calls `/api/v1/*` on its own origin; the route handler `src/app/api/v1/[...path]/route.ts` proxies to the API, reading `API_URL` at runtime (a service binding: never at build time, never in middleware).
 - `apps/api` — Node + Express 5 + TypeScript + Prisma + PostgreSQL. zod validation, JWT in httpOnly cookie, bcrypt, pg-boss for jobs, ExcelJS for import/export, Nodemailer (optional).
 - `packages/shared` — types and zod schemas used by both apps (build it before running apps; root scripts do this).
 - Files: storage adapter with `local` (on-prem disk) and `supabase` drivers, chosen by `STORAGE_DRIVER`.

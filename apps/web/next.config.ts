@@ -1,11 +1,7 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {
-  // Same-origin API calls: the browser calls /api/v1/*, Next forwards to the Express API.
-  // Keeps the auth cookie first-party in the demo (Vercel) and on-prem.
-  async rewrites() {
-    return [{ source: '/api/v1/:path*', destination: `${process.env.API_URL ?? 'http://localhost:4000'}/api/v1/:path*` }];
-  },
-};
+// No API address here on purpose: next.config is evaluated at build time, and the API address is a
+// runtime binding. /api/v1/* is proxied by src/app/api/v1/[...path]/route.ts, which reads API_URL per request.
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
