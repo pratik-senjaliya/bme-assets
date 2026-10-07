@@ -11,6 +11,9 @@ const STATUS = {
   in_progress: { color: 'gold', label: 'In progress' },
   resolved: { color: 'green', label: 'Resolved' },
   pending: { color: 'blue', label: 'Pending approval' },
+  warranty_active: { color: 'green', label: 'In warranty' },
+  warranty_expiring: { color: 'gold', label: 'Expiring soon' },
+  warranty_expired: { color: 'default', label: 'Out of warranty' },
 } as const;
 
 export type StatusKind = keyof typeof STATUS;
@@ -18,4 +21,15 @@ export type StatusKind = keyof typeof STATUS;
 export function StatusTag({ status }: { status: StatusKind }) {
   const s = STATUS[status];
   return <Tag color={s.color}>{s.label}</Tag>;
+}
+
+const WARRANTY = { active: 'warranty_active', expiring: 'warranty_expiring', expired: 'warranty_expired' } as const;
+
+export function WarrantyTag({ status }: { status: 'none' | 'active' | 'expiring' | 'expired' }) {
+  return status === 'none' ? <span aria-label="No warranty recorded">—</span> : <StatusTag status={WARRANTY[status]} />;
+}
+
+// Criticality is a property of the asset, not a status, so it stays neutral (colour is reserved for status).
+export function CriticalityTag({ value }: { value: string }) {
+  return <Tag style={{ textTransform: 'capitalize', fontWeight: value === 'critical' ? 600 : 400 }}>{value}</Tag>;
 }

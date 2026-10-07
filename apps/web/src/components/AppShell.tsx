@@ -2,6 +2,7 @@
 
 import {
   ApartmentOutlined,
+  BarcodeOutlined,
   DashboardOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
@@ -20,7 +21,10 @@ import { useAuth } from '@/lib/auth';
 type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
-const MAIN: Item[] = [{ href: '/', label: 'Dashboard', icon: <DashboardOutlined /> }];
+const MAIN: Item[] = [
+  { href: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
+  { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
+];
 const ADMIN: Item[] = [
   { href: '/admin/users', label: 'Users', icon: <TeamOutlined />, permission: 'user.manage' },
   { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
@@ -50,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
   const admin = ADMIN.filter((i) => !i.permission || can(i.permission));
   const items: MenuProps['items'] = [
-    ...MAIN.map(toItem),
+    ...MAIN.filter((i) => !i.permission || can(i.permission)).map(toItem),
     ...(admin.length ? [{ type: 'group' as const, label: collapsed ? '' : 'Admin', children: admin.map(toItem) }] : []),
   ];
   const selected = [...MAIN, ...ADMIN].filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);

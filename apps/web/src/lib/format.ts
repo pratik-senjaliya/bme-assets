@@ -22,3 +22,14 @@ export const formatDateTime = (value: string | Date | null | undefined) =>
 
 // ₹ 12,500
 export const formatMoney = (value: number) => `₹ ${new Intl.NumberFormat('en-IN').format(value)}`;
+
+// 2 y 3 m, 5 m, < 1 m
+export const formatAge = (months: number | null | undefined) => {
+  if (months == null) return '—';
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return y ? (m ? `${y} y ${m} m` : `${y} y`) : m ? `${m} m` : '< 1 m';
+};
+
+// 3.5 MB, 120 KB
+export const formatSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);

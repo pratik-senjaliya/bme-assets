@@ -26,13 +26,13 @@ Goal: four seeded users log in; each sees only what the role allows; every chang
 
 ## Phase 2 — Asset register (~1.5 weeks)
 
-- [ ] Asset ID generator with locked counter; test 20 parallel creates → 20 unique IDs
-- [ ] Assets API (filters, paging), calculated age and warranty status
-- [ ] Purchase orders, service contracts
-- [ ] Storage adapter (local, supabase) + attachments (PDF/JPG/PNG, 10 MB)
-- [ ] Timeline endpoint
-- [ ] Excel import: template, validation, all-or-nothing, error report
-- [ ] Web: asset list, add/edit form, detail page with tabs, upload widget, import wizard
+- [x] Asset ID generator with locked counter; test 20 parallel creates → 20 unique IDs
+- [x] Assets API (filters, paging), calculated age and warranty status
+- [x] Purchase orders, service contracts
+- [x] Storage adapter (local, supabase) + attachments (PDF/JPG/PNG, 10 MB)
+- [x] Timeline endpoint
+- [x] Excel import: template, validation, all-or-nothing, error report
+- [x] Web: asset list, add/edit form, detail page with tabs, upload widget, import wizard
 - Check: 50-row import with 3 bad rows inserts nothing and reports the 3 rows
 
 ## Phase 3 — Complaints, expenses, first demo (~1 week)

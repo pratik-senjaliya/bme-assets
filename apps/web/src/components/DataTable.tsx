@@ -1,13 +1,14 @@
 'use client';
 
 import { Alert, Button, Table, type TableProps } from 'antd';
+import type { ReactNode } from 'react';
 
 type Props<T> = Omit<TableProps<T>, 'dataSource' | 'loading' | 'size'> & {
   rows: T[] | null;
   loading: boolean;
   error?: string | null;
   onRetry?: () => void;
-  emptyText?: string;
+  emptyText?: ReactNode;
 };
 
 // Standard list table: compact, sticky header, 20 rows per page, plain-language error with retry.

@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_LABELS, ROLE_NAMES, type RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
+import { addMonths } from './lib/dates';
 import { prisma } from './lib/prisma';
 
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
@@ -138,6 +139,7 @@ async function main() {
           criticality,
           installationDate,
           warrantyMonths: 24,
+          warrantyEnd: addMonths(installationDate, 24),
         },
       });
     }

@@ -66,7 +66,8 @@ npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 
 - [x] Phase 0 scaffold; verified (health shows Database: up)
 - [x] Phase 1 Foundation built: full schema + migration, seed, auth, permissions, audit, settings/setup/users/roles APIs, web shell + admin screens. `npm test -w apps/api` needs a seeded DB.
-- [ ] Phase 2 Asset register — next. See `docs/implementation-plan.md`.
+- [x] Phase 2 Asset register built: ID generator, assets API + calculated age/warranty, POs, contracts, attachments (local/supabase storage), timeline, Excel import, web list/form/detail/import wizard. Key-field edits by non-admins are stored as `approval_requests`; the approve/reject flow is Phase 5.
+- [ ] Phase 3 Complaints, expenses, first demo — next. See `docs/implementation-plan.md`.
 
 Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, nursing@ `demo.local`.
 
