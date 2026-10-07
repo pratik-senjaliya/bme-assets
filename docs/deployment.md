@@ -8,10 +8,20 @@ Browser → Vercel (Next.js) ── rewrite /api/v1/* ──▶ Render (Express 
 
 The browser only talks to the Vercel URL, so the login cookie is first-party.
 
+## Current state
+
+| Piece | State |
+|---|---|
+| Supabase project `bme-assets-demo` (ref `uxxixezpmhqaxrmlnbki`, Mumbai, `https://uxxixezpmhqaxrmlnbki.supabase.co`) | Created. Private bucket `bme-files` (10 MB, PDF/JPG/PNG) created. **Tables not created yet:** Render's `prisma migrate deploy` creates them on first start. |
+| Database password / connection strings | Not available to automation. Set or reset the password in Supabase → Project Settings → Database, then build the two strings below. |
+| Render API | Not created (needs the dashboard: no automation access). |
+| Vercel project `bme-assets-web` | Not created: the Vercel connector got `403 forbidden` for scope `pratik-senjaliyas-projects` and must be re-authorized, or create it by hand (step 3). |
+
 ## 1. Supabase (database + files)
 
 1. Create a project (region close to the hospital, e.g. Mumbai/Singapore). Save the database password.
 2. **Connection strings** (Project → Connect):
+   - Replace `[PASSWORD]` with the database password and `<ref>` with `uxxixezpmhqaxrmlnbki`.
    - `DATABASE_URL`: transaction pooler, port 6543, add `?pgbouncer=true&connection_limit=1`.
    - `DIRECT_URL`: direct connection (port 5432). If Render cannot reach it (IPv6 only on the free tier), use the **session pooler** string instead (host `…pooler.supabase.com`, port 5432).
 3. **Storage**: create a **private** bucket named `bme-files`.

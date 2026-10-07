@@ -67,7 +67,7 @@ npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 - [x] Phase 0 scaffold; verified (health shows Database: up)
 - [x] Phase 1 Foundation built: full schema + migration, seed, auth, permissions, audit, settings/setup/users/roles APIs, web shell + admin screens. `npm test -w apps/api` needs a seeded DB.
 - [x] Phase 2 Asset register built: ID generator, assets API + calculated age/warranty, POs, contracts, attachments (local/supabase storage), timeline, Excel import, web list/form/detail/import wizard. Key-field edits by non-admins are stored as `approval_requests`; the approve/reject flow is Phase 5.
-- [~] Phase 3 Complaints, expenses, first demo: code built and tested (complaints workflow, metrics, expenses, board, asset tabs); `render.yaml`, `apps/web/vercel.json` and `docs/deployment.md` written. **Not yet deployed** (needs Supabase project, Render and Vercel accounts).
+- [~] Phase 3 Complaints, expenses, first demo: code built and tested (complaints workflow, metrics, expenses, board, asset tabs); `render.yaml`, `apps/web/vercel.json` and `docs/deployment.md` written. Supabase project + private bucket created; Render API and Vercel web **not yet deployed** (see `docs/deployment.md` → Current state).
 - [ ] Phase 4 PMS, calibration, reminders — after the demo is live.
 
 Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, nursing@ `demo.local`.
