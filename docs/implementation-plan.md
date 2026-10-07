@@ -46,12 +46,12 @@ Goal: four seeded users log in; each sees only what the role allows; every chang
 
 ## Phase 4 — PMS, calibration, reminders (~2 weeks)
 
-- [ ] Versioned PMS template schema (JSONB) + builder
-- [ ] PMS records server-dated, read-only after submit, next due updated; correction = linked new record
-- [ ] Calibration records, due lists
-- [ ] pg-boss daily job 06:00 hospital time → notifications at 30/15/5 days, no duplicates
-- [ ] Optional SMTP email
-- [ ] Web: template builder, PMS form + print view, calibration, due-this-month page, notification bell
+- [x] Versioned PMS template schema (JSONB) + builder
+- [x] PMS records server-dated, read-only after submit, next due updated; correction = linked new record
+- [x] Calibration records, due lists
+- [x] pg-boss daily job 06:00 hospital time → notifications at 30/15/5 days, no duplicates
+- [x] Optional SMTP email
+- [x] Web: template builder, PMS form + print view, calibration, due-this-month page, notification bell
 - Check: forged date in request is ignored; faked clock creates one reminder per threshold
 
 ## Phase 5 — Approvals, condemnation, reports, packaging (~2 weeks)

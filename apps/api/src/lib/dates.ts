@@ -17,3 +17,10 @@ export function addMonths(d: Date, months: number): Date {
 }
 
 export const daysBetween = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / 86_400_000);
+
+// Whole days from today (hospital timezone) to a due date; negative = overdue.
+export const daysFromToday = (due: Date) => daysBetween(parseDate(todayISO()), due);
+
+// 07 Oct 2026, for messages and emails.
+export const prettyDate = (d: Date) =>
+  new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(d);

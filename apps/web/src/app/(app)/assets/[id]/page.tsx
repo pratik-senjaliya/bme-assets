@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import {
   ATTACHMENT_KINDS,
@@ -26,14 +26,16 @@ import {
   type ServiceContractRow,
   type TimelineEvent,
 } from '@bme/shared';
+import { AssetCalibrationTab } from '@/components/AssetCalibrationTab';
+import { AssetPmsTab } from '@/components/AssetPmsTab';
 import { ComplaintsTable } from '@/components/ComplaintsTable';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
-import { CriticalityTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
+import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatAge, formatDate, formatDateTime, formatMoney, formatSize } from '@/lib/format';
+import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize } from '@/lib/format';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
 
 const KIND_LABEL: Record<string, string> = {
@@ -52,6 +54,7 @@ export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
   const asset = useFetch<AssetDetail>(`/assets/${id}`);
+  const initialTab = useSearchParams().get('tab') ?? 'overview';
   const [raising, setRaising] = useState(false);
   const [complaintsVersion, setComplaintsVersion] = useState(0);
 
@@ -93,14 +96,17 @@ export default function AssetDetailPage() {
             <WarrantyTag status={a.warrantyStatus} />
             {a.warrantyEnd && <span style={{ marginLeft: 8, color: '#6B7280' }}>until {formatDate(a.warrantyEnd)}</span>}
           </Stat>
-          <Stat label="Next PMS due">{formatDate(a.nextPmsDue)}</Stat>
-          <Stat label="Next calibration due">{formatDate(a.nextCalibrationDue)}</Stat>
+          <Stat label="Next PMS due">{a.nextPmsDue ? <Space size={4}>{formatDate(a.nextPmsDue)}<DueTag daysLeft={daysFromToday(a.nextPmsDue)} /></Space> : '—'}</Stat>
+          <Stat label="Next calibration due">{a.nextCalibrationDue ? <Space size={4}>{formatDate(a.nextCalibrationDue)}<DueTag daysLeft={daysFromToday(a.nextCalibrationDue)} /></Space> : '—'}</Stat>
         </Space>
       </Card>
       <Tabs
+        defaultActiveKey={initialTab}
         items={[
           { key: 'overview', label: 'Overview', children: <Overview a={a} /> },
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
+          ...(can('pms.perform') ? [{ key: 'pms', label: 'PMS', children: <AssetPmsTab asset={a} /> }] : []),
+          ...(can('calibration.manage') ? [{ key: 'calibration', label: 'Calibration', children: <AssetCalibrationTab asset={a} onChanged={asset.reload} /> }] : []),
           ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsTable assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
           ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} /> }] : []),
           { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit')} /> },

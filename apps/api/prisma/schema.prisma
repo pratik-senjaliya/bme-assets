@@ -314,6 +314,7 @@ model PmsRecord {
   submittedAt      DateTime  @default(now())
   locked           Boolean   @default(true)
   correctsRecordId String?
+  correctionReason String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   createdBy        String?
@@ -434,6 +435,8 @@ model Notification {
   user  User?  @relation(fields: [userId], references: [id])
   asset Asset? @relation(fields: [assetId], references: [id])
 
+  // One reminder per person per item per threshold, however often the job runs.
+  @@unique([userId, type, assetId, dueDate, thresholdDays], map: "notification_dedupe")
   @@index([userId])
   @@map("notifications")
 }

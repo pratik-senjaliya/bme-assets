@@ -1,10 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { Router, type Request } from 'express';
-import multer from 'multer';
 import type { Prisma } from '@prisma/client';
 import {
   KEY_FIELDS,
-  MAX_UPLOAD_BYTES,
   assetListQuerySchema,
   attachmentUploadSchema,
   createAssetSchema,
@@ -12,7 +9,6 @@ import {
   serviceContractSchema,
   updateAssetSchema,
   type AssetRow,
-  type AttachmentRow,
   type CreateAssetInput,
   type Paged,
   type PurchaseOrderInput,
@@ -29,6 +25,7 @@ import { isoDate, parseDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
+import { storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
   CREATE_TX_OPTIONS,
@@ -239,25 +236,6 @@ assetsRouter.post('/:id/contracts', requirePermission('asset.edit'), validate(se
 
 // ---------- Attachments ----------
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
-
-// Decide the type from the file's own bytes; the browser's content-type and the file name are not trusted.
-function sniff(buf: Buffer): { mime: string; ext: string } | null {
-  if (buf.subarray(0, 4).toString('latin1') === '%PDF') return { mime: 'application/pdf', ext: 'pdf' };
-  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mime: 'image/png', ext: 'png' };
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg' };
-  return null;
-}
-
-const toAttachmentRow = (a: Prisma.AttachmentGetPayload<object>): AttachmentRow => ({
-  id: a.id,
-  kind: a.kind,
-  fileName: a.fileName,
-  mime: a.mime,
-  size: a.size,
-  createdAt: a.createdAt.toISOString(),
-});
-
 assetsRouter.get('/:id/attachments', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
   const rows = await prisma.attachment.findMany({ where: { ownerType: 'asset', ownerId: asset.id }, orderBy: { createdAt: 'desc' } });
@@ -267,27 +245,7 @@ assetsRouter.get('/:id/attachments', requirePermission('asset.view'), async (req
 assetsRouter.post('/:id/attachments', requirePermission('asset.edit'), upload.single('file'), async (req, res) => {
   const asset = await findScoped(req);
   const { kind } = attachmentUploadSchema.parse(req.body);
-  if (!req.file) throw new HttpError(400, 'Choose a file to upload');
-  const type = sniff(req.file.buffer);
-  if (!type) throw new HttpError(415, 'Only PDF, JPG and PNG files are allowed');
-
-  // multer reads names as latin1; keep it readable and free of path characters.
-  const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8').replace(/[\\/\x00-\x1f]/g, '_').slice(0, 150);
-  const key = `assets/${asset.id}/${randomUUID()}.${type.ext}`;
-
-  const storage = getStorage();
-  await storage.put(key, req.file.buffer, type.mime);
-  try {
-    const row = await audited(req, { action: 'attachment.create', entityType: 'attachment' }, (tx) =>
-      tx.attachment.create({
-        data: { ownerType: 'asset', ownerId: asset.id, kind, fileName, filePath: key, mime: type.mime, size: req.file!.size, createdBy: currentUser(req).id },
-      }),
-    );
-    res.status(201).json(toAttachmentRow(row));
-  } catch (e) {
-    await storage.remove(key).catch(() => undefined); // don't leave an orphan file behind
-    throw e;
-  }
+  res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset.id, ownerType: 'asset', ownerId: asset.id, kind })));
 });
 
 // Files are private: they are only ever served through the API, after the same permission and
@@ -296,8 +254,15 @@ export const attachmentsRouter = Router();
 
 attachmentsRouter.get('/:id/download', requirePermission('asset.view'), async (req, res) => {
   const file = await prisma.attachment.findUnique({ where: { id: idOf(req) } });
-  if (!file || file.ownerType !== 'asset') throw new HttpError(404, 'File not found');
-  const asset = await prisma.asset.findFirst({ where: { id: file.ownerId, ...departmentScope(currentUser(req)) } });
+  if (!file) throw new HttpError(404, 'File not found');
+  // Files belong to an asset directly, or through one of its records (e.g. a calibration certificate).
+  const assetId =
+    file.ownerType === 'asset'
+      ? file.ownerId
+      : file.ownerType === 'calibration_record'
+        ? (await prisma.calibrationRecord.findUnique({ where: { id: file.ownerId } }))?.assetId
+        : undefined;
+  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...departmentScope(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'File not found');
 
   const data = await getStorage().get(file.filePath);

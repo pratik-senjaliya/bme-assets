@@ -124,6 +124,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
     const installationDate = i.installationDate ? parseDate(i.installationDate) : null;
     const equipmentType = type.get(i.equipmentTypeId)!;
     const sequenceNo = firstSeq + n;
+    const pmsFrequencyMonths = i.pmsFrequencyMonths ?? equipmentType.defaultPmsMonths;
     return {
       assetCode: formatAssetCode(settings.assetIdPattern, {
         hosp: settings.shortCode,
@@ -144,7 +145,11 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       installationDate,
       warrantyMonths: i.warrantyMonths ?? null,
       warrantyEnd: warrantyEndFor(installationDate, i.warrantyMonths),
-      pmsFrequencyMonths: i.pmsFrequencyMonths ?? equipmentType.defaultPmsMonths,
+      pmsFrequencyMonths,
+      // First due dates run from installation; after that PMS and calibration records move them on.
+      nextPmsDue: installationDate && pmsFrequencyMonths ? addMonths(installationDate, pmsFrequencyMonths) : null,
+      nextCalibrationDue:
+        installationDate && equipmentType.defaultCalibrationMonths ? addMonths(installationDate, equipmentType.defaultCalibrationMonths) : null,
       createdBy: req.user?.id ?? null,
     };
   });

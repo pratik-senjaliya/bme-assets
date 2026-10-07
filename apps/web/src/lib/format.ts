@@ -44,3 +44,21 @@ export const formatDuration = (seconds: number | null | undefined) => {
   if (d) return h ? `${d} d ${h} h` : `${d} d`;
   return h ? (m % 60 ? `${h} h ${m % 60} m` : `${h} h`) : `${m} m`;
 };
+
+// Today in the hospital's timezone as YYYY-MM-DD. For display and picking filters only: dates that are
+// stored (PMS date, due dates, reminders) are decided by the server.
+export const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+
+export const addDaysISO = (iso: string, days: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+// Last day of the month that `iso` falls in.
+export const endOfMonthISO = (iso: string) => {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+
+export const daysFromToday = (iso: string) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - new Date(`${todayIST()}T00:00:00Z`).getTime()) / 86_400_000);

@@ -36,6 +36,8 @@ No Supabase Auth, RLS or edge functions are used.
 3. **Seed the demo data once**: Render dashboard → the service → Shell → `cd apps/api && npx prisma db seed`.
 4. `TRUST_PROXY=2` (Vercel + Render in front) and `COOKIE_SECURE=true` (HTTPS) are already in the blueprint.
 
+The daily reminder job (pg-boss, 06:00 Asia/Kolkata) runs inside this service, on the **direct** connection (`DIRECT_URL`); it keeps its schedule in a `pgboss` schema it creates itself. The reminder check also runs at every start and is safe to repeat (one reminder per person per threshold), so a sleeping free-plan service catches up when it wakes. For a demo you can also press **Run reminders now** in Admin > Hospital settings. Set `DISABLE_JOBS=true` on any second instance.
+
 The free plan sleeps after ~15 minutes idle; the first request after that takes 30–60 s. Open the health URL a minute before a demo.
 
 ## 3. Vercel (web)
@@ -61,7 +63,9 @@ Change `SEED_PASSWORD` before seeding if the link is shared widely.
 2. **Biomedical** signs in → *Complaints* board: the complaint is in **Open** with a waiting time → **Start work** → it moves to **In progress** with the response time → **Resolve** with notes → **Recently resolved** shows the downtime.
 3. Same user → open the asset → **Complaints** tab shows the history; **Expenses** tab → add a spare-part cost linked to the complaint.
 4. **Nursing** refreshes → sees the complaint resolved; has no *Expenses* tab and no admin menu.
-5. **Admin** → *Assets* → edit a serial number as biomed to show the HOD-approval request (decision screen arrives in Phase 5).
+5. **Biomedical** → *Due & overdue* → **Perform PMS** on an overdue ventilator (the date is set by the system, shown locked) → open the record → **Print**; then **Record a correction** to show the original is kept. Check the bell for reminders.
+6. **Admin** → *PMS checklists* → add an item → saved as a new version; old records keep theirs.
+7. **Admin** → *Assets* → edit a serial number as biomed to show the HOD-approval request (decision screen arrives in Phase 5).
 
 ## Check: full round trip on the live link
 

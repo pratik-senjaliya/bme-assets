@@ -2,6 +2,15 @@
 // Rule: every request body schema lives here so the API and the forms validate the same way.
 import { z } from 'zod';
 
+// Empty text from a form becomes null; undefined stays undefined so partial updates leave it alone.
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v === '' ? null : v));
+
 export type HealthResponse = {
   status: 'ok';
   database: 'up' | 'down';
@@ -40,6 +49,7 @@ export const PERMISSIONS = [
   'settings.pattern',
   'audit.view',
   'report.view',
+  'notification.view',
 ] as const;
 export type PermissionCode = (typeof PERMISSIONS)[number];
 
@@ -56,6 +66,7 @@ const BIOMED: PermissionCode[] = [
   'pms.perform',
   'calibration.manage',
   'report.view',
+  'notification.view',
 ];
 
 // Defaults seeded into the DB; hospitals can adjust them later.
@@ -168,6 +179,12 @@ export const updateSettingsSchema = z.object({
   shortCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,10}$/).optional(),
   reminderDays: z.array(z.number().int().positive().max(365)).min(1).max(6).optional(),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
+  // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
+  smtpHost: optionalText(200),
+  smtpPort: z.number().int().min(1).max(65535).nullish(),
+  smtpUser: optionalText(200),
+  smtpPassword: z.string().max(200).optional(), // write-only; empty or missing keeps the stored one
+  smtpFrom: z.string().trim().email().nullish().or(z.literal('').transform(() => null)),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 
@@ -177,6 +194,11 @@ export type SettingsResponse = {
   assetIdPattern: string;
   patternLocked: boolean;
   reminderDays: number[];
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpUser: string | null;
+  smtpFrom: string | null;
+  smtpPasswordSet: boolean;
 };
 
 // ---------- Assets ----------
@@ -198,15 +220,6 @@ export const isoDateSchema = z
     const d = new Date(`${s}T00:00:00Z`);
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   }, 'Not a real date');
-
-// Empty text from a form becomes null; undefined stays undefined so partial updates leave it alone.
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .nullish()
-    .transform((v) => (v === '' ? null : v));
 
 const assetFields = {
   equipmentTypeId: z.string().uuid(),
@@ -404,3 +417,130 @@ export type ExpenseRow = {
   complaintNo: string | null;
 };
 export type ExpenseList = { items: ExpenseRow[]; total: number };
+
+// ---------- PMS (preventive maintenance) ----------
+
+export const PMS_ITEM_TYPES = ['check', 'reading', 'text'] as const;
+export type PmsItemType = (typeof PMS_ITEM_TYPES)[number];
+
+// One line of a PMS checklist. check = Pass/Fail, reading = a number with an allowed range, text = remarks.
+export const pmsItemSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9_]{1,40}$/, 'Item id: lowercase letters, digits, _'),
+    label: z.string().trim().min(1, 'Enter the item text').max(200),
+    type: z.enum(PMS_ITEM_TYPES),
+    unit: optionalText(20),
+    min: z.number().nullish(),
+    max: z.number().nullish(),
+    required: z.boolean().default(true),
+  })
+  .refine((i) => i.min == null || i.max == null || i.min <= i.max, { message: 'Minimum is above the maximum', path: ['max'] });
+export type PmsItem = z.infer<typeof pmsItemSchema>;
+
+// A new version is created on every save; records keep the version they were done with.
+export const pmsTemplateBodySchema = z
+  .object({ equipmentTypeId: z.string().uuid(), items: z.array(pmsItemSchema).min(1, 'Add at least one item').max(60) })
+  .refine((t) => new Set(t.items.map((i) => i.id)).size === t.items.length, { message: 'Item ids must be unique', path: ['items'] });
+export type PmsTemplateBody = z.infer<typeof pmsTemplateBodySchema>;
+
+export type PmsTemplateRow = {
+  id: string;
+  equipmentTypeId: string;
+  equipmentTypeName: string;
+  version: number;
+  items: PmsItem[];
+  createdAt: string;
+};
+
+export type PmsAnswer = 'pass' | 'fail' | number | string;
+
+// The client sends answers only. The date, the person, the template version and the result are the server's.
+export const submitPmsSchema = z
+  .object({
+    answers: z.record(z.string(), z.union([z.enum(['pass', 'fail']), z.number(), z.string().max(1000)])),
+    correctsRecordId: z.string().uuid().nullish(),
+    correctionReason: z.string().trim().min(5, 'Say why this correction is needed').max(500).nullish(),
+  })
+  .refine((v) => !v.correctsRecordId || !!v.correctionReason, { message: 'Say why this correction is needed', path: ['correctionReason'] });
+export type SubmitPmsInput = z.infer<typeof submitPmsSchema>;
+
+export type PmsResult = 'pass' | 'fail';
+
+export type PmsRecordRow = {
+  id: string;
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  equipmentTypeName: string;
+  templateVersion: number;
+  items: PmsItem[];
+  answers: Record<string, PmsAnswer>;
+  performedOn: string; // set by the server in the hospital's timezone
+  performedByName: string;
+  submittedAt: string;
+  result: PmsResult;
+  locked: true;
+  correctsRecordId: string | null;
+  correctionReason: string | null;
+  correctedByRecordId: string | null;
+  hospitalName: string;
+};
+
+// ---------- Calibration ----------
+
+export const CALIBRATION_RESULTS = ['pass', 'fail'] as const;
+
+export const createCalibrationSchema = z
+  .object({
+    doneOn: isoDateSchema,
+    dueOn: isoDateSchema.nullish(), // blank = done date + the equipment type's usual interval
+    agency: z.string().trim().min(2, 'Enter the agency or engineer').max(150),
+    result: z.enum(CALIBRATION_RESULTS),
+  })
+  .refine((c) => !c.dueOn || c.dueOn > c.doneOn, { message: 'Next due date must be after the calibration date', path: ['dueOn'] });
+export type CreateCalibrationInput = z.infer<typeof createCalibrationSchema>;
+
+export type CalibrationRow = {
+  id: string;
+  doneOn: string;
+  dueOn: string;
+  agency: string;
+  result: PmsResult;
+  certificate: { id: string; fileName: string } | null;
+};
+
+// ---------- Due lists ----------
+
+export type DueRow = {
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  equipmentTypeName: string;
+  departmentName: string;
+  locationName: string;
+  criticality: Criticality;
+  dueDate: string;
+  daysLeft: number; // negative = overdue
+};
+
+export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
+
+// ---------- Notifications ----------
+
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export type NotificationRow = {
+  id: string;
+  type: NotificationType;
+  assetId: string | null;
+  message: string;
+  dueDate: string | null;
+  thresholdDays: number | null;
+  createdAt: string;
+  readAt: string | null;
+};
+export type NotificationList = { items: NotificationRow[]; unread: number };
+
+export const smtpTestSchema = z.object({ to: z.string().trim().email() });
+export type RunRemindersResult = { created: number; emailed: number };
