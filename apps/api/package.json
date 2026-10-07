@@ -9,17 +9,29 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:seed": "tsx --env-file=.env src/seed.ts",
+    "test": "tsx --env-file=.env --test \"src/**/*.test.ts\""
+  },
+  "prisma": {
+    "seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "@bme/shared": "*",
     "@prisma/client": "^6.1.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.0",
     "prisma": "^6.1.0",
     "tsx": "^4.19.2",

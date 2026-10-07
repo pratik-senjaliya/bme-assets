@@ -7,21 +7,21 @@ Condensed from the claude.ai doc "Biomedical Asset Management System — Impleme
 - [x] Monorepo with npm workspaces: apps/web, apps/api, packages/shared
 - [x] docker-compose.dev.yml with Postgres 16
 - [x] Prisma connected; health route `GET /api/v1/health` queries the DB; web home page shows it
-- [ ] First `npm install` and run on developer machine; commit `package-lock.json`
+- [x] First `npm install` and run; `package-lock.json` committed
 - [ ] Create Supabase project (database + private storage bucket) for Phase 3
 
 ## Phase 1 — Foundation (~1.5 weeks)
 
 Goal: four seeded users log in; each sees only what the role allows; every change is audited.
 
-- [ ] Full Prisma schema (all tables in docs/architecture.md) in one migration
-- [ ] Seed: settings, 3 departments + locations, 4 equipment types, 4 roles + default permissions, 1 user per role, ~10 assets
-- [ ] Auth: bcrypt login, JWT httpOnly cookie, /auth/me with permission codes, logout
-- [ ] `requirePermission()` middleware + department scope helper for nursing
-- [ ] Audit middleware (actor, action, entity, before/after, IP)
-- [ ] Error handler + zod validation middleware
-- [ ] Settings API (asset ID pattern super-admin only, locked after first asset), CRUD departments/locations/equipment types/users
-- [ ] Web: Ant Design theme, app shell with permission-based menu, login, admin screens, shared API client, table wrapper
+- [x] Full Prisma schema (all tables in docs/architecture.md) in one migration
+- [x] Seed: settings, 3 departments + locations, 4 equipment types, 4 roles + default permissions, 1 user per role, ~10 assets
+- [x] Auth: bcrypt login, JWT httpOnly cookie, /auth/me with permission codes, logout
+- [x] `requirePermission()` middleware + department scope helper for nursing
+- [x] Audit middleware (actor, action, entity, before/after, IP)
+- [x] Error handler + zod validation middleware
+- [x] Settings API (asset ID pattern super-admin only, locked after first asset), CRUD departments/locations/equipment types/users
+- [x] Web: Ant Design theme, app shell with permission-based menu, login, admin screens, shared API client, table wrapper
 - Check: nursing gets 403 on admin routes called directly
 
 ## Phase 2 — Asset register (~1.5 weeks)

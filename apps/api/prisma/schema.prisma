@@ -1,4 +1,4 @@
-// Phase 0: connection only. Phase 1 adds all tables from docs/architecture.md in one migration.
+// All tables from docs/architecture.md. Every table has id, created_at, updated_at, created_by.
 
 generator client {
   provider = "prisma-client-js"
@@ -8,4 +8,449 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+enum Criticality {
+  low
+  medium
+  high
+  critical
+}
+
+enum AssetStatus {
+  active
+  not_in_use
+  condemned
+}
+
+enum ContractType {
+  warranty
+  cmc
+  amc
+  in_house
+}
+
+enum AttachmentKind {
+  po
+  installation_report
+  photo
+  manual
+  certificate
+  eol_letter
+}
+
+enum ComplaintStatus {
+  open
+  in_progress
+  resolved
+}
+
+enum ExpenseType {
+  repair
+  spare_part
+}
+
+enum ApprovalType {
+  condemn
+  delete
+  edit_key_field
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+// ---------- Setup ----------
+
+model HospitalSettings {
+  id               String   @id @default(uuid())
+  name             String
+  shortCode        String
+  assetIdPattern   String   @default("{HOSP}-{DEPT}-{TYPE}-{LOC}-{SEQ:3}")
+  patternLocked    Boolean  @default(false)
+  reminderDays     Int[]    @default([30, 15, 5])
+  // Counters incremented inside the creating transaction (asset IDs / complaint numbers are never reused).
+  assetSeq         Int      @default(0)
+  complaintSeq     Int      @default(0)
+  smtpHost         String?
+  smtpPort         Int?
+  smtpUser         String?
+  smtpPassword     String?
+  smtpFrom         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        String?
+
+  @@map("hospital_settings")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  locations  Location[]
+  users      User[]
+  assets     Asset[]
+  complaints Complaint[]
+
+  @@map("departments")
+}
+
+model Location {
+  id           String   @id @default(uuid())
+  departmentId String
+  name         String
+  code         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+
+  department Department @relation(fields: [departmentId], references: [id])
+  assets     Asset[]
+
+  @@unique([departmentId, name])
+  @@map("locations")
+}
+
+model EquipmentType {
+  id                       String   @id @default(uuid())
+  name                     String   @unique
+  code                     String   @unique
+  defaultPmsMonths         Int?
+  defaultCalibrationMonths Int?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  createdBy                String?
+
+  assets       Asset[]
+  pmsTemplates PmsTemplate[]
+
+  @@map("equipment_types")
+}
+
+// ---------- Access ----------
+
+model Role {
+  id        String   @id @default(uuid())
+  name      String   @unique // super_admin, admin, biomed, nursing
+  label     String
+  isSystem  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  code      String   @unique // asset.create, asset.edit_key, complaint.resolve, ...
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  roleId       String
+  departmentId String? // required for nursing users
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+
+  role       Role        @relation(fields: [roleId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  complaintsRaised Complaint[] @relation("ComplaintRaisedBy")
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+// ---------- Assets ----------
+
+model Asset {
+  id                   String      @id @default(uuid())
+  assetCode            String      @unique
+  sequenceNo           Int
+  equipmentTypeId      String
+  name                 String
+  make                 String?
+  model                String?
+  serialNo             String?
+  departmentId         String
+  locationId           String
+  criticality          Criticality @default(medium)
+  status               AssetStatus @default(active)
+  installationDate     DateTime?   @db.Date
+  warrantyMonths       Int?
+  warrantyEnd          DateTime?   @db.Date
+  pmsFrequencyMonths   Int?
+  nextPmsDue           DateTime?   @db.Date
+  nextCalibrationDue   DateTime?   @db.Date
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  createdBy            String?
+
+  equipmentType      EquipmentType       @relation(fields: [equipmentTypeId], references: [id])
+  department         Department          @relation(fields: [departmentId], references: [id])
+  location           Location            @relation(fields: [locationId], references: [id])
+  purchaseOrders     PurchaseOrder[]
+  serviceContracts   ServiceContract[]
+  pmsRecords         PmsRecord[]
+  calibrationRecords CalibrationRecord[]
+  complaints         Complaint[]
+  expenses           ServiceExpense[]
+  notifications      Notification[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@map("assets")
+}
+
+model PurchaseOrder {
+  id        String   @id @default(uuid())
+  assetId   String
+  poNumber  String
+  poDate    DateTime @db.Date
+  vendor    String
+  cost      Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@map("purchase_orders")
+}
+
+model ServiceContract {
+  id        String       @id @default(uuid())
+  assetId   String
+  type      ContractType
+  vendor    String
+  startDate DateTime     @db.Date
+  endDate   DateTime     @db.Date
+  cost      Decimal?     @db.Decimal(12, 2)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  createdBy String?
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@map("service_contracts")
+}
+
+model Attachment {
+  id        String         @id @default(uuid())
+  ownerType String // asset, purchase_order, complaint, calibration_record, ...
+  ownerId   String
+  kind      AttachmentKind
+  filePath  String
+  mime      String
+  size      Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  createdBy String?
+
+  @@index([ownerType, ownerId])
+  @@map("attachments")
+}
+
+// ---------- PMS ----------
+
+model PmsTemplate {
+  id              String   @id @default(uuid())
+  equipmentTypeId String
+  version         Int
+  schema          Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+
+  equipmentType EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+  records       PmsRecord[]
+
+  @@unique([equipmentTypeId, version])
+  @@map("pms_templates")
+}
+
+model PmsRecord {
+  id               String    @id @default(uuid())
+  assetId          String
+  templateId       String
+  performedOn      DateTime  @db.Date // stamped by the server in APP_TIMEZONE, never from the client
+  performedBy      String
+  answers          Json
+  result           String
+  submittedAt      DateTime  @default(now())
+  locked           Boolean   @default(true)
+  correctsRecordId String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdBy        String?
+
+  asset      Asset       @relation(fields: [assetId], references: [id])
+  template   PmsTemplate @relation(fields: [templateId], references: [id])
+  corrects   PmsRecord?  @relation("PmsCorrection", fields: [correctsRecordId], references: [id])
+  corrections PmsRecord[] @relation("PmsCorrection")
+
+  @@index([assetId])
+  @@map("pms_records")
+}
+
+// ---------- Calibration ----------
+
+model CalibrationRecord {
+  id        String   @id @default(uuid())
+  assetId   String
+  doneOn    DateTime @db.Date
+  dueOn     DateTime @db.Date
+  agency    String
+  result    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@map("calibration_records")
+}
+
+// ---------- Complaints & expenses ----------
+
+model Complaint {
+  id              String          @id @default(uuid())
+  complaintNo     String          @unique
+  assetId         String
+  raisedById      String
+  departmentId    String
+  description     String
+  status          ComplaintStatus @default(open)
+  raisedAt        DateTime        @default(now())
+  startedAt       DateTime?
+  startedBy       String?
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  resolutionNotes String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  createdBy       String?
+
+  asset      Asset            @relation(fields: [assetId], references: [id])
+  raisedBy   User             @relation("ComplaintRaisedBy", fields: [raisedById], references: [id])
+  department Department       @relation(fields: [departmentId], references: [id])
+  expenses   ServiceExpense[]
+
+  @@index([assetId])
+  @@index([departmentId])
+  @@map("complaints")
+}
+
+model ServiceExpense {
+  id          String      @id @default(uuid())
+  assetId     String
+  complaintId String?
+  type        ExpenseType
+  description String
+  amount      Decimal     @db.Decimal(12, 2)
+  date        DateTime    @db.Date
+  vendor      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  createdBy   String?
+
+  asset     Asset      @relation(fields: [assetId], references: [id])
+  complaint Complaint? @relation(fields: [complaintId], references: [id])
+
+  @@map("service_expenses")
+}
+
+// ---------- Workflow ----------
+
+model ApprovalRequest {
+  id          String         @id @default(uuid())
+  type        ApprovalType
+  targetType  String
+  targetId    String
+  payload     Json
+  requestedBy String
+  status      ApprovalStatus @default(pending)
+  decidedBy   String?
+  decidedAt   DateTime?
+  reason      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  createdBy   String?
+
+  @@index([status])
+  @@map("approval_requests")
+}
+
+model Notification {
+  id            String    @id @default(uuid())
+  userId        String?
+  role          String? // used when the notification targets a whole role
+  type          String
+  assetId       String?
+  dueDate       DateTime? @db.Date
+  thresholdDays Int?
+  message       String
+  readAt        DateTime?
+  emailedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+
+  user  User?  @relation(fields: [userId], references: [id])
+  asset Asset? @relation(fields: [assetId], references: [id])
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+// ---------- Audit (insert-only) ----------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  at         DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
 }

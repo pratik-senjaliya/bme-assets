@@ -1,0 +1,16 @@
+const jwtSecret = process.env.JWT_SECRET ?? '';
+if (jwtSecret.length < 16) throw new Error('JWT_SECRET must be set (16+ characters). See apps/api/.env.example');
+if (process.env.NODE_ENV === 'production' && jwtSecret.startsWith('change-me')) {
+  throw new Error('JWT_SECRET still has the example value. Set a long random string.');
+}
+
+export const config = {
+  jwtSecret,
+  webOrigin: process.env.WEB_ORIGIN,
+  // Session length in hours. Long enough for a shift.
+  sessionHours: Number(process.env.SESSION_HOURS ?? 12),
+  // Only true when the site is served over HTTPS (demo). On-prem LAN over plain HTTP needs false.
+  cookieSecure: process.env.COOKIE_SECURE === 'true',
+  // Proxy hops in front of the API, so req.ip (audit log) is the real client.
+  trustProxy: Number(process.env.TRUST_PROXY ?? 1),
+};
