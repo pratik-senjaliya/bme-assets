@@ -12,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-// Same-origin call to /api/v1 (Next rewrites it to the Express API). The auth cookie is httpOnly.
+// Same-origin call to /api/v1 (a Next route handler proxies it to the API at API_URL). The auth cookie is httpOnly.
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),

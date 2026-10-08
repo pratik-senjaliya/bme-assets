@@ -8,7 +8,7 @@ Condensed from the claude.ai doc "Biomedical Asset Management System — System 
 Browser (hospital LAN PCs)
    │  same origin
    ▼
-Next.js web ── rewrite /api/v1/* ──▶ Express API ──▶ PostgreSQL (Prisma)
+Next.js web ── proxy /api/v1/* (API_URL) ──▶ Express API ──▶ PostgreSQL (Prisma)
                                        │  owns auth,  ──▶ File storage (local disk | Supabase Storage)
                                        │  rules, audit ──▶ SMTP (optional)
                                        └─ daily reminder job (pg-boss)

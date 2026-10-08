@@ -27,7 +27,7 @@ services:
         value: Asia/Kolkata
       - key: COOKIE_SECURE # the demo is HTTPS
         value: "true"
-      - key: TRUST_PROXY # Vercel rewrite + Render = 2 hops in front of the API
+      - key: TRUST_PROXY # the Vercel proxy function + Render's own proxy = 2 hops in front of the API
         value: "2"
       - key: STORAGE_DRIVER
         value: supabase

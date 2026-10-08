@@ -3,7 +3,7 @@
 Cloud demo for stakeholders. Supabase is **only** hosted Postgres and file storage; all logic stays in the Express API, so the same code runs on-prem (Phase 5).
 
 ```
-Browser → Vercel (Next.js) ── rewrite /api/v1/* ──▶ Render (Express API) ──▶ Supabase Postgres + Storage
+Browser → Vercel (Next.js) ── /api/v1/* proxied to API_URL ──▶ Render (Express API) ──▶ Supabase Postgres + Storage
 ```
 
 The browser only talks to the Vercel URL, so the login cookie is first-party.
@@ -14,7 +14,8 @@ The browser only talks to the Vercel URL, so the login cookie is first-party.
 |---|---|
 | Supabase project `bme-assets-demo` (ref `uxxixezpmhqaxrmlnbki`, Mumbai, `https://uxxixezpmhqaxrmlnbki.supabase.co`) | Created. Private bucket `bme-files` (10 MB, PDF/JPG/PNG) created. **Tables not created yet:** Render's `prisma migrate deploy` creates them on first start. |
 | Database password / connection strings | Not available to automation. Set or reset the password in Supabase → Project Settings → Database, then build the two strings below. |
-| Render API | Not created (needs the dashboard: no automation access). |
+| Render API | Not created (needs the dashboard: no automation access). It stays on Render; Vercel only needs its URL as `API_URL`. |
+| `API_URL` on Vercel | Not set yet: needs the Render URL (`https://<service>.onrender.com`) and the Vercel project. Set it for Production and Preview; it is read at runtime, so no rebuild is needed. |
 | Vercel project `bme-assets-web` | Not created: the Vercel connector got `403 forbidden` for scope `pratik-senjaliyas-projects` and must be re-authorized, or create it by hand (step 3). |
 
 ## 1. Supabase (database + files)
