@@ -14,7 +14,7 @@ import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime, formatDuration } from '@/lib/format';
 import { COLORS } from '@/theme';
-import { parseForm } from '@/lib/forms';
+import { parseForm, useSingleFlight } from '@/lib/forms';
 
 const COLUMNS: { status: ComplaintStatus; title: string; empty: string }[] = [
   { status: 'open', title: 'Open', empty: 'Nothing waiting.' },
@@ -71,6 +71,8 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
     onChanged();
   }
 
+  const single = useSingleFlight();
+
   async function resolve() {
     const input = parseForm(form, resolveComplaintSchema, form.getFieldsValue());
     if (!input || !resolving) return;
@@ -124,7 +126,7 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
         title={`Resolve ${resolving?.complaintNo ?? ''}`}
         okText="Mark resolved"
         confirmLoading={saving}
-        onOk={resolve}
+        onOk={() => single(resolve)}
         onCancel={() => setResolving(null)}
         destroyOnHidden
       >

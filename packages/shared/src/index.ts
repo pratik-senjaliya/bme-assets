@@ -87,6 +87,14 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Enter your current password'),
+    newPassword: z.string().min(8, 'At least 8 characters').max(100),
+  })
+  .refine((v) => v.currentPassword !== v.newPassword, { message: 'Choose a password different from the current one', path: ['newPassword'] });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
 export type SessionUser = {
   id: string;
   name: string;
@@ -260,6 +268,8 @@ export const assetListQuerySchema = z.object({
   criticality: z.enum(CRITICALITIES).optional(),
   // Condemned and not-in-use assets leave the active list; ask for them explicitly.
   status: z.enum([...ASSET_STATUSES, 'all']).default('active'),
+  sortBy: z.enum(['assetCode', 'name', 'department', 'criticality', 'nextPmsDue', 'status']).default('assetCode'),
+  order: z.enum(['asc', 'desc']).default('asc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -382,6 +392,8 @@ export const complaintListQuerySchema = z.object({
   search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, problem text
   from: isoDateSchema.optional(), // raised on or after (hospital date)
   to: isoDateSchema.optional(), // raised on or before
+  sortBy: z.enum(['raisedAt', 'complaintNo', 'status']).optional(),
+  order: z.enum(['asc', 'desc']).default('desc'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -753,6 +765,13 @@ export const reportQuerySchema = z
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional(),
     group: z.enum(['month', 'year']).default('month'),
+    // The same filters the lists use, so "Export" on a list gives what is on screen (asset master and breakdowns).
+    search: z.string().trim().max(100).optional(),
+    departmentId: z.string().uuid().optional(),
+    equipmentTypeId: z.string().uuid().optional(),
+    criticality: z.enum(CRITICALITIES).optional(),
+    assetStatus: z.enum([...ASSET_STATUSES, 'all']).optional(),
+    complaintStatus: z.enum(COMPLAINT_STATUSES).optional(),
     // json = for the screen; xlsx and pdf are downloads. Excel stays the default so existing links keep working.
     format: z.enum(['json', 'xlsx', 'pdf']).default('xlsx'),
   })
@@ -766,6 +785,8 @@ export const auditQuerySchema = z.object({
   entityId: z.string().trim().max(60).optional(),
   action: z.string().trim().max(60).optional(), // contains
   actorId: z.string().uuid().optional(),
+  // Leave out routine sign-ins, sign-outs and exports (failed sign-ins and locks always stay).
+  hideRoutine: z.enum(['true', 'false']).optional(),
   from: isoDateSchema.optional(),
   to: isoDateSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -780,6 +801,7 @@ export type AuditRow = {
   action: string;
   entityType: string;
   entityId: string | null;
+  entityLabel: string | null; // what the record is called: an asset code, a complaint number, a name
   before: unknown;
   after: unknown;
   ip: string | null;

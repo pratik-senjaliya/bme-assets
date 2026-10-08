@@ -1,4 +1,5 @@
 import type { FormInstance } from 'antd';
+import { useCallback, useRef } from 'react';
 import type { z } from 'zod';
 import { ApiError } from './api';
 
@@ -20,4 +21,19 @@ export function showApiFieldErrors(form: FormInstance, e: unknown): boolean {
   if (!entries.length) return false;
   form.setFields(entries.map(([name, errors]) => ({ name, errors: errors as string[] })));
   return true;
+}
+
+// Saving must happen once. React state ("saving") only updates after the next draw, so a fast double click or a key
+// held down can start a second save first. This remembers in a ref, which changes at once, that one is running.
+export function useSingleFlight() {
+  const running = useRef(false);
+  return useCallback(async (job: () => Promise<void>) => {
+    if (running.current) return;
+    running.current = true;
+    try {
+      await job();
+    } finally {
+      running.current = false;
+    }
+  }, []);
 }

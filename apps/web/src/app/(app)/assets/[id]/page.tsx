@@ -1,9 +1,7 @@
 'use client';
 
 import { FileTextOutlined, InboxOutlined, LockOutlined } from '@ant-design/icons';
-import {
-  Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Result, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload,
-} from 'antd';
+import { Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -42,8 +40,9 @@ import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize } from '@/lib/format';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
+import { StatusResult } from '@/components/StatusResult';
 
 const TIMELINE_COLOR: Record<TimelineEvent['kind'], string> = {
   registered: 'blue', purchase_order: 'gray', installation: 'green', warranty: 'gray', contract: 'gray', document: 'gray', pms: 'green', calibration: 'green', complaint: 'red', service: 'green', opening: 'gray',
@@ -62,7 +61,7 @@ export default function AssetDetailPage() {
   const [requests, setRequests] = useState(0); // bumps to refresh the "waiting for HOD" banners
 
   if (asset.error) {
-    return <Result status="404" title="Asset not found" subTitle="It may not exist, or it belongs to another department." extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
+    return <StatusResult status="404" title="Asset not found" subTitle="It may not exist, or it belongs to another department." extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
   }
   if (!asset.data) return <Skeleton active />;
   const a = asset.data;
@@ -71,6 +70,7 @@ export default function AssetDetailPage() {
     <>
       <PageHeader
         title={<span className="code">{a.assetCode}</span>}
+        docTitle={a.assetCode}
         meta={<StatusTag status={a.status} />}
         subtitle={`${a.name}${a.make || a.model ? ` · ${[a.make, a.model].filter(Boolean).join(' ')}` : ''}`}
         crumbs={['Assets', a.assetCode]}
@@ -210,12 +210,12 @@ function TimelineTab({ id }: { id: string }) {
           color: TIMELINE_COLOR[e.kind],
           children: (
             <div>
-              <div style={{ color: '#6B7280', fontSize: 12 }}>
+              <div style={{ color: '#526173', fontSize: 12 }}>
                 {e.date.length > 10 ? formatDateTime(e.date) : formatDate(e.date)}
                 {e.date > today && ' · upcoming'}
               </div>
               <div>{e.title}</div>
-              {e.detail && <div style={{ color: '#6B7280' }}>{e.detail}</div>}
+              {e.detail && <div style={{ color: '#526173' }}>{e.detail}</div>}
             </div>
           ),
         }))}
@@ -231,12 +231,12 @@ type RowAction = { canRequest: boolean; requestDelete: (t: DeleteTarget) => void
 // A "Request delete" button for each row, for people who can ask the HOD to remove a wrong entry.
 const deleteColumn = <T extends { id: string }>({ canRequest, requestDelete }: RowAction, type: DeleteTarget['type'], labelOf: (r: T) => string) =>
   canRequest
-    ? [{ title: '', key: 'request-delete', align: 'right' as const, render: (_: unknown, r: T) => <Button size="small" type="text" danger onClick={() => requestDelete({ type, id: r.id, label: labelOf(r) })}>Request delete</Button> }]
+    ? [{ title: <span className="sr-only">Actions</span>, key: 'request-delete', align: 'right' as const, render: (_: unknown, r: T) => <Button size="small" type="text" danger onClick={() => requestDelete({ type, id: r.id, label: labelOf(r) })}>Request delete</Button> }]
     : [];
 
 // A "Documents" link for each row: the contract copy, the bill, ... attached to that record.
 const docsColumn = <T extends { id: string }>(ownerType: 'purchase_order' | 'service_contract' | 'service_expense', kinds: string[], canUpload: boolean, titleOf: (r: T) => string) => ({
-  title: '',
+  title: <span className="sr-only">Actions</span>,
   key: 'documents',
   align: 'right' as const,
   render: (_: unknown, r: T) => <DocumentsButton ownerType={ownerType} ownerId={r.id} title={titleOf(r)} kinds={kinds} canUpload={canUpload} />,
@@ -250,6 +250,8 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [form] = Form.useForm();
+
+  const single = useSingleFlight();
 
   async function save() {
     const v = form.getFieldsValue();
@@ -331,7 +333,7 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
         title={adding === 'po' ? 'Add purchase order' : 'Add contract'}
         okText="Save"
         confirmLoading={saving}
-        onOk={save}
+        onOk={() => single(save)}
         onCancel={() => setAdding(null)}
         destroyOnHidden
       >
@@ -453,6 +455,8 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
   const [files, setFiles] = useState<File[]>([]);
   const [form] = Form.useForm();
 
+  const single = useSingleFlight();
+
   async function save() {
     const v = form.getFieldsValue();
     const input = parseForm(form, createExpenseSchema, {
@@ -510,7 +514,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
           ...deleteColumn<ExpenseRow>({ canRequest, requestDelete }, 'service_expense', (r) => `Expense "${r.description}" (${formatMoney(r.amount)})`),
         ]}
       />
-      <Modal open={adding} title="Add expense" okText="Save" confirmLoading={saving} onOk={save} onCancel={() => setAdding(false)} destroyOnHidden>
+      <Modal open={adding} title="Add expense" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setAdding(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Type" name="type" rules={[{ required: true }]}>
             <Select options={EXPENSE_TYPES.map((t) => ({ value: t, label: t === 'spare_part' ? 'Spare part' : 'Repair' }))} />

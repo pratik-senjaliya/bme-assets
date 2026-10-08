@@ -1,42 +1,13 @@
 'use client';
 
-import { DownloadOutlined } from '@ant-design/icons';
-import { App, Button, Card, Dropdown, Table, Tabs } from 'antd';
-import { useState } from 'react';
+import { Card, Table, Tabs } from 'antd';
 import type { ReportData, ReportSheetData } from '@bme/shared';
 import { ChartGrid } from '@/components/charts/ChartCard';
 import { KpiGrid } from '@/components/KpiTile';
-import { downloadFile } from '@/lib/download';
 import { formatDate, formatDateTime, formatValue } from '@/lib/format';
 import { COLORS } from '@/theme';
 
 const NUMERIC = new Set(['int', 'hours', 'money', 'pct', 'years']);
-
-// Excel and PDF of what is on screen. `path` is the report URL without the format.
-export function ExportMenu({ path, name }: { path: string; name: string }) {
-  const { message } = App.useApp();
-  const [busy, setBusy] = useState(false);
-  async function run(format: 'xlsx' | 'pdf') {
-    setBusy(true);
-    try {
-      await downloadFile(`${path}${path.includes('?') ? '&' : '?'}format=${format}`, `${name}.${format}`);
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Could not export');
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dropdown
-      trigger={['click']}
-      menu={{ items: [{ key: 'xlsx', label: 'Excel (.xlsx)' }, { key: 'pdf', label: 'PDF' }], onClick: ({ key }) => void run(key as 'xlsx' | 'pdf') }}
-    >
-      <Button icon={<DownloadOutlined />} loading={busy}>
-        Export
-      </Button>
-    </Dropdown>
-  );
-}
 
 function SheetTable({ sheet }: { sheet: ReportSheetData }) {
   const totals = sheet.totals?.length && sheet.rows.length ? sheet.totals : null;
@@ -85,7 +56,7 @@ export function ReportView({ data }: { data: ReportData }) {
       {data.sheets.length > 0 && (
         <Card styles={{ body: { padding: '0 16px 16px' } }}>
           <Tabs
-            items={data.sheets.map((s) => ({ key: s.name, label: `${s.name}${s.rows.length ? ` (${s.rows.length.toLocaleString('en-IN')})` : ''}`, children: <SheetTable sheet={s} /> }))}
+            items={data.sheets.map((s, i) => ({ key: `sheet-${i}`, label: `${s.name}${s.rows.length ? ` (${s.rows.length.toLocaleString('en-IN')})` : ''}`, children: <SheetTable sheet={s} /> }))}
           />
         </Card>
       )}

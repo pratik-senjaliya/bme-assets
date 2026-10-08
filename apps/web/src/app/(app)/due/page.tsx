@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Result, Select, Space, Tabs } from 'antd';
+import { Button, Select, Space, Tabs } from 'antd';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -11,6 +11,7 @@ import { CriticalityTag, DueText } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { addDaysISO, endOfMonthISO, formatDate, todayIST } from '@/lib/format';
+import { StatusResult } from '@/components/StatusResult';
 
 type Range = 'overdue' | 'month' | '30' | '60' | '90';
 const RANGES: { value: Range; label: string }[] = [
@@ -52,7 +53,7 @@ function DueList() {
             render: (_: unknown, r) => (
               <Link href={`/assets/${r.assetId}?tab=${kind}`}>
                 <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{r.assetCode}</span>
-                <div style={{ color: '#6B7280', fontSize: 12 }}>{r.assetName}</div>
+                <div style={{ color: '#526173', fontSize: 12 }}>{r.assetName}</div>
               </Link>
             ),
           },
@@ -62,7 +63,7 @@ function DueList() {
           { title: 'Due', dataIndex: 'dueDate', render: formatDate },
           { title: 'Status', dataIndex: 'daysLeft', render: (d: number) => <DueText daysLeft={d} /> },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'action',
             align: 'right',
             render: (_: unknown, r) =>
@@ -81,7 +82,7 @@ function DueList() {
     );
   };
 
-  if (!can('pms.perform') && !can('calibration.manage')) return <Result status="403" title="You cannot see due lists" />;
+  if (!can('pms.perform') && !can('calibration.manage')) return <StatusResult status="403" title="You cannot see due lists" />;
 
   const items = [
     ...(can('pms.perform') ? [{ key: 'pms', label: `PMS${pms.data ? ` (${pms.data.length})` : ''}`, children: table('pms') }] : []),

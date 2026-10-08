@@ -1,12 +1,13 @@
 'use client';
 
 import { ArrowRightOutlined } from '@ant-design/icons';
-import { Card, Result } from 'antd';
+import { Card } from 'antd';
 import Link from 'next/link';
 import { REPORTS, type ReportType } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/lib/auth';
 import { COLORS } from '@/theme';
+import { StatusResult } from '@/components/StatusResult';
 
 // Reports are read on screen first; each has Export to Excel and PDF.
 const GROUPS: { title: string; types: ReportType[] }[] = [
@@ -18,7 +19,7 @@ const GROUPS: { title: string; types: ReportType[] }[] = [
 
 export default function ReportsPage() {
   const { can } = useAuth();
-  if (!can('report.view')) return <Result status="403" title="You cannot see reports" />;
+  if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
   return (
     <>
       <PageHeader title="Reports" subtitle="Open a report to read it here. Export to Excel or PDF from the report if you need a file." />

@@ -10,6 +10,7 @@ import {
   purchaseOrderSchema,
   serviceContractSchema,
   updateAssetSchema,
+  type AssetListQuery,
   type AssetRow,
   type AttachmentOwnerType,
   type PermissionCode,
@@ -52,6 +53,13 @@ export const assetsRouter = Router();
 
 const findScoped = (req: Request) => findScopedAsset(req);
 
+// Sorting for the register. Equipment with no due date goes last either way; the asset code breaks ties so pages are stable.
+function assetOrder(by: AssetListQuery['sortBy'], order: 'asc' | 'desc'): Prisma.AssetOrderByWithRelationInput[] {
+  const first: Prisma.AssetOrderByWithRelationInput =
+    by === 'department' ? { department: { name: order } } : by === 'nextPmsDue' ? { nextPmsDue: { sort: order, nulls: 'last' } } : { [by]: order };
+  return by === 'assetCode' ? [first] : [first, { assetCode: 'asc' }];
+}
+
 const detail = async (id: string) =>
   toAssetDetail(await prisma.asset.findUniqueOrThrow({ where: { id }, include: assetInclude }));
 
@@ -75,7 +83,7 @@ assetsRouter.get('/', requirePermission('asset.view'), async (req, res) => {
     prisma.asset.findMany({
       where,
       include: assetInclude,
-      orderBy: { assetCode: 'asc' },
+      orderBy: assetOrder(q.sortBy, q.order),
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
     }),

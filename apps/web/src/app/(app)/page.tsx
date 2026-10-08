@@ -29,7 +29,7 @@ function Stat({ label, value, href, icon, tone, hint }: { label: string; value: 
   const t = TONE[tone];
   return (
     <Col xs={12} lg={6}>
-      <Link href={href} aria-label={`${label}: ${value}`} style={{ display: 'block' }}>
+      <Link href={href} style={{ display: 'block' }}>
         <Card hoverable styles={{ body: { padding: 20 } }} style={{ height: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ color: COLORS.muted, fontWeight: 500 }}>{label}</div>
@@ -84,6 +84,7 @@ export default function Home() {
     <>
       <PageHeader
         title={greeting(user?.name)}
+        docTitle="Dashboard"
         subtitle={`${d?.scope === 'department' ? `${user?.roleLabel} · ${d.departmentName}` : user?.roleLabel} · ${formatDate(new Date())}`}
         action={can('complaint.create') && <Link href="/complaints"><Button type="primary">Raise complaint</Button></Link>}
       />

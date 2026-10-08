@@ -13,13 +13,15 @@ import {
   type AssetStatus,
   type UpdateAssetResponse,
 } from '@bme/shared';
+import { FilePicker } from '@/components/FilePicker';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { uploadAll } from '@/lib/uploads';
 
 type Department = { id: string; name: string };
 type Location = { id: string; departmentId: string; name: string };
-type EquipmentType = { id: string; name: string; defaultPmsMonths: number | null };
+type EquipmentType = { id: string; name: string; defaultPmsMonths: number | null; defaultCalibrationMonths?: number | null };
 
 type Values = {
   equipmentTypeId?: string;
@@ -70,7 +72,7 @@ function FormSection({ title, hint, children }: { title: string; hint: string; c
   return (
     <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 24 } }}>
       <div style={{ marginBottom: 16 }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
+        <Typography.Title level={2} style={{ margin: 0, fontSize: 16, lineHeight: 1.4 }}>
           {title}
         </Typography.Title>
         <Typography.Text type="secondary">{hint}</Typography.Text>
@@ -86,11 +88,18 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const router = useRouter();
   const [form] = Form.useForm<Values>();
   const [saving, setSaving] = useState(false);
+  // Documents to attach once the asset exists (new assets only): the installation report, photos, the manual.
+  const [docs, setDocs] = useState<{ report: File[]; photos: File[]; manual: File[] }>({ report: [], photos: [], manual: [] });
 
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const departments = useFetch<Department[]>('/departments');
   const locations = useFetch<Location[]>('/locations');
   const departmentId = Form.useWatch('departmentId', form);
+  const typeId = Form.useWatch('equipmentTypeId', form);
+  const installed = Form.useWatch('installationDate', form);
+  const pmsEvery = Form.useWatch('pmsFrequencyMonths', form);
+  const lastPms = Form.useWatch('openingPmsOn', form);
+  const lastCal = Form.useWatch('openingCalibrationOn', form);
 
   const initial = asset ? toForm(asset) : { criticality: 'medium' };
   useEffect(() => {
@@ -100,7 +109,10 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
 
   const needsApproval = !!asset && !can('asset.edit_key');
 
+  const single = useSingleFlight();
+
   async function save() {
+    if (saving) return; // a second click or key press while the first is still saving
     const all = toBody(form.getFieldsValue());
     let body: Record<string, unknown> = all;
     if (asset) {
@@ -116,27 +128,54 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
     if (!input) return;
 
     setSaving(true);
+    let leaving = false;
     try {
       if (asset) {
         const res = await api<UpdateAssetResponse>(`/assets/${asset.id}`, { method: 'PATCH', body: input });
         message.success(res.pendingApproval ? 'Saved. Changes to key fields were sent to the HOD for approval.' : 'Asset updated');
+        leaving = true;
         router.push(`/assets/${asset.id}`);
       } else {
         const created = await api<AssetDetail>('/assets', { body: input });
-        message.success(`Asset ${created.assetCode} created`);
+        leaving = true; // the asset exists now: never allow a second create from this form
+        const owner = { ownerType: 'asset' as const, ownerId: created.id };
+        const failed = [
+          ...(await uploadAll(docs.report, owner, () => 'installation_report')),
+          ...(await uploadAll(docs.photos, owner, () => 'photo')),
+          ...(await uploadAll(docs.manual, owner, () => 'manual')),
+        ];
+        if (failed.length) message.warning(`Asset ${created.assetCode} created, but ${failed.join(', ')} could not be uploaded. Add ${failed.length === 1 ? 'it' : 'them'} again from the Documents tab.`, 8);
+        else message.success(`Asset ${created.assetCode} created`);
         router.push(`/assets/${created.id}`);
       }
     } catch (e) {
       if (!showApiFieldErrors(form, e)) message.error(e instanceof Error ? e.message : 'Could not save');
     } finally {
-      setSaving(false);
+      if (!leaving) setSaving(false); // after a successful save the button stays busy until the next page opens
     }
   }
+
+  // Existing equipment registered with no "last done" date shows as overdue at once. Say so before it happens.
+  const monthsAgo = installed ? dayjs().diff(installed, 'month') : 0;
+  const type = types.data?.find((t) => t.id === typeId);
+  const pmsLate = !asset && !lastPms && installed && monthsAgo > (pmsEvery ?? type?.defaultPmsMonths ?? 12);
+  const calLate = !asset && !lastCal && installed && !!type?.defaultCalibrationMonths && monthsAgo > type.defaultCalibrationMonths;
 
   const half = { xs: 24, md: 12 } as const;
 
   return (
-    <Form form={form} layout="vertical" requiredMark onFinish={save}>
+    <Form
+      form={form}
+      layout="vertical"
+      requiredMark
+      onFinish={() => single(save)}
+      // Enter in a field must not save a half-finished form (typing a date and pressing Enter is natural). Only the
+      // Save button saves. Dropdowns keep Enter for choosing an option.
+      onKeyDown={(e) => {
+        const t = e.target as HTMLElement;
+        if (e.key === 'Enter' && t.tagName === 'INPUT' && !t.closest('.ant-select')) e.preventDefault();
+      }}
+    >
       {needsApproval && (
         <Alert
           type="info"
@@ -268,6 +307,26 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         </Col>
         </Row>
       </FormSection>
+
+      {(pmsLate || calLate) && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`Installed ${monthsAgo >= 24 ? `${Math.floor(monthsAgo / 12)} years` : `${monthsAgo} months`} ago`}
+          description={`Without the date ${pmsLate && calLate ? 'PMS and calibration were' : pmsLate ? 'PMS was' : 'calibration was'} last done, this equipment will show as overdue as soon as it is saved. If it has been maintained, enter the date${pmsLate && calLate ? 's' : ''} under "Already in use?" above.`}
+        />
+      )}
+
+      {!asset && (
+        <FormSection title="Documents" hint="Optional. Attach now, or add them later from the asset's Documents tab. PDF, JPG or PNG, up to 10 MB each.">
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+            <FilePicker files={docs.report} onChange={(f) => setDocs((d) => ({ ...d, report: f }))} label="Installation report" max={3} />
+            <FilePicker files={docs.photos} onChange={(f) => setDocs((d) => ({ ...d, photos: f }))} label="Photos (with the serial number)" max={5} />
+            <FilePicker files={docs.manual} onChange={(f) => setDocs((d) => ({ ...d, manual: f }))} label="Manual" max={3} />
+          </div>
+        </FormSection>
+      )}
 
       <div className="form-actions">
         <Link href={asset ? `/assets/${asset.id}` : '/assets'}>

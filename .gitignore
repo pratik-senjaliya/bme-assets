@@ -8,3 +8,6 @@ uploads/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Browser test output
+e2e/.out/

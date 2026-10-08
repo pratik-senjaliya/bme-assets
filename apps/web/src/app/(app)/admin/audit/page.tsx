@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, DatePicker, Input, Result, Select, Space, Tag, Typography } from 'antd';
+import { Button, DatePicker, Input, Select, Space, Switch, Tag, Typography } from 'antd';
 import type { Dayjs } from 'dayjs';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -10,9 +10,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime } from '@/lib/format';
+import { StatusResult } from '@/components/StatusResult';
 
 const ENTITY_TYPES = [
-  'asset', 'complaint', 'pms_record', 'pms_template', 'calibration_record', 'approval_request', 'purchase_order', 'service_contract', 'service_expense', 'attachment',
+  'asset', 'complaint', 'pms_record', 'pms_template', 'calibration_record', 'approval_request', 'purchase_order', 'service_contract', 'service_expense', 'service_log', 'attachment',
   'user', 'role', 'department', 'location', 'equipment_type', 'hospital_settings', 'report', 'notification',
 ];
 
@@ -30,6 +31,8 @@ export default function AuditPage() {
   const [typed, setTyped] = useState('');
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [page, setPage] = useState(1);
+  // Sign-ins, sign-outs and exports happen all day; the log is for changes, so they are hidden unless asked for.
+  const [hideRoutine, setHideRoutine] = useState(true);
   const actors = useFetch<{ id: string; name: string }[]>(can('audit.view') ? '/audit-logs/actors' : null);
 
   // Debounce the free-text filter.
@@ -45,11 +48,12 @@ export default function AuditPage() {
   if (entityType) q.set('entityType', entityType);
   if (actorId) q.set('actorId', actorId);
   if (action) q.set('action', action);
+  if (hideRoutine) q.set('hideRoutine', 'true');
   if (range?.[0]) q.set('from', range[0].format('YYYY-MM-DD'));
   if (range?.[1]) q.set('to', range[1].format('YYYY-MM-DD'));
   const log = useFetch<Paged<AuditRow>>(can('audit.view') ? `/audit-logs?${q}` : null);
 
-  if (!can('audit.view')) return <Result status="403" title="You cannot see the audit log" />;
+  if (!can('audit.view')) return <StatusResult status="403" title="You cannot see the audit log" />;
   const filtered = !!(entityType || actorId || action || range);
   const reset = (fn: () => void) => () => {
     fn();
@@ -64,6 +68,10 @@ export default function AuditPage() {
         <Select allowClear showSearch placeholder="Record type" aria-label="Record type" style={{ width: 190 }} value={entityType} options={ENTITY_TYPES.map((t) => ({ value: t, label: t.replace(/_/g, ' ') }))} onChange={(v) => { setEntityType(v); setPage(1); }} />
         <Select allowClear showSearch optionFilterProp="label" placeholder="Who" aria-label="Who" style={{ width: 190 }} value={actorId} options={(actors.data ?? []).map((a) => ({ value: a.id, label: a.name }))} onChange={(v) => { setActorId(v); setPage(1); }} />
         <DatePicker.RangePicker aria-label="Period" format="DD MMM YYYY" value={range} onChange={(v) => { setRange(v); setPage(1); }} />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Switch checked={hideRoutine} onChange={(v) => { setHideRoutine(v); setPage(1); }} />
+          Hide sign-ins and exports
+        </label>
         {filtered && (
           <Button type="link" onClick={reset(() => { setEntityType(undefined); setActorId(undefined); setTyped(''); setAction(''); setRange(null); })}>
             Clear
@@ -100,18 +108,19 @@ export default function AuditPage() {
             title: 'Record',
             key: 'entity',
             render: (_: unknown, r) => (
-              <span>
-                {r.entityType.replace(/_/g, ' ')}
-                {r.entityId && (
-                  <span style={{ color: '#6B7280', fontSize: 12 }}>
-                    {' · '}
-                    {r.entityType === 'asset' ? <Link href={`/assets/${r.entityId}`}>{r.entityId.slice(0, 8)}</Link> : r.entityId.slice(0, 8)}
-                  </span>
-                )}
-              </span>
+              <div style={{ lineHeight: 1.35 }}>
+                <div>
+                  {r.entityLabel ? (
+                    r.entityType === 'asset' && r.entityId ? <Link href={`/assets/${r.entityId}`} className="code">{r.entityLabel}</Link> : <span style={{ fontWeight: 500 }}>{r.entityLabel}</span>
+                  ) : (
+                    <span style={{ color: '#526173' }}>{r.entityId ? r.entityId.slice(0, 8) : '—'}</span>
+                  )}
+                </div>
+                <div style={{ color: '#526173', fontSize: 12.5 }}>{r.entityType.replace(/_/g, ' ')}</div>
+              </div>
             ),
           },
-          { title: 'From', dataIndex: 'ip', render: (ip: string | null) => ip ?? '—' },
+          { title: 'From', dataIndex: 'ip', render: (ip: string | null) => (ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1' ? 'This computer' : (ip ?? '—')) },
         ]}
       />
     </>

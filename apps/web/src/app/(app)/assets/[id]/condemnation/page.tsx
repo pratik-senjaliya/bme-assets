@@ -1,13 +1,14 @@
 'use client';
 
 import { PrinterOutlined } from '@ant-design/icons';
-import { Button, Card, Descriptions, Result, Skeleton, Typography } from 'antd';
+import { Button, Card, Descriptions, Skeleton, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { AssetDetail, CondemnationInfo } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { StatusResult } from '@/components/StatusResult';
 
 // Printable certificate for an approved condemnation.
 export default function CondemnationCertificatePage() {
@@ -15,7 +16,7 @@ export default function CondemnationCertificatePage() {
   const asset = useFetch<AssetDetail>(`/assets/${id}`);
   const info = useFetch<CondemnationInfo>(`/assets/${id}/condemnation`);
 
-  if (info.error) return <Result status="404" title="No condemnation certificate" subTitle="This asset has not been condemned." extra={<Link href={`/assets/${id}`}><Button>Back to the asset</Button></Link>} />;
+  if (info.error) return <StatusResult status="404" title="No condemnation certificate" subTitle="This asset has not been condemned." extra={<Link href={`/assets/${id}`}><Button>Back to the asset</Button></Link>} />;
   if (!info.data || !asset.data) return <Skeleton active />;
   const a = asset.data;
   const c = info.data;
@@ -54,7 +55,7 @@ export default function CondemnationCertificatePage() {
           {['Biomedical HOD (signature)', 'Hospital administration (signature)'].map((label) => (
             <div key={label} style={{ flex: '1 1 260px' }}>
               <div style={{ borderBottom: '1px solid #9CA3AF', height: 40 }} />
-              <div style={{ color: '#6B7280', fontSize: 12, marginTop: 4 }}>{label} · Date</div>
+              <div style={{ color: '#526173', fontSize: 12, marginTop: 4 }}>{label} · Date</div>
             </div>
           ))}
         </div>

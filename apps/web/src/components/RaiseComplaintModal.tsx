@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { createComplaintSchema, type AssetRow, type ComplaintRow, type Paged } from '@bme/shared';
 import { FilePicker } from '@/components/FilePicker';
 import { api } from '@/lib/api';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
 
 type AssetOption = { id: string; assetCode: string; name: string };
@@ -49,6 +49,8 @@ export function RaiseComplaintModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, asset]);
 
+  const single = useSingleFlight();
+
   async function save() {
     const input = parseForm(form, createComplaintSchema, form.getFieldsValue());
     if (!input) return;
@@ -69,7 +71,7 @@ export function RaiseComplaintModal({
   }
 
   return (
-    <Modal open={open} title="Raise complaint" okText="Raise complaint" confirmLoading={saving} onOk={save} onCancel={onClose} destroyOnHidden>
+    <Modal open={open} title="Raise complaint" okText="Raise complaint" confirmLoading={saving} onOk={() => single(save)} onCancel={onClose} destroyOnHidden>
       <Form form={form} layout="vertical" requiredMark>
         <Form.Item label="Equipment" name="assetId" rules={[{ required: true, message: 'Choose the equipment' }]}>
           {asset ? (

@@ -25,7 +25,7 @@ export function AssetApprovalBanners({ asset, version }: { asset: AssetDetail; v
             condemnation.data ? (
               <div>
                 {condemnation.data.reason}
-                <div style={{ color: '#6B7280', fontSize: 12, marginTop: 4 }}>
+                <div style={{ color: '#526173', fontSize: 12, marginTop: 4 }}>
                   Requested by {condemnation.data.requestedByName}, approved by {condemnation.data.approvedByName} on {formatDate(condemnation.data.approvedAt)}. It stays in history and exports.
                 </div>
               </div>

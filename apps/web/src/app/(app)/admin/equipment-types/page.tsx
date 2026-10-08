@@ -6,7 +6,8 @@ import { equipmentTypeSchema } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { RequirePermission } from '@/components/RequirePermission';
 
 type EquipmentType = {
   id: string;
@@ -16,7 +17,7 @@ type EquipmentType = {
   defaultCalibrationMonths: number | null;
 };
 
-export default function EquipmentTypesPage() {
+function EquipmentTypesPageScreen() {
   const { message } = App.useApp();
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const [form] = Form.useForm();
@@ -28,6 +29,8 @@ export default function EquipmentTypesPage() {
     form.setFieldsValue(row === 'new' ? {} : row);
     setEditing(row);
   }
+
+  const single = useSingleFlight();
 
   async function save() {
     const input = parseForm(form, equipmentTypeSchema, {
@@ -86,7 +89,7 @@ export default function EquipmentTypesPage() {
           { title: 'Default PMS', dataIndex: 'defaultPmsMonths', align: 'right', render: months },
           { title: 'Default calibration', dataIndex: 'defaultCalibrationMonths', align: 'right', render: months },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'actions',
             align: 'right',
             render: (_: unknown, row) => (
@@ -109,7 +112,7 @@ export default function EquipmentTypesPage() {
         title={editing === 'new' ? 'Add equipment type' : 'Edit equipment type'}
         okText="Save"
         confirmLoading={saving}
-        onOk={save}
+        onOk={() => single(save)}
         onCancel={() => setEditing(null)}
         destroyOnHidden
       >
@@ -129,5 +132,14 @@ export default function EquipmentTypesPage() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+
+export default function EquipmentTypesPage() {
+  return (
+    <RequirePermission code="setup.manage" what="change equipment types">
+      <EquipmentTypesPageScreen />
+    </RequirePermission>
   );
 }

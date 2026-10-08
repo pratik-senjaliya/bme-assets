@@ -7,6 +7,7 @@ import { PMS_ITEM_TYPES, pmsTemplateBodySchema, type PmsItem, type PmsItemType, 
 import { PageHeader } from '@/components/PageHeader';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { RequirePermission } from '@/components/RequirePermission';
 
 type EquipmentType = { id: string; name: string };
 
@@ -32,7 +33,7 @@ const ItemsTable = ({ items }: { items: PmsItem[] }) => (
   />
 );
 
-export default function PmsTemplatesPage() {
+function PmsTemplatesPageScreen() {
   const { message } = App.useApp();
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const [typeId, setTypeId] = useState<string>();
@@ -192,5 +193,14 @@ export default function PmsTemplatesPage() {
         </Space>
       )}
     </>
+  );
+}
+
+
+export default function PmsTemplatesPage() {
+  return (
+    <RequirePermission code="setup.manage" what="change PMS checklists">
+      <PmsTemplatesPageScreen />
+    </RequirePermission>
   );
 }

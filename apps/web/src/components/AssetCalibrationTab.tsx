@@ -9,7 +9,7 @@ import { DataTable } from '@/components/DataTable';
 import { DueTag, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { daysFromToday, formatDate } from '@/lib/format';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
 export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; onChanged: () => void }) {
   const { message } = App.useApp();
@@ -25,6 +25,8 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
     body.set('file', file);
     await api(`/calibration/records/${recordId}/certificate`, { body });
   }
+
+  const single = useSingleFlight();
 
   async function save() {
     const v = form.getFieldsValue();
@@ -65,7 +67,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
       <Card>
         <Space size={32} wrap align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
           <div>
-            <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 4 }}>Next calibration due</div>
+            <div style={{ color: '#526173', fontSize: 12, marginBottom: 4 }}>Next calibration due</div>
             {asset.nextCalibrationDue ? (
               <Space>
                 <span>{formatDate(asset.nextCalibrationDue)}</span>
@@ -124,7 +126,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
           },
         ]}
       />
-      <Modal open={open} title="Record calibration" okText="Save" confirmLoading={saving} onOk={save} onCancel={() => setOpen(false)} destroyOnHidden>
+      <Modal open={open} title="Record calibration" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Calibration date" name="doneOn" rules={[{ required: true, message: 'Pick the date' }]}>
             <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
