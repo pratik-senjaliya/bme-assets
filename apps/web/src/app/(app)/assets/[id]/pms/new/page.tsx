@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Input, InputNumber, Radio, Skeleton, Space, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, InputNumber, Radio, Space, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -10,6 +10,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
+import { COLORS } from '@/theme';
+import { FormPageSkeleton } from '@/components/Skeletons';
 
 const rangeText = (i: PmsItem) =>
   i.min != null && i.max != null ? `${i.min}–${i.max}` : i.min != null ? `at least ${i.min}` : i.max != null ? `at most ${i.max}` : '';
@@ -40,7 +42,7 @@ export default function PerformPmsPage() {
 
   if (!can('pms.perform')) return <StatusResult status="403" title="You cannot record PMS" />;
   if (asset.error) return <StatusResult status="404" title="Asset not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
-  if (!asset.data || (template.loading && !template.data)) return <Skeleton active />;
+  if (!asset.data || (template.loading && !template.data)) return <FormPageSkeleton sections={2} fields={4} />;
   const a = asset.data;
   const items = template.data?.items ?? [];
 
@@ -137,13 +139,13 @@ export default function PerformPmsPage() {
               const value = answers[item.id];
               const bad = outOfRange(item, value);
               return (
-                <div key={item.id} style={{ padding: '12px 0', borderBottom: '1px solid #F3F4F6' }}>
+                <div key={item.id} style={{ padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                     <div style={{ flex: '1 1 320px' }}>
                       {item.label}
                       {!item.required && <Typography.Text type="secondary"> (optional)</Typography.Text>}
                       {item.type === 'reading' && (
-                        <div style={{ color: '#526173', fontSize: 12 }}>
+                        <div style={{ color: COLORS.muted, fontSize: 12 }}>
                           {rangeText(item) ? `Allowed: ${rangeText(item)}` : ''} {item.unit ?? ''}
                         </div>
                       )}

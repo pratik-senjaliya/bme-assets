@@ -1,13 +1,14 @@
 'use client';
 
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Collapse, Input, InputNumber, Select, Skeleton, Space, Switch, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, Collapse, Input, InputNumber, Select, Space, Switch, Table, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { PMS_ITEM_TYPES, pmsTemplateBodySchema, type PmsItem, type PmsItemType, type PmsTemplateRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { RequirePermission } from '@/components/RequirePermission';
+import { TableSkeleton } from '@/components/Skeletons';
 
 type EquipmentType = { id: string; name: string };
 
@@ -107,7 +108,7 @@ function PmsTemplatesPageScreen() {
         />
       </Space>
 
-      {versions.loading && !versions.data && <Skeleton active />}
+      {versions.loading && !versions.data && <TableSkeleton rows={8} cols={3} />}
       {versions.error && <Alert type="error" showIcon message="Could not load the checklist" description={versions.error} />}
 
       {!draft && versions.data && (

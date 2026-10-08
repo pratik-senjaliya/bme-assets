@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Skeleton, Space, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Tooltip, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
@@ -9,6 +9,7 @@ import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
+import { FormPageSkeleton } from '@/components/Skeletons';
 
 function SettingsPageScreen() {
   const { message } = App.useApp();
@@ -96,11 +97,11 @@ function SettingsPageScreen() {
         }
       />
       {settings.error && <Alert type="error" showIcon message="Could not load settings" description={settings.error} />}
-      {settings.loading && !settings.data && <Skeleton active />}
+      {settings.loading && !settings.data && <FormPageSkeleton sections={2} />}
       {settings.data && (
         <Form form={form} layout="vertical" requiredMark>
           <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 640 }}>
-            <Card>
+            <Card title="Hospital and asset IDs">
             <Form.Item label="Hospital name" name="name" rules={[{ required: true, message: 'Enter the hospital name' }]}>
               <Input />
             </Form.Item>

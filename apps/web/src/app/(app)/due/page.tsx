@@ -12,6 +12,7 @@ import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { addDaysISO, endOfMonthISO, formatDate, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
+import { COLORS } from '@/theme';
 
 type Range = 'overdue' | 'month' | '30' | '60' | '90';
 const RANGES: { value: Range; label: string }[] = [
@@ -52,8 +53,8 @@ function DueList() {
             key: 'asset',
             render: (_: unknown, r) => (
               <Link href={`/assets/${r.assetId}?tab=${kind}`}>
-                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{r.assetCode}</span>
-                <div style={{ color: '#526173', fontSize: 12 }}>{r.assetName}</div>
+                <span className="code">{r.assetCode}</span>
+                <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{r.assetName}</div>
               </Link>
             ),
           },
@@ -92,8 +93,9 @@ function DueList() {
   return (
     <>
       <PageHeader title="Due & overdue" subtitle="Equipment in active use that needs PMS or calibration, soonest first" crumbs={['Due & overdue']} />
-      <Space style={{ marginBottom: 16 }}>
-        <Select aria-label="Period" style={{ minWidth: 260 }} value={range} options={RANGES} onChange={setRange} />
+      <Space style={{ marginBottom: 20 }} wrap>
+        <span style={{ color: COLORS.muted, fontWeight: 600, fontSize: 13 }}>Period</span>
+        <Select aria-label="Period" style={{ minWidth: 280 }} value={range} options={RANGES} onChange={setRange} />
       </Space>
       <Tabs activeKey={tab} onChange={(k) => setTab(k as 'pms' | 'calibration')} items={items} />
     </>

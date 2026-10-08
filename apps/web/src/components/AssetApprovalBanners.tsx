@@ -6,6 +6,7 @@ import type { ApprovalRow, AssetDetail, CondemnationInfo } from '@bme/shared';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
+import { COLORS } from '@/theme';
 
 // Shown above an asset: what is waiting for the HOD, and, for a condemned asset, why and by whom.
 export function AssetApprovalBanners({ asset, version }: { asset: AssetDetail; version: number }) {
@@ -25,7 +26,7 @@ export function AssetApprovalBanners({ asset, version }: { asset: AssetDetail; v
             condemnation.data ? (
               <div>
                 {condemnation.data.reason}
-                <div style={{ color: '#526173', fontSize: 12, marginTop: 4 }}>
+                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>
                   Requested by {condemnation.data.requestedByName}, approved by {condemnation.data.approvedByName} on {formatDate(condemnation.data.approvedAt)}. It stays in history and exports.
                 </div>
               </div>

@@ -10,6 +10,7 @@ import { DueTag, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { daysFromToday, formatDate } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { COLORS } from '@/theme';
 
 export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; onChanged: () => void }) {
   const { message } = App.useApp();
@@ -67,7 +68,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
       <Card>
         <Space size={32} wrap align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
           <div>
-            <div style={{ color: '#526173', fontSize: 12, marginBottom: 4 }}>Next calibration due</div>
+            <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 4 }}>Next calibration due</div>
             {asset.nextCalibrationDue ? (
               <Space>
                 <span>{formatDate(asset.nextCalibrationDue)}</span>

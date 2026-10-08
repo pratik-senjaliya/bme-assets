@@ -1,9 +1,11 @@
 'use client';
 
+import { InboxOutlined } from '@ant-design/icons';
 import { Card, Table, Tabs } from 'antd';
 import type { ReportData, ReportSheetData } from '@bme/shared';
 import { ChartGrid } from '@/components/charts/ChartCard';
 import { KpiGrid } from '@/components/KpiTile';
+import { EmptyState } from '@/components/Skeletons';
 import { formatDate, formatDateTime, formatValue } from '@/lib/format';
 import { COLORS } from '@/theme';
 
@@ -17,7 +19,7 @@ function SheetTable({ sheet }: { sheet: ReportSheetData }) {
       rowKey="__row"
       dataSource={sheet.rows.map((r, i) => ({ ...r, __row: i }))}
       scroll={{ x: 'max-content' }}
-      locale={{ emptyText: 'Nothing in this table for the period.' }}
+      locale={{ emptyText: <EmptyState compact icon={<InboxOutlined />} title="Nothing in this table for the period." /> }}
       pagination={{ pageSize: 25, showSizeChanger: false, hideOnSinglePage: true, showTotal: (t) => `${t.toLocaleString('en-IN')} rows` }}
       columns={sheet.columns.map((c) => ({
         title: c.header,
@@ -48,13 +50,13 @@ function SheetTable({ sheet }: { sheet: ReportSheetData }) {
 export function ReportView({ data }: { data: ReportData }) {
   return (
     <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0, 1fr)' }}>
-      <div style={{ color: COLORS.muted, fontSize: 13 }}>
-        {data.hospital} · {data.from && data.to ? `${formatDate(data.from)} to ${formatDate(data.to)}` : 'As at today'} · Generated {formatDateTime(data.generatedAt)} by {data.generatedBy}
+      <div style={{ color: COLORS.muted, fontSize: 13, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: '10px 14px', justifySelf: 'start' }}>
+        <strong style={{ color: COLORS.ink }}>{data.hospital}</strong> · {data.from && data.to ? `${formatDate(data.from)} to ${formatDate(data.to)}` : 'As at today'} · Generated {formatDateTime(data.generatedAt)} by {data.generatedBy}
       </div>
       {data.kpis.length > 0 && <KpiGrid kpis={data.kpis} />}
       {data.charts.length > 0 && <ChartGrid charts={data.charts} />}
       {data.sheets.length > 0 && (
-        <Card styles={{ body: { padding: '0 16px 16px' } }}>
+        <Card styles={{ body: { padding: '4px 20px 20px' } }}>
           <Tabs
             items={data.sheets.map((s, i) => ({ key: `sheet-${i}`, label: `${s.name}${s.rows.length ? ` (${s.rows.length.toLocaleString('en-IN')})` : ''}`, children: <SheetTable sheet={s} /> }))}
           />
