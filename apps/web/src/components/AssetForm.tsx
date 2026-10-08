@@ -273,12 +273,12 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         </Col>
         <Col {...half}>
           <Form.Item label="Warranty (months)" name="warrantyMonths" extra="The warranty end date is worked out from the installation date.">
-            <InputNumber min={0} max={240} placeholder="e.g. 24" addonAfter="months" style={{ width: '100%' }} />
+            <InputNumber min={0} max={240} placeholder="e.g. 24" suffix="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="PMS every (months)" name="pmsFrequencyMonths" extra="Defaults to the equipment type's usual interval.">
-            <InputNumber min={1} max={120} placeholder="e.g. 6" addonAfter="months" style={{ width: '100%' }} />
+            <InputNumber min={1} max={120} placeholder="e.g. 6" suffix="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
         {asset && asset.status !== 'condemned' && (

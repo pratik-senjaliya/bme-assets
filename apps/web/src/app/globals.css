@@ -442,3 +442,22 @@ a {
   line-height: 1.4;
   margin-top: 8px;
 }
+
+/* Full-page answers ("You cannot…", "not found"): the picture shrinks on a phone so the words and the button show. */
+@media (max-width: 760px) {
+  .ant-result {
+    padding: 24px 8px;
+  }
+  .ant-result .ant-result-image {
+    width: 160px;
+    height: 160px;
+    margin-bottom: 16px;
+  }
+  .ant-result .ant-result-image svg {
+    width: 100%;
+    height: 100%;
+  }
+  .ant-result .ant-result-title {
+    font-size: 20px;
+  }
+}
