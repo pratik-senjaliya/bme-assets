@@ -1,12 +1,14 @@
 'use client';
 
 import { BellOutlined } from '@ant-design/icons';
-import { Badge, Button, Empty, List, Popover, Typography } from 'antd';
+import { Badge, Button, List, Popover, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import type { NotificationList, NotificationRow } from '@bme/shared';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { COLORS } from '@/theme';
+import { EmptyState } from '@/components/Skeletons';
 
 const TAB: Record<Exclude<NotificationRow['type'], 'approval'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase' };
 
@@ -46,7 +48,7 @@ export function NotificationBell() {
   const content = (
     <div style={{ width: 380, maxWidth: '80vw' }}>
       {data.items.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No reminders" />
+        <EmptyState compact icon={<BellOutlined />} title="No reminders" />
       ) : (
         <List
           size="small"
@@ -56,7 +58,7 @@ export function NotificationBell() {
             <List.Item style={{ cursor: 'pointer', paddingInline: 8 }} onClick={() => void go(n)}>
               <div>
                 <Typography.Text strong={!n.readAt}>{n.message}</Typography.Text>
-                <div style={{ color: '#526173', fontSize: 12 }}>{formatDate(n.createdAt)}</div>
+                <div style={{ color: COLORS.faint, fontSize: 12 }}>{formatDate(n.createdAt)}</div>
               </div>
             </List.Item>
           )}
@@ -84,9 +86,9 @@ export function NotificationBell() {
         if (v) void load();
       }}
     >
-      <Button type="text" aria-label={`Reminders, ${data.unread} unread`} style={{ minHeight: 40, minWidth: 40 }}>
+      <Button className="icon-btn" aria-label={`Reminders, ${data.unread} unread`}>
         <Badge count={data.unread} size="small" overflowCount={99}>
-          <BellOutlined style={{ fontSize: 18 }} />
+          <BellOutlined style={{ fontSize: 18, color: COLORS.muted }} />
         </Badge>
       </Button>
     </Popover>

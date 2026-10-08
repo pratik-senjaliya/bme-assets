@@ -1,13 +1,14 @@
 'use client';
 
 import { FileImageOutlined, FilePdfOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
-import { App, Badge, Button, Empty, List, Modal, Select, Skeleton, Space, Upload } from 'antd';
+import { App, Badge, Button, List, Modal, Select, Skeleton, Space, Upload } from 'antd';
 import { useState } from 'react';
 import type { AttachmentOwnerType, AttachmentRow } from '@bme/shared';
 import { useFetch } from '@/lib/api';
 import { formatDateTime, formatSize } from '@/lib/format';
 import { ACCEPT, KIND_LABEL, fileProblem, uploadFile } from '@/lib/uploads';
 import { COLORS } from '@/theme';
+import { EmptyState } from '@/components/Skeletons';
 
 // The documents on one record (a complaint, a service entry, an expense, a contract, ...), with an upload control for
 // people allowed to add. Files are served through the API, so the same permissions and department scope apply.
@@ -67,7 +68,7 @@ export function DocumentList({
           Could not load the documents. <a onClick={files.reload}>Retry</a>
         </span>
       ) : !files.data?.length ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+        <EmptyState compact icon={<PaperClipOutlined />} title={emptyText} />
       ) : (
         <List
           size="small"

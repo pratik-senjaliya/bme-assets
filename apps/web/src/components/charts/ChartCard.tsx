@@ -21,7 +21,8 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
   const horizontal = spec.kind === 'bar';
   const height = horizontal ? Math.max(130, spec.data.length * 30 + 20) : 230;
   const longest = Math.max(...spec.data.map((d) => d.label.length), 6);
-  const labelWidth = Math.min(232, Math.round(Math.min(longest, 36) * 6.3) + 12);
+  // About 7.2px per character at 12px in the app font (asset codes are mostly capitals and digits).
+  const labelWidth = Math.min(272, Math.round(Math.min(longest, 36) * 7.2) + 12);
   const short = (s: string) => (s.length > 36 ? `${s.slice(0, 35)}…` : s);
   // One line per label, cut with an ellipsis (the full name is in the tooltip and the Table view).
   const RowLabel = ({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value: string } }) => (
@@ -66,7 +67,7 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
         <BarChart data={spec.data} layout="vertical" margin={{ top: 0, right: 64, bottom: 0, left: 0 }} barCategoryGap={8}>
           <XAxis type="number" hide />
           <YAxis type="category" dataKey="label" width={labelWidth} axisLine={false} tickLine={false} tick={<RowLabel />} interval={0} />
-          <Tooltip content={<Tip />} cursor={{ fill: '#F1F5F9' }} />
+          <Tooltip content={<Tip />} cursor={{ fill: COLORS.lineSoft }} />
           {spec.series.map((s, i) => (
             <Bar key={s.key} dataKey={s.key} name={s.label} fill={colour(i)} maxBarSize={20} radius={[0, 4, 4, 0]}>
               <LabelList dataKey={s.key} position="right" formatter={(v: unknown) => formatValue(v, spec.fmt)} style={{ fill: COLORS.text, fontSize: 12 }} />
@@ -81,7 +82,7 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="label" {...axis} interval={spec.data.length > 8 ? 'preserveStartEnd' : 0} />
         <YAxis {...axis} width={44} allowDecimals={false} tickFormatter={(v: number) => formatAxis(v, spec.fmt)} />
-        <Tooltip content={<Tip />} cursor={{ fill: '#F1F5F9' }} />
+        <Tooltip content={<Tip />} cursor={{ fill: COLORS.lineSoft }} />
         {spec.series.map((s, i) => (
           <Bar
             key={s.key}

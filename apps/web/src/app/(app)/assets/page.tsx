@@ -1,8 +1,7 @@
 'use client';
 
-import { MoreOutlined } from '@ant-design/icons';
-import { SearchOutlined } from '@ant-design/icons';
-import { Button, Dropdown, Empty, Input, Segmented, Select, Space } from 'antd';
+import { InboxOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -12,6 +11,7 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { PageHeader } from '@/components/PageHeader';
 import { CriticalityTag, DueCell, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
+import { EmptyState } from '@/components/Skeletons';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { daysFromToday } from '@/lib/format';
@@ -68,7 +68,7 @@ function AssetList() {
       allowClear
       placeholder={placeholder}
       aria-label={placeholder}
-      style={{ minWidth: 180 }}
+      style={{ minWidth: 190, flex: '1 1 190px', maxWidth: 240 }}
       value={q[key]}
       options={options}
       onChange={(v) => set({ [key]: v })}
@@ -99,13 +99,21 @@ function AssetList() {
           )
         }
       />
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+          <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
+        </div>
+        <span style={{ color: COLORS.muted, fontWeight: 600 }} className="num">
+          {assets.data ? `${assets.data.total.toLocaleString('en-IN')} ${assets.data.total === 1 ? 'asset' : 'assets'}` : ' '}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         <Input
           allowClear
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search ID, name, serial, make"
           aria-label="Search assets"
-          style={{ width: 300 }}
+          style={{ flex: '2 1 260px', maxWidth: 360 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -123,10 +131,6 @@ function AssetList() {
             Clear filters
           </Button>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ color: COLORS.muted }}>{assets.data ? `${assets.data.total.toLocaleString('en-IN')} ${assets.data.total === 1 ? 'asset' : 'assets'}` : ' '}</span>
-          <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
-        </div>
       </div>
       <DataTable<AssetRow>
         rows={assets.data?.items ?? null}
@@ -137,10 +141,7 @@ function AssetList() {
           filtered ? (
             'No assets match these filters.'
           ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={canAdd ? 'No assets yet. Add the first one or import a list from Excel.' : 'No equipment to show yet.'}
-            />
+            <EmptyState compact icon={<InboxOutlined />} title="No equipment to show yet" hint={canAdd ? 'Add the first one or import a list from Excel.' : undefined} />
           )
         }
         pagination={{
@@ -184,8 +185,8 @@ function AssetList() {
             sortOrder: sortOf('name'),
             render: (name: string, row) => (
               <div style={{ lineHeight: 1.35 }}>
-                <div style={{ fontWeight: 500, color: COLORS.ink }}>{name}</div>
-                <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{[row.equipmentTypeName, row.make, row.model].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontWeight: 700, color: COLORS.ink }}>{name}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 1 }}>{[row.equipmentTypeName, row.make, row.model].filter(Boolean).join(' · ')}</div>
               </div>
             ),
           },
@@ -196,7 +197,7 @@ function AssetList() {
             sortOrder: sortOf('department'),
             render: (_: unknown, row) => (
               <div style={{ lineHeight: 1.35 }}>
-                <div>{row.departmentName}</div>
+                <div style={{ fontWeight: 600 }}>{row.departmentName}</div>
                 <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{row.locationName}</div>
               </div>
             ),

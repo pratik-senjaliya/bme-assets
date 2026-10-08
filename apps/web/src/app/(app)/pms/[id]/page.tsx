@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined, PrinterOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Descriptions, Skeleton, Space, Table, Tooltip, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Space, Table, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { AssetDetail, PmsItem, PmsRecordRow } from '@bme/shared';
@@ -11,6 +11,8 @@ import { useFetch } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { useAuth } from '@/lib/auth';
+import { COLORS } from '@/theme';
+import { DetailPageSkeleton } from '@/components/Skeletons';
 
 const itemOk = (i: PmsItem, v: unknown) => {
   if (i.type === 'check') return v === 'pass';
@@ -26,7 +28,7 @@ export default function PmsRecordPage() {
 
   if (!can('pms.perform')) return <StatusResult status="403" title="You cannot see PMS records" extra={<Link href="/"><Button>Back to the dashboard</Button></Link>} />;
   if (rec.error) return <StatusResult status="404" title="PMS record not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
-  if (!rec.data) return <Skeleton active />;
+  if (!rec.data) return <DetailPageSkeleton kpis={0} />;
   const r = rec.data;
   const a = asset.data;
 
@@ -97,7 +99,7 @@ export default function PmsRecordPage() {
           <Descriptions.Item label="Performed on">
             <Tooltip title="Recorded by the system. It cannot be changed.">
               <span>
-                {formatDate(r.performedOn)} <LockOutlined aria-label="Locked" style={{ color: '#526173' }} />
+                {formatDate(r.performedOn)} <LockOutlined aria-label="Locked" style={{ color: COLORS.muted }} />
               </span>
             </Tooltip>
           </Descriptions.Item>
@@ -141,7 +143,7 @@ export default function PmsRecordPage() {
           {['Performed by (signature)', 'Verified by (Biomedical HOD)'].map((label) => (
             <div key={label} style={{ flex: '1 1 260px' }}>
               <div style={{ borderBottom: '1px solid #9CA3AF', height: 40 }} />
-              <div style={{ color: '#526173', fontSize: 12, marginTop: 4 }}>{label} · Date</div>
+              <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>{label} · Date</div>
             </div>
           ))}
         </div>

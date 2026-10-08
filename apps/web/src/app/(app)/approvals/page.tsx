@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth';
 import { formatDateTime } from '@/lib/format';
 import { useSingleFlight } from '@/lib/forms';
 import { StatusResult } from '@/components/StatusResult';
+import { COLORS } from '@/theme';
 
 const TYPE_LABEL: Record<ApprovalType, string> = { edit_key_field: 'Key-field edit', condemn: 'Condemnation', delete: 'Deletion' };
 const STATUSES = [
@@ -67,8 +68,9 @@ export default function ApprovalsPage() {
         subtitle={decider ? 'Requests that need the Biomedical HOD’s decision' : 'Your requests to the Biomedical HOD'}
         crumbs={['Approvals']}
       />
-      <Space style={{ marginBottom: 16 }}>
-        <Select aria-label="Show" style={{ width: 220 }} value={status} options={STATUSES} onChange={setStatus} />
+      <Space style={{ marginBottom: 20 }} wrap>
+        <span style={{ color: COLORS.muted, fontWeight: 600, fontSize: 13 }}>Show</span>
+        <Select aria-label="Show" style={{ width: 240 }} value={status} options={STATUSES} onChange={setStatus} />
       </Space>
       <DataTable<ApprovalRow>
         rows={list.data}
@@ -84,8 +86,8 @@ export default function ApprovalsPage() {
             render: (_: unknown, r) =>
               r.assetId ? (
                 <Link href={`/assets/${r.assetId}`}>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{r.assetCode}</span>
-                  <div style={{ color: '#526173', fontSize: 12 }}>{r.assetName}</div>
+                  <span className="code">{r.assetCode}</span>
+                  <div style={{ color: COLORS.muted, fontSize: 12 }}>{r.assetName}</div>
                 </Link>
               ) : (
                 <Typography.Text type="secondary">{r.assetCode ?? 'Deleted'}</Typography.Text>
@@ -97,7 +99,7 @@ export default function ApprovalsPage() {
             render: (_: unknown, r) => (
               <div style={{ maxWidth: 380 }}>
                 {r.summary}
-                {r.requestReason && <div style={{ color: '#526173', fontSize: 12 }}>Reason: {r.requestReason}</div>}
+                {r.requestReason && <div style={{ color: COLORS.muted, fontSize: 12 }}>Reason: {r.requestReason}</div>}
               </div>
             ),
           },
@@ -107,7 +109,7 @@ export default function ApprovalsPage() {
             render: (_: unknown, r) => (
               <div>
                 {r.requestedByName}
-                <div style={{ color: '#526173', fontSize: 12 }}>{formatDateTime(r.createdAt)}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12 }}>{formatDateTime(r.createdAt)}</div>
               </div>
             ),
           },
@@ -120,8 +122,8 @@ export default function ApprovalsPage() {
               r.decidedAt ? (
                 <div>
                   {r.decidedByName}
-                  <div style={{ color: '#526173', fontSize: 12 }}>{formatDateTime(r.decidedAt)}</div>
-                  {r.decisionNote && <div style={{ color: '#526173', fontSize: 12 }}>{r.decisionNote}</div>}
+                  <div style={{ color: COLORS.muted, fontSize: 12 }}>{formatDateTime(r.decidedAt)}</div>
+                  {r.decisionNote && <div style={{ color: COLORS.muted, fontSize: 12 }}>{r.decisionNote}</div>}
                 </div>
               ) : (
                 '—'

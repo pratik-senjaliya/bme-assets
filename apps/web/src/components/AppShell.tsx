@@ -11,7 +11,6 @@ import {
   HistoryOutlined,
   KeyOutlined,
   LogoutOutlined,
-  MedicineBoxFilled,
   MedicineBoxOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -21,7 +20,7 @@ import {
   TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { Button, Dropdown, Layout, Menu, Skeleton, type MenuProps } from 'antd';
+import { Button, Dropdown, Grid, Layout, Menu, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -29,6 +28,7 @@ import type { PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
+import { ShellSkeleton } from '@/components/Skeletons';
 import { useAuth } from '@/lib/auth';
 import { initials, shortName } from '@/lib/format';
 import { loginHref } from '@/lib/nav';
@@ -74,6 +74,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  // Phones: the menu hides completely and slides over the page when opened (see .app-sider in globals.css).
+  const phone = Grid.useBreakpoint().md === false;
   const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
@@ -81,13 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!loading && !user) router.replace(loginHref(sessionExpired()));
   }, [loading, user, router, sessionExpired]);
 
-  if (loading || !user) {
-    return (
-      <div style={{ padding: 48, maxWidth: 960 }}>
-        <Skeleton active paragraph={{ rows: 6 }} />
-      </div>
-    );
-  }
+  if (loading || !user) return <ShellSkeleton />;
 
   const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can));
   const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
@@ -107,31 +103,32 @@ export function AppShell({ children }: { children: ReactNode }) {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         breakpoint="lg"
-        collapsedWidth={68}
-        width={248}
-        theme="dark"
+        collapsedWidth={phone ? 0 : 76}
+        width={256}
+        theme="light"
       >
-        <div style={{ height: 60, display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '0 18px' : '0 20px' }}>
+        <div style={{ height: 68, display: 'flex', alignItems: 'center', gap: 12, padding: collapsed ? '0 20px' : '0 22px', flex: 'none' }}>
           <div className="brand-mark">
-            <MedicineBoxFilled style={{ fontSize: 17 }} />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 12h4l2-5 4 10 2-5h6" />
+            </svg>
           </div>
           {!collapsed && (
-            <div style={{ lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-              <div style={{ color: '#fff', fontWeight: 650, fontSize: 15 }}>BME Assets</div>
-              <div style={{ color: '#9AABC0', fontSize: 11 }}>Biomedical engineering</div>
+            <div style={{ lineHeight: 1.25, whiteSpace: 'nowrap' }}>
+              <div style={{ color: COLORS.ink, fontWeight: 800, fontSize: 15.5, letterSpacing: '-0.01em' }}>BME Assets</div>
+              <div style={{ color: COLORS.faint, fontSize: 12, fontWeight: 500 }}>Biomedical engineering</div>
             </div>
           )}
         </div>
-        <Menu theme="dark" mode="inline" items={items} selectedKeys={selected} style={{ borderInlineEnd: 0, padding: '8px 12px' }} />
+        <Menu theme="light" mode="inline" items={items} selectedKeys={selected} onClick={() => phone && setCollapsed(true)} style={{ borderInlineEnd: 0, padding: '4px 14px 20px', background: 'transparent' }} />
       </Layout.Sider>
       <Layout style={{ minWidth: 0 }}>
         <Layout.Header className="no-print app-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Button
-            type="text"
+            className="icon-btn"
             aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed((c) => !c)}
-            style={{ color: COLORS.muted }}
           />
           <div style={{ flex: 1, display: 'flex' }}>{can('asset.view') && <GlobalSearch />}</div>
           {can('notification.view') && <NotificationBell />}
@@ -157,23 +154,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               data-testid="account-menu"
-              style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 0, cursor: 'pointer', minHeight: 44, padding: '0 4px', font: 'inherit', lineHeight: 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 999, cursor: 'pointer', minHeight: 44, padding: '0 14px 0 4px', font: 'inherit', lineHeight: 1 }}
             >
               <span
                 aria-hidden
-                style={{ width: 34, height: 34, borderRadius: '50%', background: COLORS.primarySoft, color: COLORS.primary, display: 'grid', placeItems: 'center', fontWeight: 650, fontSize: 13, flex: 'none' }}
+                style={{ width: 34, height: 34, borderRadius: '50%', background: COLORS.primary, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}
               >
                 {initials(user.name)}
               </span>
               <span style={{ textAlign: 'left', lineHeight: 1.25 }} className="user-label">
-                <span style={{ display: 'block', fontWeight: 600, color: COLORS.ink, fontSize: 13 }}>{shortName(user.name)}</span>
+                <span style={{ display: 'block', fontWeight: 700, color: COLORS.ink, fontSize: 13 }}>{shortName(user.name)}</span>
                 <span style={{ display: 'block', color: COLORS.muted, fontSize: 12 }}>{user.roleLabel}</span>
               </span>
               <DownOutlined style={{ fontSize: 10, color: COLORS.faint }} />
             </button>
           </Dropdown>
         </Layout.Header>
-        <Layout.Content style={{ padding: 24 }}>
+        <Layout.Content style={{ padding: '28px 32px 48px' }} className="app-content">
           <div style={{ maxWidth: 1440, margin: '0 auto' }}>{children}</div>
         </Layout.Content>
         <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />

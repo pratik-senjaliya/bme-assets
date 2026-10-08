@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Skeleton } from 'antd';
+import { Alert } from 'antd';
 import { useParams } from 'next/navigation';
 import type { AssetDetail } from '@bme/shared';
 import { AssetForm } from '@/components/AssetForm';
@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
+import { FormPageSkeleton } from '@/components/Skeletons';
 
 export default function EditAssetPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,7 +21,7 @@ export default function EditAssetPage() {
       <PageHeader title={asset.data ? `Edit ${asset.data.assetCode}` : 'Edit asset'} crumbs={['Assets', 'Edit']} />
       <div style={{ maxWidth: 960 }}>
         {asset.error && <Alert type="error" showIcon message="Could not load this asset" description={asset.error} />}
-        {asset.loading && !asset.data && <Skeleton active />}
+        {asset.loading && !asset.data && <FormPageSkeleton />}
         {asset.data && <AssetForm asset={asset.data} />}
       </div>
     </>

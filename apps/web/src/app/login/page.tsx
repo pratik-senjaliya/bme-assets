@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircleFilled, LockOutlined, MailOutlined, MedicineBoxFilled } from '@ant-design/icons';
+import { AuditOutlined, LockOutlined, MailOutlined, ScheduleOutlined, ToolOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Form, Input, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -46,35 +46,47 @@ export default function LoginPage() {
   return (
     <main className="login-grid">
       <section className="login-hero">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="brand-mark">
-            <MedicineBoxFilled style={{ fontSize: 17 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="brand-mark" style={{ width: 40, height: 40, borderRadius: 12, background: '#13A3AD' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 12h4l2-5 4 10 2-5h6" />
+            </svg>
           </div>
-          <span style={{ fontWeight: 650, fontSize: 16 }}>BME Assets</span>
+          <div style={{ lineHeight: 1.3 }}>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>BME Assets</div>
+            <div style={{ color: '#9FC3C7', fontSize: 13 }}>Biomedical engineering department</div>
+          </div>
         </div>
-        <div>
-          <h2 style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 650, letterSpacing: '-0.02em', margin: '0 0 16px', color: '#fff' }}>
-            Every device accounted for,
-            <br />
-            from purchase to condemnation.
+        <div style={{ maxWidth: 520 }}>
+          <h2 style={{ fontSize: 40, lineHeight: 1.15, fontWeight: 800, letterSpacing: '-0.025em', margin: '0 0 32px', color: '#fff' }}>
+            Every device accounted for, from purchase to condemnation.
           </h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12, color: '#A9B7C9' }}>
-            {['Preventive maintenance and calibration, never missed', 'Breakdowns tracked with response time and downtime', 'HOD approvals and a complete audit trail'].map((t) => (
-              <li key={t} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <CheckCircleFilled style={{ color: '#2DD4BF' }} />
-                {t}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 20 }}>
+            {[
+              { icon: <ScheduleOutlined />, title: 'PMS and calibration, never missed', text: 'Reminders before every due date.' },
+              { icon: <ToolOutlined />, title: 'Breakdowns tracked to the minute', text: 'Response time and downtime for every complaint.' },
+              { icon: <AuditOutlined />, title: 'HOD approvals and a complete audit trail', text: 'Key changes wait for a decision; every action is recorded.' },
+            ].map((f) => (
+              <li key={f.title} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <span aria-hidden style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.1)', color: '#9FDCE0', display: 'grid', placeItems: 'center', fontSize: 18, flex: 'none' }}>
+                  {f.icon}
+                </span>
+                <span>
+                  <span style={{ display: 'block', fontWeight: 700, fontSize: 15, color: '#fff' }}>{f.title}</span>
+                  <span style={{ display: 'block', fontSize: 14, color: '#B5D3D6', marginTop: 2 }}>{f.text}</span>
+                </span>
               </li>
             ))}
           </ul>
         </div>
-        <span style={{ color: '#9AABC0', fontSize: 12 }}>Biomedical engineering department</span>
+        <span style={{ color: '#9FC3C7', fontSize: 13 }}>Runs on your hospital&apos;s own server.</span>
       </section>
       <section style={{ display: 'grid', placeItems: 'center', padding: 24, background: '#fff' }}>
         <div style={{ width: 380, maxWidth: '100%' }}>
-          <Typography.Title level={1} style={{ marginTop: 0, marginBottom: 4, fontWeight: 650, fontSize: 30, lineHeight: 1.25 }}>
+          <Typography.Title level={1} style={{ marginTop: 0, marginBottom: 6, fontWeight: 800, fontSize: 32, lineHeight: 1.2, letterSpacing: '-0.02em' }}>
             Sign in
           </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 28 }}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 32, fontSize: 15 }}>
             Use the login given to you by your Biomedical HOD.
           </Typography.Paragraph>
           {expired && <Alert type="info" showIcon style={{ marginBottom: 20 }} message="You were signed out" description="Your session ended, so please sign in again. You will come back to the page you were on." />}
@@ -85,11 +97,11 @@ export default function LoginPage() {
             <Form.Item label="Password" name="password" rules={[{ required: true, message: 'Enter your password' }]}>
               <Input.Password autoComplete="current-password" size="large" prefix={<LockOutlined style={{ color: COLORS.faint }} />} placeholder="Your password" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ marginTop: 8 }}>
+            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ marginTop: 8, height: 50, fontWeight: 700 }}>
               Sign in
             </Button>
           </Form>
-          <Typography.Paragraph type="secondary" style={{ marginTop: 24, fontSize: 13 }}>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 28, fontSize: 13, textAlign: 'center' }}>
             Forgot your password? Ask your Biomedical HOD to reset it.
           </Typography.Paragraph>
         </div>

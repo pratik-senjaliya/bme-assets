@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Skeleton } from 'antd';
+import { Button } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { ReportData } from '@bme/shared';
@@ -10,6 +10,7 @@ import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
+import { DashboardSkeleton } from '@/components/Skeletons';
 
 // One equipment's whole life on screen: figures and a table for each kind of record. Excel and PDF are the same data.
 export default function AssetHistoryPage() {
@@ -31,7 +32,7 @@ export default function AssetHistoryPage() {
         crumbs={['Assets', code || '…', 'Full history']}
         action={<ExportMenu path={`/assets/${id}/history`} name={`bme-history-${code}`} />}
       />
-      {!report.data ? <Skeleton active paragraph={{ rows: 10 }} /> : <ReportView data={report.data} />}
+      {!report.data ? <DashboardSkeleton header={false} /> : <ReportView data={report.data} />}
     </>
   );
 }

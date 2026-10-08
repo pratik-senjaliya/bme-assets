@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, DatePicker, Segmented, Skeleton, Space } from 'antd';
+import { Alert, Button, DatePicker, Segmented, Space } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -12,6 +12,7 @@ import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
+import { DashboardSkeleton } from '@/components/Skeletons';
 
 const fmt = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD');
 
@@ -68,7 +69,7 @@ function ReportPage() {
       {report.error ? (
         <Alert type="error" showIcon message="Could not load this report" description={report.error} action={<Button onClick={report.reload}>Retry</Button>} />
       ) : !report.data || report.loading ? (
-        <Skeleton active paragraph={{ rows: 10 }} />
+        <DashboardSkeleton header={false} />
       ) : (
         <ReportView data={report.data} />
       )}

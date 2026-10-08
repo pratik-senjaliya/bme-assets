@@ -71,11 +71,11 @@ const toBody = (v: Values) => ({
 function FormSection({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
     <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 24 } }}>
-      <div style={{ marginBottom: 16 }}>
-        <Typography.Title level={2} style={{ margin: 0, fontSize: 16, lineHeight: 1.4 }}>
+      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--line-soft)' }}>
+        <Typography.Title level={2} style={{ margin: 0, fontSize: 17, fontWeight: 800, lineHeight: 1.4 }}>
           {title}
         </Typography.Title>
-        <Typography.Text type="secondary">{hint}</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 13.5 }}>{hint}</Typography.Text>
       </div>
       {children}
     </Card>

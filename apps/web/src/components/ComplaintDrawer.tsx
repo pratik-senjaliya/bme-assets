@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, Drawer, Skeleton, Timeline, Typography } from 'antd';
+import { Alert, Button, Drawer, Timeline, Typography } from 'antd';
 import Link from 'next/link';
 import type { ComplaintDetail, ComplaintEvent } from '@bme/shared';
 import { DocumentList } from '@/components/DocumentList';
@@ -9,13 +9,14 @@ import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime, formatDuration, formatMoney } from '@/lib/format';
 import { COLORS } from '@/theme';
+import { FactsSkeleton } from '@/components/Skeletons';
 
-const DOT: Record<ComplaintEvent['kind'], string> = { raised: 'red', started: 'orange', resolved: 'green', document: 'gray', expense: 'gray' };
+const DOT: Record<ComplaintEvent['kind'], string> = { raised: COLORS.bad.dot, started: COLORS.warn.dot, resolved: COLORS.good.dot, document: COLORS.neutral.dot, expense: COLORS.neutral.dot };
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div>
-    <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
-    <div style={{ fontWeight: 500, color: COLORS.ink }}>{children}</div>
+  <div style={{ background: COLORS.surfaceAlt, borderRadius: 12, padding: '12px 14px' }}>
+    <div style={{ color: COLORS.faint, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+    <div style={{ fontWeight: 700, color: COLORS.ink, fontSize: 15 }} className="num">{children}</div>
   </div>
 );
 
@@ -47,7 +48,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
       }
     >
       {complaint.error && <Alert type="error" showIcon message="Could not load this complaint" description={complaint.error} action={<Button onClick={complaint.reload}>Retry</Button>} />}
-      {!c && !complaint.error && <Skeleton active paragraph={{ rows: 8 }} />}
+      {!c && !complaint.error && <FactsSkeleton items={8} />}
       {c && (
         <div style={{ display: 'grid', gap: 24 }}>
           {c.overDowntimeLimit && (
@@ -60,7 +61,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
             <span style={{ color: COLORS.muted }}> · {c.assetName}</span>
             <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 2 }}>{c.departmentName}</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             <Fact label="Criticality">
               <CriticalityTag value={c.criticality} />
             </Fact>

@@ -1,7 +1,7 @@
 'use client';
 
-import { PaperClipOutlined } from '@ant-design/icons';
-import { App, Button, Card, Col, Form, Input, Modal, Row, Skeleton, Space, Tabs, Typography } from 'antd';
+import { CheckCircleOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { App, Button, Card, Col, Form, Input, Modal, Row, Space, Tabs, Typography } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { resolveComplaintSchema, type ComplaintRow, type ComplaintStatus, type Paged } from '@bme/shared';
@@ -9,6 +9,7 @@ import { ComplaintDrawer } from '@/components/ComplaintDrawer';
 import { ComplaintsHistory } from '@/components/ComplaintsHistory';
 import { PageHeader } from '@/components/PageHeader';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
+import { Bar, EmptyState } from '@/components/Skeletons';
 import { CriticalityTag, Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -165,22 +166,22 @@ function BoardColumn({
     <Card
       size="small"
       title={
-        <Space>
-          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
-          {title}
-          <span style={{ color: COLORS.muted, fontWeight: 500 }}>{list.data?.total ?? 0}</span>
+        <Space size={10}>
+          <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
+          <span style={{ fontWeight: 800, fontSize: 15 }}>{title}</span>
+          <span className="num" style={{ color: COLORS.muted, fontWeight: 700, fontSize: 13, background: '#fff', borderRadius: 10, padding: '1px 10px' }}>{list.data?.total ?? 0}</span>
         </Space>
       }
-      style={{ marginBottom: 16, background: '#EBEFF4', borderColor: 'transparent' }}
-      styles={{ body: { padding: 12, display: 'flex', flexDirection: 'column', gap: 12 } }}
+      style={{ marginBottom: 16, background: '#EAEFF1', borderColor: 'transparent', boxShadow: 'none', borderRadius: 18 }}
+      styles={{ header: { borderBottom: 0, minHeight: 52 }, body: { padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 } }}
     >
       {list.error && (
         <Typography.Text type="danger">
           Could not load. <a onClick={list.reload}>Retry</a>
         </Typography.Text>
       )}
-      {list.loading && !list.data && <Skeleton active />}
-      {list.data?.items.length === 0 && <div style={{ color: COLORS.muted, textAlign: 'center', padding: '32px 0' }}>{empty}</div>}
+      {list.loading && !list.data && <CardSkeleton />}
+      {list.data?.items.length === 0 && <EmptyState compact icon={<CheckCircleOutlined />} title={empty} />}
       {list.data?.items.map((c) => (
         <ComplaintCard key={c.id} c={c} actions={actions(c)} onOpen={() => onOpen(c.id)} />
       ))}
@@ -192,49 +193,62 @@ function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: React
   // Display only: how long it has been waiting by this browser's clock. Stored times are the server's.
   const waiting = c.status === 'open' ? formatDuration((Date.now() - new Date(c.raisedAt).getTime()) / 1000) : null;
   const muted = { color: COLORS.muted, fontSize: 12.5 };
+  // The clock that matters for this column, in a box so it reads at a glance; red once over the downtime limit.
+  const clock = { background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.surfaceAlt, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.ink, borderRadius: 10, padding: '8px 12px', marginTop: 10, fontWeight: 700 };
   return (
-    <Card size="small" styles={{ body: { padding: 14 } }}>
-      <Space style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <strong className="code">{c.complaintNo}</strong>
+    <Card size="small" styles={{ body: { padding: 16 } }} style={{ borderRadius: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="code" style={{ color: COLORS.faint, fontSize: 12.5, fontWeight: 700 }}>{c.complaintNo}</span>
         <CriticalityTag value={c.criticality} />
-      </Space>
+      </div>
       {c.overDowntimeLimit && (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 8 }}>
           <Pill tone="bad">Over downtime limit</Pill>
         </div>
       )}
-      <div style={{ marginTop: 4 }}>
-        <Link href={`/assets/${c.assetId}`} className="code">
+      <div style={{ marginTop: 8 }}>
+        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontWeight: 700 }}>
           {c.assetCode}
         </Link>
-        <span style={muted}> · {c.assetName}</span>
+        <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5, marginTop: 1 }}>{c.assetName}</div>
       </div>
-      <Typography.Paragraph ellipsis={{ rows: 3, tooltip: c.description }} style={{ margin: '8px 0' }}>
+      <Typography.Paragraph ellipsis={{ rows: 3, tooltip: c.description }} style={{ margin: '8px 0', color: COLORS.text }}>
         {c.description}
       </Typography.Paragraph>
       <div style={muted}>
         {c.departmentName} · raised by {c.raisedByName}
       </div>
-      <div style={muted}>{formatDateTime(c.raisedAt)}</div>
-      {waiting && <div style={{ marginTop: 4 }}>Waiting {waiting}</div>}
+      <div style={muted} className="num">{formatDateTime(c.raisedAt)}</div>
+      {waiting && <div style={clock} className="num">Waiting {waiting}</div>}
       {c.startedAt && (
-        <div style={{ marginTop: 4 }}>
+        <div style={{ ...clock, ...(c.resolvedAt ? { background: 'transparent', padding: 0, color: COLORS.text, fontWeight: 600 } : {}) }} className="num">
           Response {formatDuration(c.responseSeconds)}
-          <span style={muted}> · started by {c.startedByName}</span>
+          <span style={{ ...muted, fontWeight: 500 }}> · started by {c.startedByName}</span>
         </div>
       )}
       {c.resolvedAt && (
         <>
-          <div>Downtime {formatDuration(c.downtimeSeconds)}</div>
-          <div style={{ ...muted, marginTop: 4 }}>{c.resolutionNotes}</div>
+          <div style={{ ...clock, background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.good.bg, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.good.fg }} className="num">Downtime {formatDuration(c.downtimeSeconds)}</div>
+          <div style={{ ...muted, marginTop: 6 }}>{c.resolutionNotes}</div>
         </>
       )}
-      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <Button type="link" style={{ padding: 0 }} onClick={onOpen}>
+      <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLORS.lineSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <Button type="link" style={{ padding: 0, fontWeight: 700 }} onClick={onOpen}>
           Details{c.attachmentCount > 0 && <span style={{ marginLeft: 8, color: COLORS.muted }}><PaperClipOutlined /> {c.attachmentCount}</span>}
         </Button>
         <Space>{actions}</Space>
       </div>
+    </Card>
+  );
+}
+
+// One placeholder card per column while it loads.
+function CardSkeleton() {
+  return (
+    <Card size="small" aria-hidden styles={{ body: { padding: 16, display: 'flex', flexDirection: 'column', gap: 10 } }} style={{ borderRadius: 14 }}>
+      {[40, 70, 90, 55].map((w, i) => (
+        <Bar key={i} w={`${w}%`} h={i === 2 ? 32 : 12} />
+      ))}
     </Card>
   );
 }

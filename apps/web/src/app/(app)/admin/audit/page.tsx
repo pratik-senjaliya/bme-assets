@@ -11,6 +11,7 @@ import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
+import { COLORS } from '@/theme';
 
 const ENTITY_TYPES = [
   'asset', 'complaint', 'pms_record', 'pms_template', 'calibration_record', 'approval_request', 'purchase_order', 'service_contract', 'service_expense', 'service_log', 'attachment',
@@ -18,7 +19,7 @@ const ENTITY_TYPES = [
 ];
 
 const Json = ({ value }: { value: unknown }) => (
-  <pre style={{ margin: 0, padding: 8, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, fontSize: 12, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+  <pre style={{ margin: 0, padding: 12, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.line}`, borderRadius: 10, fontSize: 12, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
     {value == null ? '—' : JSON.stringify(value, null, 2)}
   </pre>
 );
@@ -113,10 +114,10 @@ export default function AuditPage() {
                   {r.entityLabel ? (
                     r.entityType === 'asset' && r.entityId ? <Link href={`/assets/${r.entityId}`} className="code">{r.entityLabel}</Link> : <span style={{ fontWeight: 500 }}>{r.entityLabel}</span>
                   ) : (
-                    <span style={{ color: '#526173' }}>{r.entityId ? r.entityId.slice(0, 8) : '—'}</span>
+                    <span style={{ color: COLORS.muted }}>{r.entityId ? r.entityId.slice(0, 8) : '—'}</span>
                   )}
                 </div>
-                <div style={{ color: '#526173', fontSize: 12.5 }}>{r.entityType.replace(/_/g, ' ')}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{r.entityType.replace(/_/g, ' ')}</div>
               </div>
             ),
           },

@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
+import { COLORS } from '@/theme';
 
 type Department = { id: string; name: string };
 type FormValues = { name: string; email: string; role: RoleName; departmentId?: string; password?: string; active: boolean };
@@ -105,7 +106,7 @@ function UsersPageScreen() {
             key: 'actions',
             align: 'right',
             // The vendor's super admin login is not the hospital's to change; the server refuses it, so do not offer it.
-            render: (_: unknown, row) => row.role === 'super_admin' && me?.role !== 'super_admin' ? <span style={{ color: '#64748B' }}>Managed by the vendor</span> : (
+            render: (_: unknown, row) => row.role === 'super_admin' && me?.role !== 'super_admin' ? <span style={{ color: COLORS.muted }}>Managed by the vendor</span> : (
               <Space>
                 <Button size="small" type="text" onClick={() => open(row)}>
                   Edit

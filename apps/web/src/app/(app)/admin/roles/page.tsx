@@ -1,6 +1,6 @@
 'use client';
 
-import { App, Alert, Button, Card, Checkbox, Select, Skeleton, Space } from 'antd';
+import { App, Alert, Button, Card, Checkbox, Select, Space } from 'antd';
 import { useEffect, useState } from 'react';
 import { PERMISSIONS, type PermissionCode, type RoleRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,6 +8,7 @@ import { api, useFetch } from '@/lib/api';
 import { PERMISSION_TEXT } from '@/lib/permissions';
 import { COLORS } from '@/theme';
 import { RequirePermission } from '@/components/RequirePermission';
+import { TableSkeleton } from '@/components/Skeletons';
 
 // Grouped by area so the list is scannable.
 const GROUPS: Record<string, string> = {
@@ -70,7 +71,7 @@ function RolesPageScreen() {
         }
       />
       {roles.error && <Alert type="error" showIcon message="Could not load roles" description={roles.error} />}
-      {roles.loading && !roles.data && <Skeleton active />}
+      {roles.loading && !roles.data && <TableSkeleton rows={10} cols={5} />}
       {role && (
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Select

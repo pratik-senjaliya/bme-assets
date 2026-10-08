@@ -66,7 +66,7 @@ export function GlobalSearch() {
 
   return (
     <AutoComplete
-      style={{ width: 'min(440px, 100%)' }}
+      style={{ width: 'min(480px, 100%)' }}
       options={options}
       value={text}
       onChange={setText}
@@ -75,17 +75,17 @@ export function GlobalSearch() {
         setRows([]);
         router.push(`/assets/${id}`);
       }}
-      popupMatchSelectWidth={440}
+      popupMatchSelectWidth={480}
       notFoundContent={text.trim().length < 2 ? null : searching ? 'Searching…' : 'No equipment found'}
     >
       <Input
         ref={ref}
         allowClear
         prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
-        suffix={text ? null : <kbd style={{ fontSize: 11, color: COLORS.faint, border: `1px solid ${COLORS.line}`, borderRadius: 4, padding: '0 5px' }}>/</kbd>}
+        suffix={text ? null : <kbd style={{ fontSize: 12, fontFamily: 'inherit', color: COLORS.faint, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: '1px 7px' }}>/</kbd>}
         placeholder="Search equipment by ID, name or serial"
         aria-label="Search equipment"
-        style={{ background: '#F4F6F9', borderColor: 'transparent' }}
+        style={{ background: COLORS.surfaceAlt, borderColor: COLORS.line, height: 44, borderRadius: 12 }}
       />
     </AutoComplete>
   );

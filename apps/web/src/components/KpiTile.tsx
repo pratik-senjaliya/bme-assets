@@ -7,12 +7,12 @@ import { COLORS } from '@/theme';
 export function KpiTile({ k }: { k: Kpi }) {
   const hint = k.tone === 'bad' ? COLORS.bad.fg : k.tone === 'warn' ? COLORS.warn.fg : k.tone === 'good' ? COLORS.good.fg : COLORS.muted;
   return (
-    <Card styles={{ body: { padding: 16 } }} style={{ height: '100%' }}>
-      <div style={{ color: COLORS.muted, fontWeight: 500, fontSize: 13 }}>{k.label}</div>
-      <div style={{ fontSize: 26, fontWeight: 650, lineHeight: 1.25, margin: '6px 0 2px', color: COLORS.ink, letterSpacing: '-0.01em' }} className="num">
+    <Card styles={{ body: { padding: 20 } }} style={{ height: '100%' }}>
+      <div style={{ color: COLORS.muted, fontWeight: 600, fontSize: 13 }}>{k.label}</div>
+      <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.15, margin: '10px 0 6px', color: COLORS.ink, letterSpacing: '-0.02em' }} className="num">
         {formatValue(k.value, k.fmt)}
       </div>
-      {k.hint && <div style={{ color: hint, fontSize: 12.5 }}>{k.hint}</div>}
+      {k.hint && <div style={{ color: hint, fontSize: 13, fontWeight: k.tone && k.tone !== 'neutral' ? 600 : 500 }}>{k.hint}</div>}
     </Card>
   );
 }
