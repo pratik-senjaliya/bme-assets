@@ -43,7 +43,7 @@ The free plan sleeps after ~15 minutes idle; the first request after that takes 
 
 ## 3. Vercel (web)
 
-1. Import the repo; set **Root Directory** to `apps/web` and keep "Include source files outside of the Root Directory" on. `apps/web/vercel.json` sets the install and build commands.
+1. Import the repo; set **Root Directory** to `apps/web` and keep "Include source files outside of the Root Directory" on. `apps/web/vercel.json` sets the install and build commands. It also pins the functions to Mumbai (`"regions": ["bom1"]`): the `/api/v1` proxy runs as a function, and Vercel's default (Washington, `iad1`) sent every request from India to the USA and back before it reached the API in Singapore.
 2. Environment variable `API_URL` = `https://<api>.onrender.com` (Production and Preview). It is read at **runtime** by the `/api/v1` proxy function, so changing it needs no rebuild, only a new deployment or an env redeploy.
 3. Deploy, then put the Vercel URL into Render's `WEB_ORIGIN`.
 
