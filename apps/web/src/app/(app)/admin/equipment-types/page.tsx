@@ -94,11 +94,12 @@ function EquipmentTypesPageScreen() {
             align: 'right',
             render: (_: unknown, row) => (
               <Space>
-                <Button size="small" onClick={() => open(row)}>
+                <Button size="small" type="text" onClick={() => open(row)}>
                   Edit
                 </Button>
-                <Popconfirm title={`Remove ${row.name}?`} description="Not possible if assets already use it." okText="Remove" onConfirm={() => remove(row)}>
-                  <Button size="small" danger>
+                <Popconfirm title={`Remove ${row.name}?`} description="Not possible if assets already use it." okText="Remove"
+                          okButtonProps={{ danger: true }} onConfirm={() => remove(row)}>
+                  <Button size="small" type="text" danger>
                     Remove
                   </Button>
                 </Popconfirm>

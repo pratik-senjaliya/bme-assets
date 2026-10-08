@@ -70,7 +70,7 @@ const toBody = (v: Values) => ({
 // A titled card for one group of fields, so a long form reads as a few clear steps.
 function FormSection({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
-    <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 24 } }}>
+    <Card style={{ marginBottom: 16 }} styles={{ body: { padding: '24px 24px 4px' } }}>
       <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--line-soft)' }}>
         <Typography.Title level={2} style={{ margin: 0, fontSize: 17, fontWeight: 800, lineHeight: 1.4 }}>
           {title}
@@ -196,6 +196,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           <Form.Item label="Equipment type" name="equipmentTypeId" rules={[{ required: true, message: 'Choose a type' }]}>
             <Select
               showSearch
+              placeholder="Choose the equipment type"
               optionFilterProp="label"
               loading={types.loading}
               options={(types.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
@@ -209,22 +210,22 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         </Col>
         <Col {...half}>
           <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Enter a name' }]}>
-            <Input maxLength={150} />
+            <Input maxLength={150} placeholder="e.g. ICU Ventilator A" />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Make" name="make">
-            <Input maxLength={100} />
+            <Input maxLength={100} placeholder="e.g. Drager" />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Model" name="model">
-            <Input maxLength={100} />
+            <Input maxLength={100} placeholder="e.g. Evita V300" />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Serial number" name="serialNo">
-            <Input maxLength={100} />
+            <Input maxLength={100} placeholder="As printed on the label" />
           </Form.Item>
         </Col>
         <Col {...half}>
@@ -241,6 +242,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           <Form.Item label="Department" name="departmentId" rules={[{ required: true, message: 'Choose a department' }]}>
             <Select
               showSearch
+              placeholder="Choose a department"
               optionFilterProp="label"
               loading={departments.loading}
               options={(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
@@ -254,7 +256,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
               showSearch
               optionFilterProp="label"
               disabled={!departmentId}
-              placeholder={departmentId ? undefined : 'Choose a department first'}
+              placeholder={departmentId ? 'Choose a location' : 'Choose a department first'}
               options={(locations.data ?? []).filter((l) => l.departmentId === departmentId).map((l) => ({ value: l.id, label: l.name }))}
             />
           </Form.Item>
@@ -266,17 +268,17 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
       <Row gutter={16}>
         <Col {...half}>
           <Form.Item label="Installation date" name="installationDate">
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs().add(1, 'year'))} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs().add(1, 'year'))} />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Warranty (months)" name="warrantyMonths" extra="The warranty end date is worked out from the installation date.">
-            <InputNumber min={0} max={240} style={{ width: '100%' }} />
+            <InputNumber min={0} max={240} placeholder="e.g. 24" addonAfter="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="PMS every (months)" name="pmsFrequencyMonths" extra="Defaults to the equipment type's usual interval.">
-            <InputNumber min={1} max={120} style={{ width: '100%' }} />
+            <InputNumber min={1} max={120} placeholder="e.g. 6" addonAfter="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
         {asset && asset.status !== 'condemned' && (
@@ -297,12 +299,12 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
             name="openingPmsOn"
             extra="When PMS was last done before this system. The next PMS is due from this date, not from the installation date."
           >
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Last calibration done" name="openingCalibrationOn" extra="When calibration was last done. Once a PMS or calibration is recorded in this system, these dates can no longer be changed.">
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
           </Form.Item>
         </Col>
         </Row>
@@ -320,7 +322,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
 
       {!asset && (
         <FormSection title="Documents" hint="Optional. Attach now, or add them later from the asset's Documents tab. PDF, JPG or PNG, up to 10 MB each.">
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+          <div className="file-tiles">
             <FilePicker files={docs.report} onChange={(f) => setDocs((d) => ({ ...d, report: f }))} label="Installation report" max={3} />
             <FilePicker files={docs.photos} onChange={(f) => setDocs((d) => ({ ...d, photos: f }))} label="Photos (with the serial number)" max={5} />
             <FilePicker files={docs.manual} onChange={(f) => setDocs((d) => ({ ...d, manual: f }))} label="Manual" max={3} />

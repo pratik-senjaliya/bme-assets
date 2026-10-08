@@ -46,6 +46,7 @@ export default function PerformPmsPage() {
   const a = asset.data;
   const items = template.data?.items ?? [];
 
+  const answered = items.filter((i) => answers[i.id] !== undefined).length;
   const willFail = items.some((i) => (i.type === 'check' && answers[i.id] === 'fail') || outOfRange(i, answers[i.id]));
   const set = (itemId: string, value: PmsAnswer | undefined) => {
     setAnswers((prev) => {
@@ -85,6 +86,14 @@ export default function PerformPmsPage() {
     // Ask for the correction reason before the confirmation, so the person is not told "submit?" then "invalid".
     if (corrects && reason.trim().length < 5) {
       setErrors({ _reason: 'Say why this correction is needed' });
+      return;
+    }
+    // Every required item needs an answer: point at the ones still open instead of asking "submit?" first.
+    const open = items.filter((i) => i.required && answers[i.id] === undefined);
+    if (open.length) {
+      setErrors(Object.fromEntries(open.map((i) => [i.id, i.type === 'check' ? 'Answer this check' : i.type === 'reading' ? 'Enter the reading' : 'Fill this in'])));
+      document.getElementById(`pms-item-${open[0].id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      message.warning(`${open.length} ${open.length === 1 ? 'item still needs' : 'items still need'} an answer`);
       return;
     }
     modal.confirm({
@@ -129,19 +138,26 @@ export default function PerformPmsPage() {
                     }}
                     status={errors._reason ? 'error' : undefined}
                   />
-                  {errors._reason && <Typography.Text type="danger">{errors._reason}</Typography.Text>}
+                  {errors._reason && <div className="field-error">{errors._reason}</div>}
                 </div>
               }
             />
           )}
-          <Card title={`Checklist · version ${template.data?.version ?? ''}`}>
+          <Card
+            title={`Checklist · version ${template.data?.version ?? ''}`}
+            extra={
+              <span className="num" style={{ color: answered === items.length ? COLORS.good.fg : COLORS.muted, fontWeight: 700, fontSize: 13 }}>
+                {answered} of {items.length} answered
+              </span>
+            }
+          >
             {items.map((item) => {
               const value = answers[item.id];
               const bad = outOfRange(item, value);
               return (
-                <div key={item.id} style={{ padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
+                <div key={item.id} id={`pms-item-${item.id}`} style={{ padding: '14px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ flex: '1 1 320px' }}>
+                    <div style={{ flex: '1 1 320px', fontWeight: 600, color: COLORS.ink }}>
                       {item.label}
                       {!item.required && <Typography.Text type="secondary"> (optional)</Typography.Text>}
                       {item.type === 'reading' && (
@@ -180,12 +196,8 @@ export default function PerformPmsPage() {
                   {item.type === 'text' && (
                     <Input.TextArea aria-label={item.label} rows={2} maxLength={1000} style={{ marginTop: 8 }} value={typeof value === 'string' ? value : ''} onChange={(e) => set(item.id, e.target.value)} />
                   )}
-                  {bad && <Typography.Text type="danger">Outside the allowed range ({rangeText(item)} {item.unit}). This will be recorded as a fail.</Typography.Text>}
-                  {errors[item.id] && (
-                    <div>
-                      <Typography.Text type="danger">{errors[item.id]}</Typography.Text>
-                    </div>
-                  )}
+                  {bad && <div className="field-error">Outside the allowed range ({rangeText(item)} {item.unit}). This will be recorded as a fail.</div>}
+                  {errors[item.id] && <div className="field-error">{errors[item.id]}</div>}
                 </div>
               );
             })}

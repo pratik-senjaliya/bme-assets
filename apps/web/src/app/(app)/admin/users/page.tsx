@@ -116,6 +116,7 @@ function UsersPageScreen() {
                     title={`Deactivate ${row.name}?`}
                     description="They can no longer sign in. Their history is kept."
                     okText="Deactivate"
+                    okButtonProps={{ danger: true }}
                     onConfirm={() => deactivate(row)}
                   >
                     <Button size="small" type="text" danger>
