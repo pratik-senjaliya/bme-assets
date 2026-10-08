@@ -1,0 +1,39 @@
+# Render blueprint for the demo API. The web app is on Vercel, the database and files on Supabase.
+# See docs/deployment.md. Secrets (sync: false) are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: bme-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run build -w packages/shared && npm run build -w apps/api
+    # Migrations run on every start; they are idempotent.
+    startCommand: cd apps/api && npx prisma migrate deploy && node dist/index.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL # Supabase pooled connection string (port 6543, ?pgbouncer=true)
+        sync: false
+      - key: DIRECT_URL # Supabase direct / session-pooler connection string (port 5432), used by migrations
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEB_ORIGIN # the Vercel URL, e.g. https://bme-demo.vercel.app
+        sync: false
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: COOKIE_SECURE # the demo is HTTPS
+        value: "true"
+      - key: TRUST_PROXY # the Vercel proxy function + Render's own proxy = 2 hops in front of the API
+        value: "2"
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: bme-files

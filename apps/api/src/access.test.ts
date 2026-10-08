@@ -1,33 +1,22 @@
 // Integration tests for the Phase 1 rules. Needs a migrated + seeded database (npm run db:seed -w apps/api).
 import assert from 'node:assert/strict';
-import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
-import { createApp } from './app';
 import { formatAssetCode } from './lib/assetCode';
 import { prisma } from './lib/prisma';
+import { login as loginTo, startServer } from './testUtils';
 
-const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
 let base = '';
-let server: ReturnType<ReturnType<typeof createApp>['listen']>;
+let server: ReturnType<typeof startServer>['server'];
 
 before(() => {
-  server = createApp().listen(0);
-  base = `http://localhost:${(server.address() as AddressInfo).port}/api/v1`;
+  ({ server, base } = startServer());
 });
 after(async () => {
   server.close();
   await prisma.$disconnect();
 });
 
-async function login(email: string) {
-  const res = await fetch(`${base}/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password: PASSWORD }),
-  });
-  assert.equal(res.status, 200);
-  return (res.headers.get('set-cookie') ?? '').split(';')[0];
-}
+const login = (email: string) => loginTo(base, email);
 
 const get = (path: string, cookie?: string) => fetch(`${base}${path}`, { headers: cookie ? { cookie } : {} });
 

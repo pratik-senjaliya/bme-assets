@@ -17,6 +17,11 @@ const toResponse = (s: Row): SettingsResponse => ({
   assetIdPattern: s.assetIdPattern,
   patternLocked: s.patternLocked,
   reminderDays: s.reminderDays,
+  smtpHost: s.smtpHost,
+  smtpPort: s.smtpPort,
+  smtpUser: s.smtpUser,
+  smtpFrom: s.smtpFrom,
+  smtpPasswordSet: !!s.smtpPassword, // the password itself is never sent back
 });
 
 // One row per install (no multi-tenancy).
@@ -28,6 +33,7 @@ settingsRouter.get('/', async (_req, res) => {
 
 settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
   const input = req.body as UpdateSettingsInput;
+  const { smtpPassword, ...rest } = input; // blank password = keep the stored one
   const before = await load();
 
   if (input.assetIdPattern !== undefined && input.assetIdPattern !== before.assetIdPattern) {
@@ -41,7 +47,7 @@ settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
   }
 
   const row = await audited(req, { action: 'settings.update', entityType: 'hospital_settings', before }, (tx) =>
-    tx.hospitalSettings.update({ where: { id: before.id }, data: input }),
+    tx.hospitalSettings.update({ where: { id: before.id }, data: { ...rest, ...(smtpPassword ? { smtpPassword } : {}) } }),
   );
   res.json(toResponse(row));
 });

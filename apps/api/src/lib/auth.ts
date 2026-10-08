@@ -78,6 +78,15 @@ export const requirePermission =
     next();
   };
 
+// For routes several roles reach with different permissions (e.g. admin or PMS staff).
+export const requireAnyPermission =
+  (...codes: PermissionCode[]): RequestHandler =>
+  (req, _res, next) => {
+    const have = req.user?.permissions ?? [];
+    if (!codes.some((c) => have.includes(c))) throw new HttpError(403, 'You do not have permission to do this');
+    next();
+  };
+
 export const currentUser = (req: Request): SessionUser => {
   if (!req.user) throw new HttpError(401, 'Please sign in');
   return req.user;

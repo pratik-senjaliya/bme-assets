@@ -2,6 +2,13 @@
 
 import {
   ApartmentOutlined,
+  BarcodeOutlined,
+  ToolOutlined,
+  AuditOutlined,
+  BarChartOutlined,
+  HistoryOutlined,
+  CalendarOutlined,
+  ScheduleOutlined,
   DashboardOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
@@ -15,16 +22,26 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { PermissionCode } from '@bme/shared';
+import { NotificationBell } from '@/components/NotificationBell';
 import { useAuth } from '@/lib/auth';
 
-type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode };
+type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
-const MAIN: Item[] = [{ href: '/', label: 'Dashboard', icon: <DashboardOutlined /> }];
+const MAIN: Item[] = [
+  { href: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
+  { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
+  { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
+  { href: '/approvals', label: 'Approvals', icon: <AuditOutlined />, anyOf: ['approval.decide', 'asset.request_change'] },
+  { href: '/reports', label: 'Reports', icon: <BarChartOutlined />, permission: 'report.view' },
+  { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
+];
 const ADMIN: Item[] = [
   { href: '/admin/users', label: 'Users', icon: <TeamOutlined />, permission: 'user.manage' },
   { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
   { href: '/admin/departments', label: 'Departments & locations', icon: <ApartmentOutlined />, permission: 'setup.manage' },
+  { href: '/admin/pms-templates', label: 'PMS checklists', icon: <ScheduleOutlined />, permission: 'setup.manage' },
+  { href: '/admin/audit', label: 'Audit log', icon: <HistoryOutlined />, permission: 'audit.view' },
   { href: '/admin/equipment-types', label: 'Equipment types', icon: <MedicineBoxOutlined />, permission: 'setup.manage' },
   { href: '/admin/settings', label: 'Hospital settings', icon: <SettingOutlined />, permission: 'setup.manage' },
 ];
@@ -50,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
   const admin = ADMIN.filter((i) => !i.permission || can(i.permission));
   const items: MenuProps['items'] = [
-    ...MAIN.map(toItem),
+    ...MAIN.filter((i) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can))).map(toItem),
     ...(admin.length ? [{ type: 'group' as const, label: collapsed ? '' : 'Admin', children: admin.map(toItem) }] : []),
   ];
   const selected = [...MAIN, ...ADMIN].filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);
@@ -63,6 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         onCollapse={setCollapsed}
         width={240}
         theme="light"
+        className="no-print"
         style={{ borderRight: '1px solid #E5E7EB' }}
       >
         <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 24px' }}>
@@ -73,7 +91,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Menu mode="inline" items={items} selectedKeys={selected} style={{ borderInlineEnd: 0, padding: '0 8px' }} />
       </Layout.Sider>
       <Layout>
-        <Layout.Header style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderBottom: '1px solid #E5E7EB' }}>
+        <Layout.Header className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, borderBottom: '1px solid #E5E7EB' }}>
+          {can('notification.view') && <NotificationBell />}
           <Dropdown
             trigger={['click']}
             menu={{

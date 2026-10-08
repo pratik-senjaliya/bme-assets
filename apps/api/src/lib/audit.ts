@@ -20,9 +20,9 @@ const toJson = (value: unknown): Prisma.InputJsonValue | undefined =>
   value == null ? undefined : JSON.parse(JSON.stringify(value, (k, v) => (SECRET_KEYS.has(k) ? undefined : v)));
 
 // Append-only: this module only ever inserts into audit_logs.
-export async function audit(db: Db, req: Request, e: Entry) {
-  await db.auditLog.create({
-    data: {
+export async function auditMany(db: Db, req: Request, entries: Entry[]) {
+  await db.auditLog.createMany({
+    data: entries.map((e) => ({
       actorId: e.actorId === undefined ? (req.user?.id ?? null) : e.actorId,
       action: e.action,
       entityType: e.entityType,
@@ -30,9 +30,11 @@ export async function audit(db: Db, req: Request, e: Entry) {
       before: toJson(e.before),
       after: toJson(e.after),
       ip: req.ip ?? null,
-    },
+    })),
   });
 }
+
+export const audit = (db: Db, req: Request, e: Entry) => auditMany(db, req, [e]);
 
 // Runs a change and its audit entry in one transaction, so there is never a change without a log
 // (or a log without a change). For `*.delete` actions the removed row is stored as `before` only.

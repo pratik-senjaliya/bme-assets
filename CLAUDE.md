@@ -33,11 +33,11 @@ A web app for a hospital's **biomedical engineering (BME) department** to track 
 
 ## Stack
 
-- `apps/web` — Next.js 15 (App Router) + TypeScript; Ant Design from Phase 1. Browser calls `/api/v1/*` on its own origin; `next.config.ts` rewrites to the API (`API_URL`).
+- `apps/web` — Next.js 15 (App Router) + TypeScript; Ant Design from Phase 1. Browser calls `/api/v1/*` on its own origin; the route handler `src/app/api/v1/[...path]/route.ts` proxies to the API, reading `API_URL` at runtime (a service binding: never at build time, never in middleware).
 - `apps/api` — Node + Express 5 + TypeScript + Prisma + PostgreSQL. zod validation, JWT in httpOnly cookie, bcrypt, pg-boss for jobs, ExcelJS for import/export, Nodemailer (optional).
 - `packages/shared` — types and zod schemas used by both apps (build it before running apps; root scripts do this).
 - Files: storage adapter with `local` (on-prem disk) and `supabase` drivers, chosen by `STORAGE_DRIVER`.
-- On-prem (Phase 5): Docker Compose (postgres, api, web, reverse proxy) + nightly `pg_dump` and uploads backup.
+- On-prem: Docker Compose (postgres, api, web, Caddy, backup), see `docs/install.md`. The web container reaches the API through `API_URL` (`http://api:4000`), read at runtime.
 
 ## Commands
 
@@ -49,6 +49,7 @@ cp apps/web/.env.example apps/web/.env.local
 npm run dev:api             # http://localhost:4000/api/v1/health
 npm run dev:web             # http://localhost:3000 shows API + DB status
 npm run typecheck
+npm test -w apps/api         # integration tests, serial; need the migrated + seeded database
 npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 ```
 
@@ -66,7 +67,11 @@ npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 
 - [x] Phase 0 scaffold; verified (health shows Database: up)
 - [x] Phase 1 Foundation built: full schema + migration, seed, auth, permissions, audit, settings/setup/users/roles APIs, web shell + admin screens. `npm test -w apps/api` needs a seeded DB.
-- [ ] Phase 2 Asset register — next. See `docs/implementation-plan.md`.
+- [x] Phase 2 Asset register built: ID generator, assets API + calculated age/warranty, POs, contracts, attachments (local/supabase storage), timeline, Excel import, web list/form/detail/import wizard. Key-field edits by non-admins are stored as `approval_requests`; the approve/reject flow arrived in Phase 5.
+- [~] Phase 3 Complaints, expenses, first demo: code built and tested (complaints workflow, metrics, expenses, board, asset tabs); `render.yaml`, `apps/web/vercel.json` and `docs/deployment.md` written. Supabase project + private bucket created; Render API and Vercel web **not yet deployed** (see `docs/deployment.md` → Current state).
+- [x] Phase 4 PMS, calibration, reminders built: versioned PMS checklists + builder, server-dated read-only PMS records (DB trigger blocks UPDATE/DELETE; corrections are linked new records), calibration with certificates, due lists, daily 06:00 pg-boss reminders (30/15/5, one per person per threshold, catch-up on startup), optional SMTP, notification bell, print view. Tests run serially (`--test-concurrency=1`) because files share one DB.
+- [x] Phase 5 built: HOD approvals (key-field edits, condemnation with EOL letter and printable certificate, deletion of wrong entries; applied in the approving transaction; super admin can ask but not decide), dashboard, eight Excel reports, audit log viewer (audit_logs is append-only in the database), Docker Compose install (`docker-compose.yml`, `apps/*/Dockerfile`, Caddy, nightly backups, `bootstrap` and `resetPassword` commands), `docs/install.md` and `docs/upgrade.md`. Verified with the real images; the HTTPS option, the offline route and a timed fresh-VM install are untested.
+- [ ] Demo deployment (Render + Vercel) still to be done by the account owner: see `docs/deployment.md`.
 
 Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, nursing@ `demo.local`.
 

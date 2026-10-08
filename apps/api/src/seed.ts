@@ -1,7 +1,9 @@
 // Demo/install seed. Safe to re-run: setup data is upserted, assets are only created on an empty register.
 import bcrypt from 'bcryptjs';
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_LABELS, ROLE_NAMES, type RoleName } from '@bme/shared';
+import type { RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
+import { ensureRolesAndPermissions, ensureStarterTypes } from './lib/baseData';
+import { addMonths } from './lib/dates';
 import { prisma } from './lib/prisma';
 
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
@@ -17,13 +19,6 @@ const locations = [
   { dept: 'ICU', name: 'ICU 1', code: 'ICU1' },
   { dept: 'ICU', name: 'ICU 2', code: 'ICU2' },
   { dept: 'RAD', name: 'X-ray Room', code: 'XR1' },
-];
-
-const equipmentTypes = [
-  { name: 'Ventilator', code: 'VENT', defaultPmsMonths: 3, defaultCalibrationMonths: 12 },
-  { name: 'Patient Monitor', code: 'MON', defaultPmsMonths: 6, defaultCalibrationMonths: 12 },
-  { name: 'Defibrillator', code: 'DEFIB', defaultPmsMonths: 3, defaultCalibrationMonths: 12 },
-  { name: 'Infusion Pump', code: 'INFP', defaultPmsMonths: 6, defaultCalibrationMonths: 12 },
 ];
 
 const users: Array<{ name: string; email: string; role: RoleName; dept?: string }> = [
@@ -47,27 +42,13 @@ const assets = [
   ['DEFIB', 'Defibrillator Radiology', 'Philips', 'HeartStart XL+', 'RAD', 'XR1', 'high'],
 ] as const;
 
+
 async function main() {
   const settings =
     (await prisma.hospitalSettings.findFirst()) ??
     (await prisma.hospitalSettings.create({ data: { name: 'Shalby Demo Hospital', shortCode: 'SHL' } }));
 
-  for (const code of PERMISSIONS) {
-    await prisma.permission.upsert({ where: { code }, update: {}, create: { code } });
-  }
-
-  for (const name of ROLE_NAMES) {
-    const role = await prisma.role.upsert({
-      where: { name },
-      update: {},
-      create: { name, label: ROLE_LABELS[name] },
-    });
-    // Only seed a role's permissions the first time, so later per-hospital changes survive a re-seed.
-    if ((await prisma.rolePermission.count({ where: { roleId: role.id } })) === 0) {
-      const perms = await prisma.permission.findMany({ where: { code: { in: [...DEFAULT_ROLE_PERMISSIONS[name]] } } });
-      await prisma.rolePermission.createMany({ data: perms.map((p) => ({ roleId: role.id, permissionId: p.id })) });
-    }
-  }
+  await ensureRolesAndPermissions();
 
   const deptByCode = new Map<string, { id: string; code: string }>();
   for (const d of departments) {
@@ -87,10 +68,8 @@ async function main() {
     );
   }
 
-  const typeByCode = new Map<string, { id: string; code: string }>();
-  for (const t of equipmentTypes) {
-    typeByCode.set(t.code, await prisma.equipmentType.upsert({ where: { code: t.code }, update: {}, create: t }));
-  }
+  await ensureStarterTypes();
+  const typeByCode = new Map((await prisma.equipmentType.findMany()).map((t) => [t.code, t]));
 
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   for (const u of users) {
@@ -116,7 +95,8 @@ async function main() {
         where: { id: settings.id },
         data: { assetSeq: { increment: 1 }, patternLocked: true },
       });
-      const monthsAgo = 6 + updated.assetSeq * 2;
+      // Installed 1-11 months ago, so a fresh demo shows a mix of overdue, due-soon and fine PMS/calibration.
+      const monthsAgo = 1 + ((updated.assetSeq * 3) % 11);
       const installationDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - monthsAgo, 1));
       await prisma.asset.create({
         data: {
@@ -138,9 +118,27 @@ async function main() {
           criticality,
           installationDate,
           warrantyMonths: 24,
+          warrantyEnd: addMonths(installationDate, 24),
         },
       });
     }
+  }
+
+  // Give equipment that has no due dates yet its first ones, counted from installation.
+  const needDates = await prisma.asset.findMany({
+    where: { installationDate: { not: null }, OR: [{ nextPmsDue: null }, { nextCalibrationDue: null }] },
+    include: { equipmentType: true },
+  });
+  for (const a of needDates) {
+    const pmsMonths = a.pmsFrequencyMonths ?? a.equipmentType.defaultPmsMonths;
+    const calMonths = a.equipmentType.defaultCalibrationMonths;
+    await prisma.asset.update({
+      where: { id: a.id },
+      data: {
+        ...(a.nextPmsDue === null && pmsMonths ? { nextPmsDue: addMonths(a.installationDate!, pmsMonths), pmsFrequencyMonths: pmsMonths } : {}),
+        ...(a.nextCalibrationDue === null && calMonths ? { nextCalibrationDue: addMonths(a.installationDate!, calMonths) } : {}),
+      },
+    });
   }
 
   console.log(`Seeded. Demo logins (password "${PASSWORD}"): ${users.map((u) => u.email).join(', ')}`);

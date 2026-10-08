@@ -1,0 +1,6 @@
+# The only thing exposed to the hospital LAN. Plain HTTP on port 80 by default.
+# For HTTPS on the LAN, see docs/install.md ("HTTPS").
+:80 {
+	encode gzip
+	reverse_proxy web:3000
+}
