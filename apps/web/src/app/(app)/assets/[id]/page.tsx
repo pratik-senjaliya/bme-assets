@@ -40,7 +40,7 @@ import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/Sta
 import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize } from '@/lib/format';
+import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize, moneyInputProps } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 import { StatusResult } from '@/components/StatusResult';
@@ -141,6 +141,12 @@ export default function AssetDetailPage() {
       </Card>
       <Tabs
         defaultActiveKey={initialTab}
+        // Keep the open tab in the address, so a reload or a shared link comes back to it.
+        onChange={(k) => {
+          const url = new URL(window.location.href);
+          url.searchParams.set('tab', k);
+          window.history.replaceState(null, '', url);
+        }}
         items={[
           { key: 'overview', label: 'Overview', children: <Overview a={a} /> },
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
@@ -344,11 +350,11 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
         <Form form={form} layout="vertical" requiredMark>
           {adding === 'po' ? (
             <>
-              <Form.Item label="PO number" name="poNumber" rules={[{ required: true, message: 'Enter the PO number' }]}><Input /></Form.Item>
+              <Form.Item label="PO number" name="poNumber" rules={[{ required: true, message: 'Enter the PO number' }]}><Input placeholder="As on the purchase order" /></Form.Item>
               <Form.Item label="PO date" name="poDate" rules={[{ required: true, message: 'Pick the PO date' }]}><DatePicker format="DD MMM YYYY" style={{ width: '100%' }} /></Form.Item>
-              <Form.Item label="Vendor" name="vendor" rules={[{ required: true, message: 'Enter the vendor' }]}><Input /></Form.Item>
+              <Form.Item label="Vendor" name="vendor" rules={[{ required: true, message: 'Enter the vendor' }]}><Input placeholder="Company name" /></Form.Item>
               <Form.Item label="Cost (₹)" name="cost" rules={[{ required: true, message: 'Enter the cost' }]}>
-                <InputNumber min={0} prefix="₹" style={{ width: '100%' }} />
+                <InputNumber min={0} {...moneyInputProps} placeholder="0" style={{ width: '100%' }} />
               </Form.Item>
             </>
           ) : (
@@ -356,10 +362,10 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
               <Form.Item label="Type" name="type" rules={[{ required: true, message: 'Choose a type' }]}>
                 <Select options={CONTRACT_TYPES.map((t) => ({ value: t, label: t.toUpperCase().replace('_', '-') }))} />
               </Form.Item>
-              <Form.Item label="Vendor" name="vendor" rules={[{ required: true, message: 'Enter the vendor' }]}><Input /></Form.Item>
+              <Form.Item label="Vendor" name="vendor" rules={[{ required: true, message: 'Enter the vendor' }]}><Input placeholder="Company name" /></Form.Item>
               <Form.Item label="Starts" name="startDate" rules={[{ required: true, message: 'Pick the start date' }]}><DatePicker format="DD MMM YYYY" style={{ width: '100%' }} /></Form.Item>
               <Form.Item label="Ends" name="endDate" rules={[{ required: true, message: 'Pick the end date' }]}><DatePicker format="DD MMM YYYY" style={{ width: '100%' }} /></Form.Item>
-              <Form.Item label="Cost (₹)" name="cost"><InputNumber min={0} prefix="₹" style={{ width: '100%' }} /></Form.Item>
+              <Form.Item label="Cost (₹)" name="cost"><InputNumber min={0} {...moneyInputProps} placeholder="0" style={{ width: '100%' }} /></Form.Item>
             </>
           )}
           <Form.Item label={adding === 'po' ? 'Purchase order copy' : 'Contract copy'} extra="Optional. PDF, JPG or PNG, up to 10 MB.">
@@ -524,16 +530,16 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
             <Select options={EXPENSE_TYPES.map((t) => ({ value: t, label: t === 'spare_part' ? 'Spare part' : 'Repair' }))} />
           </Form.Item>
           <Form.Item label="What was paid for?" name="description" rules={[{ required: true, message: 'Describe it' }]}>
-            <Input maxLength={500} />
+            <Input maxLength={500} placeholder="e.g. Replaced flow sensor" />
           </Form.Item>
           <Form.Item label="Amount (₹)" name="amount" rules={[{ required: true, message: 'Enter the amount' }]}>
-            <InputNumber min={0} prefix="₹" style={{ width: '100%' }} />
+            <InputNumber min={0} {...moneyInputProps} placeholder="0" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="Date" name="date" rules={[{ required: true, message: 'Pick the date' }]}>
             <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
           </Form.Item>
           <Form.Item label="Vendor" name="vendor">
-            <Input maxLength={150} />
+            <Input maxLength={150} placeholder="Optional" />
           </Form.Item>
           <Form.Item label="Linked complaint" name="complaintId" extra="Optional. Link the cost to a breakdown.">
             <Select
