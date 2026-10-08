@@ -1,10 +1,10 @@
 'use client';
 
-import { Alert, App, Button, Col, DatePicker, Form, Input, InputNumber, Row, Select, Space, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   CRITICALITIES,
   createAssetSchema,
@@ -34,6 +34,8 @@ type Values = {
   installationDate?: dayjs.Dayjs | null;
   warrantyMonths?: number | null;
   pmsFrequencyMonths?: number | null;
+  openingPmsOn?: dayjs.Dayjs | null;
+  openingCalibrationOn?: dayjs.Dayjs | null;
 };
 
 const toForm = (a: AssetDetail): Values => ({
@@ -49,6 +51,8 @@ const toForm = (a: AssetDetail): Values => ({
   installationDate: a.installationDate ? dayjs(a.installationDate) : null,
   warrantyMonths: a.warrantyMonths,
   pmsFrequencyMonths: a.pmsFrequencyMonths,
+  openingPmsOn: a.openingPmsOn ? dayjs(a.openingPmsOn) : null,
+  openingCalibrationOn: a.openingCalibrationOn ? dayjs(a.openingCalibrationOn) : null,
 });
 
 // Form values → API body (dates as YYYY-MM-DD, empty numbers as null).
@@ -57,7 +61,24 @@ const toBody = (v: Values) => ({
   installationDate: v.installationDate ? v.installationDate.format('YYYY-MM-DD') : null,
   warrantyMonths: v.warrantyMonths ?? null,
   pmsFrequencyMonths: v.pmsFrequencyMonths ?? null,
+  openingPmsOn: v.openingPmsOn ? v.openingPmsOn.format('YYYY-MM-DD') : null,
+  openingCalibrationOn: v.openingCalibrationOn ? v.openingCalibrationOn.format('YYYY-MM-DD') : null,
 });
+
+// A titled card for one group of fields, so a long form reads as a few clear steps.
+function FormSection({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  return (
+    <Card style={{ marginBottom: 16 }} styles={{ body: { padding: 24 } }}>
+      <div style={{ marginBottom: 16 }}>
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          {title}
+        </Typography.Title>
+        <Typography.Text type="secondary">{hint}</Typography.Text>
+      </div>
+      {children}
+    </Card>
+  );
+}
 
 export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const { message } = App.useApp();
@@ -112,11 +133,6 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
     }
   }
 
-  const section = (title: string) => (
-    <Typography.Title level={5} style={{ marginTop: 8 }}>
-      {title}
-    </Typography.Title>
-  );
   const half = { xs: 24, md: 12 } as const;
 
   return (
@@ -131,11 +147,11 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
       )}
       {asset && (
         <Typography.Paragraph type="secondary">
-          Asset ID <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{asset.assetCode}</strong> never changes, even if the location does.
+          Asset ID <strong className="code">{asset.assetCode}</strong> never changes, even if the location does.
         </Typography.Paragraph>
       )}
 
-      {section('Identity')}
+      <FormSection title="Identity" hint="What the equipment is.">
       <Row gutter={16}>
         <Col {...half}>
           <Form.Item label="Equipment type" name="equipmentTypeId" rules={[{ required: true, message: 'Choose a type' }]}>
@@ -178,8 +194,9 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           </Form.Item>
         </Col>
       </Row>
+      </FormSection>
 
-      {section('Location')}
+      <FormSection title="Location" hint="Where it is installed. Part of the asset ID.">
       <Row gutter={16}>
         <Col {...half}>
           <Form.Item label="Department" name="departmentId" rules={[{ required: true, message: 'Choose a department' }]}>
@@ -204,8 +221,9 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           </Form.Item>
         </Col>
       </Row>
+      </FormSection>
 
-      {section('Installation & warranty')}
+      <FormSection title="Installation & warranty" hint="Dates and the maintenance schedule.">
       <Row gutter={16}>
         <Col {...half}>
           <Form.Item label="Installation date" name="installationDate">
@@ -230,15 +248,35 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           </Col>
         )}
       </Row>
+      </FormSection>
 
-      <Space style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+      <FormSection title="Already in use?" hint="Only for equipment that was working before this system. Leave blank for new equipment.">
+        <Row gutter={16}>
+        <Col {...half}>
+          <Form.Item
+            label="Last PMS done"
+            name="openingPmsOn"
+            extra="When PMS was last done before this system. The next PMS is due from this date, not from the installation date."
+          >
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+          </Form.Item>
+        </Col>
+        <Col {...half}>
+          <Form.Item label="Last calibration done" name="openingCalibrationOn" extra="When calibration was last done. Once a PMS or calibration is recorded in this system, these dates can no longer be changed.">
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+          </Form.Item>
+        </Col>
+        </Row>
+      </FormSection>
+
+      <div className="form-actions">
         <Link href={asset ? `/assets/${asset.id}` : '/assets'}>
           <Button>Cancel</Button>
         </Link>
         <Button type="primary" htmlType="submit" loading={saving}>
           {asset ? 'Save changes' : 'Create asset'}
         </Button>
-      </Space>
+      </div>
     </Form>
   );
 }

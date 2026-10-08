@@ -180,6 +180,7 @@ export const updateSettingsSchema = z.object({
   name: z.string().trim().min(1).max(150).optional(),
   shortCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,10}$/).optional(),
   reminderDays: z.array(z.number().int().positive().max(365)).min(1).max(6).optional(),
+  criticalDowntimeHours: z.number().int().min(1).max(720).optional(),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
   // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
   smtpHost: optionalText(200),
@@ -196,6 +197,7 @@ export type SettingsResponse = {
   assetIdPattern: string;
   patternLocked: boolean;
   reminderDays: number[];
+  criticalDowntimeHours: number;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpUser: string | null;
@@ -209,7 +211,7 @@ export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const;
 export type Criticality = (typeof CRITICALITIES)[number];
 export const ASSET_STATUSES = ['active', 'not_in_use', 'condemned'] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
-export const ATTACHMENT_KINDS = ['po', 'installation_report', 'photo', 'manual', 'certificate'] as const;
+export const ATTACHMENT_KINDS = ['po', 'installation_report', 'photo', 'manual', 'certificate', 'contract', 'service_report', 'invoice', 'condemnation_form', 'other'] as const;
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export const CONTRACT_TYPES = ['warranty', 'cmc', 'amc', 'in_house'] as const;
 export type ContractType = (typeof CONTRACT_TYPES)[number];
@@ -235,6 +237,9 @@ const assetFields = {
   installationDate: isoDateSchema.nullish(),
   warrantyMonths: z.number().int().min(0).max(240).nullish(),
   pmsFrequencyMonths: z.number().int().min(1).max(120).nullish(),
+  // Existing equipment: when PMS / calibration was last done before this system. The first due dates run from these.
+  openingPmsOn: isoDateSchema.nullish(),
+  openingCalibrationOn: isoDateSchema.nullish(),
 };
 
 export const createAssetSchema = z.object(assetFields);
@@ -290,6 +295,8 @@ export type AssetRow = {
 export type AssetDetail = AssetRow & {
   warrantyMonths: number | null;
   pmsFrequencyMonths: number | null;
+  openingPmsOn: string | null;
+  openingCalibrationOn: string | null;
   createdAt: string;
 };
 
@@ -325,6 +332,12 @@ export type ServiceContractRow = {
 };
 
 export const attachmentUploadSchema = z.object({ kind: z.enum(ATTACHMENT_KINDS) });
+
+// Documents can hang off the asset or off one of its records (a complaint photo, a service report, an invoice).
+export const ATTACHMENT_OWNER_TYPES = ['asset', 'complaint', 'service_log', 'service_expense', 'service_contract', 'purchase_order', 'calibration_record'] as const;
+export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
+export const attachmentOwnerSchema = z.object({ ownerType: z.enum(ATTACHMENT_OWNER_TYPES), ownerId: z.string().uuid() });
+export const attachmentCreateSchema = attachmentOwnerSchema.extend({ kind: z.enum(ATTACHMENT_KINDS) });
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export type AttachmentRow = {
   id: string;
@@ -337,7 +350,7 @@ export type AttachmentRow = {
 
 export type TimelineEvent = {
   date: string; // ISO date or date-time
-  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint';
+  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint' | 'service' | 'opening';
   title: string;
   detail?: string | null;
 };
@@ -365,6 +378,10 @@ export type ResolveComplaintInput = z.infer<typeof resolveComplaintSchema>;
 export const complaintListQuerySchema = z.object({
   status: z.enum(COMPLAINT_STATUSES).optional(),
   assetId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, problem text
+  from: isoDateSchema.optional(), // raised on or after (hospital date)
+  to: isoDateSchema.optional(), // raised on or before
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -391,6 +408,46 @@ export type ComplaintRow = {
   // started − raised, resolved − raised (seconds); null until that step has happened.
   responseSeconds: number | null;
   downtimeSeconds: number | null;
+  // Critical equipment that has been down (or is still down) for longer than the hospital's limit.
+  overDowntimeLimit: boolean;
+  attachmentCount: number;
+};
+
+export type ComplaintEvent = {
+  at: string; // ISO date-time
+  kind: 'raised' | 'started' | 'resolved' | 'document' | 'expense';
+  title: string;
+  detail?: string | null;
+  by?: string | null;
+};
+
+// One complaint with its whole story: who did what and when, the documents, and (for those allowed) the costs.
+export type ComplaintDetail = ComplaintRow & {
+  events: ComplaintEvent[];
+  attachments: AttachmentRow[];
+  expenses: { id: string; type: ExpenseType; description: string; amount: number; date: string }[];
+};
+
+// ---------- Service log ----------
+
+export const SERVICE_KINDS = ['amc_visit', 'cmc_visit', 'repair', 'inspection', 'other'] as const;
+export type ServiceKind = (typeof SERVICE_KINDS)[number];
+
+export const createServiceLogSchema = z.object({
+  serviceDate: isoDateSchema,
+  kind: z.enum(SERVICE_KINDS),
+  vendor: optionalText(150),
+  description: z.string().trim().min(3, 'Say what was done').max(1000),
+});
+export type CreateServiceLogInput = z.infer<typeof createServiceLogSchema>;
+
+export type ServiceLogRow = {
+  id: string;
+  serviceDate: string;
+  kind: ServiceKind;
+  vendor: string | null;
+  description: string;
+  attachmentCount: number;
 };
 
 // ---------- Service expenses ----------
@@ -555,7 +612,7 @@ export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 // What a wrong entry can be: an asset created by mistake, or a record on one.
-export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense'] as const;
+export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense', 'service_log'] as const;
 export type DeletableTarget = (typeof DELETABLE_TARGETS)[number];
 
 export const condemnRequestSchema = z.object({ reason: z.string().trim().min(5, 'Say why it should be condemned').max(1000) });
@@ -604,6 +661,46 @@ export type CondemnationInfo = {
   eolLetter: { id: string; fileName: string } | null;
 };
 
+// ---------- Charts and figures (dashboard and reports share these) ----------
+
+// How a number reads: whole number, hours (1 decimal), rupees, percentage (0-1), years, a date, or plain text.
+export type ValueFmt = 'int' | 'hours' | 'money' | 'pct' | 'years' | 'date' | 'text';
+
+// A headline figure. `tone` colours only the hint, with words (never colour alone).
+export type Kpi = { label: string; value: number | string | null; fmt: ValueFmt; hint?: string; tone?: 'good' | 'warn' | 'bad' | 'neutral' };
+
+// One chart, described as data so the same spec draws on the dashboard, in a report and in the PDF.
+// column = vertical bars, bar = horizontal bars, stacked = stacked columns, line = a line per series.
+export type ChartSpec = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  kind: 'column' | 'bar' | 'stacked' | 'line';
+  series: { key: string; label: string }[];
+  data: ({ label: string } & Record<string, number | string | null>)[];
+  fmt: ValueFmt;
+};
+
+// pdf: false leaves a column out of the PDF only (a page cannot hold 17 columns); screen and Excel keep it.
+export type ReportColumn = { header: string; key: string; fmt?: ValueFmt; width?: number; pdf?: boolean };
+export type ReportSheetData = { name: string; columns: ReportColumn[]; rows: Record<string, string | number | null>[]; totals?: string[] };
+
+// A report as data: the screen shows it, Excel and PDF are made from it.
+export type ReportData = {
+  type: string;
+  title: string;
+  hospital: string;
+  from: string | null;
+  to: string | null;
+  group: 'month' | 'year' | null;
+  generatedAt: string;
+  generatedBy: string;
+  note: string | null;
+  kpis: Kpi[];
+  charts: ChartSpec[];
+  sheets: ReportSheetData[];
+};
+
 // ---------- Dashboard ----------
 
 export type DashboardMonth = { month: string; label: string; breakdowns: number; downtimeHours: number };
@@ -615,6 +712,8 @@ export type DashboardDueItem = {
   dueDate: string;
   daysLeft: number; // negative = overdue
 };
+export type DashboardTopAsset = { assetId: string; assetCode: string; assetName: string; breakdowns: number; downtimeHours: number };
+export type DashboardExpiry = { kind: 'warranty' | 'contract'; label: string; assetId: string; assetCode: string; assetName: string; date: string; daysLeft: number };
 export type DashboardResponse = {
   scope: 'hospital' | 'department';
   departmentName: string | null;
@@ -627,9 +726,14 @@ export type DashboardResponse = {
   dueSoon: DashboardDueItem[] | null;
   openList: ComplaintRow[];
   months: DashboardMonth[]; // last 6 months, oldest first
+  // Second row of figures and the charts, in display order. What a role cannot see is simply not in the list.
+  kpis: Kpi[];
+  charts: ChartSpec[];
+  topBreakdowns: DashboardTopAsset[] | null; // the equipment that broke down most in the last 12 months
+  expiring: DashboardExpiry[] | null; // warranties and contracts ending within 60 days
 };
 
-// ---------- Reports (Excel) ----------
+// ---------- Reports (screen, Excel, PDF) ----------
 
 export const REPORTS = [
   { type: 'asset-master', title: 'Asset master', description: 'Every asset with its department, location, criticality, status, warranty and next due dates. Condemned and not-in-use assets are included and labelled.', range: false },
@@ -640,6 +744,7 @@ export const REPORTS = [
   { type: 'critical-downtime', title: 'Downtime of critical equipment', description: 'Uptime and every downtime event for assets marked Critical.', range: true },
   { type: 'equipment-age', title: 'Equipment age', description: 'Age of every asset, grouped into age bands and by equipment type.', range: false },
   { type: 'expenses', title: 'Service expenses', description: 'Repair and spare-part costs in the period, per asset and per month.', range: true },
+  { type: 'warranty-contracts', title: 'Warranty and contracts', description: 'Warranties and AMC / CMC / in-house contracts: what is running, what ends soon and what has ended.', range: false },
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];
 
@@ -648,6 +753,8 @@ export const reportQuerySchema = z
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional(),
     group: z.enum(['month', 'year']).default('month'),
+    // json = for the screen; xlsx and pdf are downloads. Excel stays the default so existing links keep working.
+    format: z.enum(['json', 'xlsx', 'pdf']).default('xlsx'),
   })
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'The start date is after the end date', path: ['from'] });
 export type ReportQuery = z.infer<typeof reportQuerySchema>;

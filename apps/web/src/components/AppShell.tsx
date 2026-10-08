@@ -2,48 +2,68 @@
 
 import {
   ApartmentOutlined,
-  BarcodeOutlined,
-  ToolOutlined,
   AuditOutlined,
   BarChartOutlined,
-  HistoryOutlined,
+  BarcodeOutlined,
   CalendarOutlined,
-  ScheduleOutlined,
   DashboardOutlined,
+  DownOutlined,
+  HistoryOutlined,
   LogoutOutlined,
+  MedicineBoxFilled,
   MedicineBoxOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   SafetyOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
-  UserOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
-import { Avatar, Dropdown, Layout, Menu, Skeleton, Typography, type MenuProps } from 'antd';
+import { Button, Dropdown, Layout, Menu, Skeleton, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { PermissionCode } from '@bme/shared';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useAuth } from '@/lib/auth';
+import { initials, shortName } from '@/lib/format';
+import { COLORS } from '@/theme';
 
 type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[] };
+type Group = { title?: string; items: Item[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
-const MAIN: Item[] = [
-  { href: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
-  { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
-  { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
-  { href: '/approvals', label: 'Approvals', icon: <AuditOutlined />, anyOf: ['approval.decide', 'asset.request_change'] },
-  { href: '/reports', label: 'Reports', icon: <BarChartOutlined />, permission: 'report.view' },
-  { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
-];
-const ADMIN: Item[] = [
-  { href: '/admin/users', label: 'Users', icon: <TeamOutlined />, permission: 'user.manage' },
-  { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
-  { href: '/admin/departments', label: 'Departments & locations', icon: <ApartmentOutlined />, permission: 'setup.manage' },
-  { href: '/admin/pms-templates', label: 'PMS checklists', icon: <ScheduleOutlined />, permission: 'setup.manage' },
-  { href: '/admin/audit', label: 'Audit log', icon: <HistoryOutlined />, permission: 'audit.view' },
-  { href: '/admin/equipment-types', label: 'Equipment types', icon: <MedicineBoxOutlined />, permission: 'setup.manage' },
-  { href: '/admin/settings', label: 'Hospital settings', icon: <SettingOutlined />, permission: 'setup.manage' },
+const GROUPS: Group[] = [
+  { items: [{ href: '/', label: 'Dashboard', icon: <DashboardOutlined /> }] },
+  {
+    title: 'Equipment',
+    items: [
+      { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
+      { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
+    ],
+  },
+  {
+    title: 'Service',
+    items: [
+      { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
+      { href: '/approvals', label: 'Approvals', icon: <AuditOutlined />, anyOf: ['approval.decide', 'asset.request_change'] },
+      { href: '/reports', label: 'Reports', icon: <BarChartOutlined />, permission: 'report.view' },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { href: '/admin/users', label: 'Users', icon: <TeamOutlined />, permission: 'user.manage' },
+      { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
+      { href: '/admin/departments', label: 'Departments & locations', icon: <ApartmentOutlined />, permission: 'setup.manage' },
+      { href: '/admin/equipment-types', label: 'Equipment types', icon: <MedicineBoxOutlined />, permission: 'setup.manage' },
+      { href: '/admin/pms-templates', label: 'PMS checklists', icon: <ScheduleOutlined />, permission: 'setup.manage' },
+      { href: '/admin/audit', label: 'Audit log', icon: <HistoryOutlined />, permission: 'audit.view' },
+      { href: '/admin/settings', label: 'Hospital settings', icon: <SettingOutlined />, permission: 'setup.manage' },
+    ],
+  },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -58,46 +78,65 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div style={{ padding: 48 }}>
-        <Skeleton active />
+      <div style={{ padding: 48, maxWidth: 960 }}>
+        <Skeleton active paragraph={{ rows: 6 }} />
       </div>
     );
   }
 
+  const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can));
   const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
-  const admin = ADMIN.filter((i) => !i.permission || can(i.permission));
-  const items: MenuProps['items'] = [
-    ...MAIN.filter((i) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can))).map(toItem),
-    ...(admin.length ? [{ type: 'group' as const, label: collapsed ? '' : 'Admin', children: admin.map(toItem) }] : []),
-  ];
-  const selected = [...MAIN, ...ADMIN].filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);
+  const items: MenuProps['items'] = GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) }))
+    .filter((g) => g.items.length)
+    .map((g, idx) => (g.title ? { type: 'group' as const, key: `g${idx}`, label: collapsed ? null : g.title, children: g.items.map(toItem) } : g.items.map(toItem)))
+    .flat();
+  const all = GROUPS.flatMap((g) => g.items);
+  const selected = all.filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Layout.Sider
+        className="no-print app-sider"
         collapsible
+        trigger={null}
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        width={240}
-        theme="light"
-        className="no-print"
-        style={{ borderRight: '1px solid #E5E7EB' }}
+        breakpoint="lg"
+        collapsedWidth={68}
+        width={248}
+        theme="dark"
       >
-        <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 24px' }}>
-          <Typography.Text strong style={{ fontSize: 16, whiteSpace: 'nowrap' }}>
-            {collapsed ? 'BME' : 'BME Assets'}
-          </Typography.Text>
+        <div style={{ height: 60, display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '0 18px' : '0 20px' }}>
+          <div className="brand-mark">
+            <MedicineBoxFilled style={{ fontSize: 17 }} />
+          </div>
+          {!collapsed && (
+            <div style={{ lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+              <div style={{ color: '#fff', fontWeight: 650, fontSize: 15 }}>BME Assets</div>
+              <div style={{ color: '#6B7C93', fontSize: 11 }}>Biomedical engineering</div>
+            </div>
+          )}
         </div>
-        <Menu mode="inline" items={items} selectedKeys={selected} style={{ borderInlineEnd: 0, padding: '0 8px' }} />
+        <Menu theme="dark" mode="inline" items={items} selectedKeys={selected} style={{ borderInlineEnd: 0, padding: '8px 12px' }} />
       </Layout.Sider>
-      <Layout>
-        <Layout.Header className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, borderBottom: '1px solid #E5E7EB' }}>
+      <Layout style={{ minWidth: 0 }}>
+        <Layout.Header className="no-print app-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Button
+            type="text"
+            aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => setCollapsed((c) => !c)}
+            style={{ color: COLORS.muted }}
+          />
+          <div style={{ flex: 1, display: 'flex' }}>{can('asset.view') && <GlobalSearch />}</div>
           {can('notification.view') && <NotificationBell />}
           <Dropdown
             trigger={['click']}
+            placement="bottomRight"
             menu={{
               items: [
-                { key: 'role', label: user.roleLabel, disabled: true },
+                { key: 'role', label: `${user.roleLabel}`, disabled: true },
+                { type: 'divider' },
                 { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out' },
               ],
               onClick: async ({ key }) => {
@@ -111,10 +150,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               aria-label="User menu"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 0, cursor: 'pointer', minHeight: 40 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 0, cursor: 'pointer', minHeight: 44, padding: '0 4px', font: 'inherit', lineHeight: 1 }}
             >
-              <Avatar size="small" icon={<UserOutlined />} />
-              <span>{user.name}</span>
+              <span
+                aria-hidden
+                style={{ width: 34, height: 34, borderRadius: '50%', background: COLORS.primarySoft, color: COLORS.primary, display: 'grid', placeItems: 'center', fontWeight: 650, fontSize: 13, flex: 'none' }}
+              >
+                {initials(user.name)}
+              </span>
+              <span style={{ textAlign: 'left', lineHeight: 1.25 }} className="user-label">
+                <span style={{ display: 'block', fontWeight: 600, color: COLORS.ink, fontSize: 13 }}>{shortName(user.name)}</span>
+                <span style={{ display: 'block', color: COLORS.muted, fontSize: 12 }}>{user.roleLabel}</span>
+              </span>
+              <DownOutlined style={{ fontSize: 10, color: COLORS.faint }} />
             </button>
           </Dropdown>
         </Layout.Header>

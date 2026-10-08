@@ -12,10 +12,11 @@ import {
 import { audit } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
+import { addDaysISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
-import { complaintInclude, complaintNo, toComplaintRows } from './complaints.service';
+import { complaintInclude, complaintNo, toComplaintDetail, toComplaintRows } from './complaints.service';
 
 export const complaintsRouter = Router();
 
@@ -37,6 +38,17 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
   const where: Prisma.ComplaintWhereInput = {
     ...(q.status && { status: q.status }),
     ...(q.assetId && { assetId: q.assetId }),
+    ...(q.departmentId && { departmentId: q.departmentId }),
+    // Dates are the hospital's calendar days, not UTC days.
+    ...((q.from || q.to) && { raisedAt: { ...(q.from && { gte: zonedDayStart(q.from) }), ...(q.to && { lt: zonedDayStart(addDaysISO(q.to, 1)) }) } }),
+    ...(q.search && {
+      OR: [
+        { complaintNo: { contains: q.search, mode: 'insensitive' as const } },
+        { description: { contains: q.search, mode: 'insensitive' as const } },
+        { asset: { assetCode: { contains: q.search, mode: 'insensitive' as const } } },
+        { asset: { name: { contains: q.search, mode: 'insensitive' as const } } },
+      ],
+    }),
     ...departmentScope(currentUser(req)), // last, so it cannot be widened from the query
   };
   // Waiting complaints: longest-waiting first. Resolved: most recent first. Mixed: newest first.
@@ -51,7 +63,7 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
 });
 
 complaintsRouter.get('/:id', requirePermission('complaint.view'), async (req, res) => {
-  res.json((await toComplaintRows([await findScoped(req)]))[0]);
+  res.json(await toComplaintDetail(await findScoped(req), currentUser(req).permissions.includes('expense.manage')));
 });
 
 // The department comes from the asset and the time from the server, never from the request.

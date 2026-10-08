@@ -18,7 +18,7 @@ import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
-import { storeAttachment, upload } from '../assets/attachments.service';
+import { assetIdOfOwner, storeAttachment, upload } from '../assets/attachments.service';
 import { applyApproval, approvers, notify, removeFiles, toApprovalRows } from './approvals.service';
 
 export const approvalsRouter = Router();
@@ -59,11 +59,7 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
   const input = req.body as DeleteRequestInput;
 
   // The target must exist and sit in an asset this person may see.
-  let assetId: string | undefined;
-  if (input.targetType === 'asset') assetId = input.targetId;
-  else if (input.targetType === 'purchase_order') assetId = (await prisma.purchaseOrder.findUnique({ where: { id: input.targetId } }))?.assetId;
-  else if (input.targetType === 'service_contract') assetId = (await prisma.serviceContract.findUnique({ where: { id: input.targetId } }))?.assetId;
-  else assetId = (await prisma.serviceExpense.findUnique({ where: { id: input.targetId } }))?.assetId;
+  const assetId = await assetIdOfOwner(input.targetType, input.targetId);
   if (!assetId) throw new HttpError(404, 'Entry not found');
   const asset = await findScopedAsset(req, assetId);
   await assertNoPending('delete', input.targetType, input.targetId);

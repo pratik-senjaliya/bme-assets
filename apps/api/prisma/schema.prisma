@@ -37,6 +37,19 @@ enum AttachmentKind {
   manual
   certificate
   eol_letter
+  contract
+  service_report
+  invoice
+  condemnation_form
+  other
+}
+
+enum ServiceKind {
+  amc_visit
+  cmc_visit
+  repair
+  inspection
+  other
 }
 
 enum ComplaintStatus {
@@ -71,6 +84,8 @@ model HospitalSettings {
   assetIdPattern   String   @default("{HOSP}-{DEPT}-{TYPE}-{LOC}-{SEQ:3}")
   patternLocked    Boolean  @default(false)
   reminderDays     Int[]    @default([30, 15, 5])
+  // Critical equipment down for longer than this many hours is flagged on complaints and reports.
+  criticalDowntimeHours Int   @default(24)
   // Counters incremented inside the creating transaction (asset IDs / complaint numbers are never reused).
   assetSeq         Int      @default(0)
   complaintSeq     Int      @default(0)
@@ -215,6 +230,10 @@ model Asset {
   pmsFrequencyMonths   Int?
   nextPmsDue           DateTime?   @db.Date
   nextCalibrationDue   DateTime?   @db.Date
+  // Last PMS / calibration done before this system was used. Set once when existing equipment is registered;
+  // the first due date runs from it. Never a PMS record, so the PMS date lock is untouched.
+  openingPmsOn         DateTime?   @db.Date
+  openingCalibrationOn DateTime?   @db.Date
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   createdBy            String?
@@ -228,6 +247,7 @@ model Asset {
   calibrationRecords CalibrationRecord[]
   complaints         Complaint[]
   expenses           ServiceExpense[]
+  serviceLogs        ServiceLog[]
   notifications      Notification[]
 
   @@index([departmentId])
@@ -457,4 +477,26 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+// ---------- Service log ----------
+
+// Service that is not a breakdown: an AMC/CMC vendor visit, an in-house repair, an inspection. Entered by hand
+// (the meeting: "when it happened and what was done"); the date cannot be in the future. Documents (the service
+// report) attach through `attachments` with ownerType "service_log".
+model ServiceLog {
+  id          String      @id @default(uuid())
+  assetId     String
+  serviceDate DateTime    @db.Date
+  kind        ServiceKind
+  vendor      String?
+  description String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  createdBy   String?
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@map("service_logs")
 }

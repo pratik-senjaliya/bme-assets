@@ -3,8 +3,10 @@
 import { App, Form, Input, Modal, Select } from 'antd';
 import { useEffect, useState } from 'react';
 import { createComplaintSchema, type AssetRow, type ComplaintRow, type Paged } from '@bme/shared';
+import { FilePicker } from '@/components/FilePicker';
 import { api } from '@/lib/api';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { uploadAll } from '@/lib/uploads';
 
 type AssetOption = { id: string; assetCode: string; name: string };
 
@@ -26,6 +28,7 @@ export function RaiseComplaintModal({
   const [options, setOptions] = useState<AssetOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
 
   async function search(text: string) {
     setSearching(true);
@@ -40,6 +43,7 @@ export function RaiseComplaintModal({
   useEffect(() => {
     if (!open) return;
     form.resetFields();
+    setFiles([]);
     form.setFieldsValue({ assetId: asset?.id });
     if (!asset) void search('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +55,10 @@ export function RaiseComplaintModal({
     setSaving(true);
     try {
       const c = await api<ComplaintRow>('/complaints', { body: input });
-      message.success(`Complaint ${c.complaintNo} raised`);
+      // The complaint exists now; photos go up after it, one by one. A failed photo never loses the complaint.
+      const failed = await uploadAll(files, { ownerType: 'complaint', ownerId: c.id }, (f) => (/\.pdf$/i.test(f.name) ? 'other' : 'photo'));
+      if (failed.length) message.warning(`Complaint ${c.complaintNo} raised, but ${failed.join(', ')} could not be uploaded. Open the complaint to add ${failed.length === 1 ? 'it' : 'them'} again.`, 8);
+      else message.success(`Complaint ${c.complaintNo} raised`);
       onClose();
       onRaised?.(c);
     } catch (e) {
@@ -84,7 +91,10 @@ export function RaiseComplaintModal({
           extra="Say what you saw, e.g. an alarm, an error message, or what stopped working."
           rules={[{ required: true, message: 'Describe the problem' }]}
         >
-          <Input.TextArea rows={4} maxLength={2000} showCount />
+          <Input.TextArea rows={4} maxLength={2000} />
+        </Form.Item>
+        <Form.Item label="Photos or files" extra="Optional. A photo of the display, alarm or damage helps the biomedical team. PDF, JPG or PNG, up to 10 MB each.">
+          <FilePicker files={files} onChange={setFiles} label="Add photos" />
         </Form.Item>
       </Form>
     </Modal>

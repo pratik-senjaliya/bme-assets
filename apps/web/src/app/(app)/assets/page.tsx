@@ -1,23 +1,28 @@
 'use client';
 
 import { MoreOutlined } from '@ant-design/icons';
-import { Button, Dropdown, Empty, Input, Select, Space } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Empty, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { ASSET_STATUSES, CRITICALITIES, type AssetRow, type Paged } from '@bme/shared';
+import { CRITICALITIES, type AssetRow, type Paged } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
-import { CriticalityTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
+import { CriticalityTag, DueCell, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { daysFromToday } from '@/lib/format';
+import { COLORS } from '@/theme';
 
 type Option = { id: string; name: string };
 
 const STATUS_OPTIONS = [
-  ...ASSET_STATUSES.map((s) => ({ value: s, label: { active: 'Active', not_in_use: 'Not in use', condemned: 'Condemned' }[s] })),
-  { value: 'all', label: 'All statuses' },
+  { value: 'active', label: 'Active' },
+  { value: 'not_in_use', label: 'Not in use' },
+  { value: 'condemned', label: 'Condemned' },
+  { value: 'all', label: 'All' },
 ];
 
 // Filters live in the URL so a filtered list can be shared as a link.
@@ -49,14 +54,14 @@ function AssetList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const filtered = Object.keys(q).some((k) => k !== 'page');
+  const filtered = Object.keys(q).some((k) => k !== 'page' && k !== 'status');
   const canAdd = can('asset.create');
   const select = (key: string, placeholder: string, options: { value: string; label: string }[]) => (
     <Select
       allowClear
       placeholder={placeholder}
       aria-label={placeholder}
-      style={{ minWidth: 170 }}
+      style={{ minWidth: 180 }}
       value={q[key]}
       options={options}
       onChange={(v) => set({ [key]: v })}
@@ -82,25 +87,19 @@ function AssetList() {
           )
         }
       />
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Input.Search
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <Input
           allowClear
+          prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search ID, name, serial, make"
           aria-label="Search assets"
-          style={{ width: 280 }}
+          style={{ width: 300 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
         {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
         {select('criticality', 'Criticality', CRITICALITIES.map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) })))}
-        <Select
-          aria-label="Status"
-          style={{ minWidth: 150 }}
-          value={q.status ?? 'active'}
-          options={STATUS_OPTIONS}
-          onChange={(v) => set({ status: v === 'active' ? undefined : v })}
-        />
         {filtered && (
           <Button
             type="link"
@@ -109,10 +108,14 @@ function AssetList() {
               router.replace(pathname);
             }}
           >
-            Clear
+            Clear filters
           </Button>
         )}
-      </Space>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ color: COLORS.muted }}>{assets.data ? `${assets.data.total.toLocaleString('en-IN')} ${assets.data.total === 1 ? 'asset' : 'assets'}` : ' '}</span>
+          <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
+        </div>
+      </div>
       <DataTable<AssetRow>
         rows={assets.data?.items ?? null}
         loading={assets.loading}
@@ -136,39 +139,56 @@ function AssetList() {
           hideOnSinglePage: true,
           onChange: (page) => set({ page: String(page) }),
         }}
+        onRow={(row) => ({
+          className: 'row-link',
+          onClick: (e) => {
+            // Clicks on links, buttons and menus keep their own behaviour.
+            if (!(e.target as HTMLElement).closest('a,button,.ant-dropdown')) router.push(`/assets/${row.id}`);
+          },
+        })}
         columns={[
           {
             title: 'Asset ID',
             dataIndex: 'assetCode',
             render: (code: string, row) => (
-              <Link href={`/assets/${row.id}`} style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+              <Link href={`/assets/${row.id}`} className="code">
                 {code}
               </Link>
             ),
           },
           {
-            title: 'Name',
+            title: 'Equipment',
             dataIndex: 'name',
             render: (name: string, row) => (
-              <div>
-                <div>{name}</div>
-                {(row.make || row.model) && <div style={{ color: '#6B7280', fontSize: 12 }}>{[row.make, row.model].filter(Boolean).join(' ')}</div>}
+              <div style={{ lineHeight: 1.35 }}>
+                <div style={{ fontWeight: 500, color: COLORS.ink }}>{name}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{[row.equipmentTypeName, row.make, row.model].filter(Boolean).join(' · ')}</div>
               </div>
             ),
           },
-          { title: 'Type', dataIndex: 'equipmentTypeName' },
           {
             title: 'Location',
             key: 'location',
-            render: (_: unknown, row) => `${row.departmentName} · ${row.locationName}`,
+            render: (_: unknown, row) => (
+              <div style={{ lineHeight: 1.35 }}>
+                <div>{row.departmentName}</div>
+                <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{row.locationName}</div>
+              </div>
+            ),
           },
           { title: 'Criticality', dataIndex: 'criticality', render: (v: string) => <CriticalityTag value={v} /> },
+          {
+            title: 'Next PMS',
+            dataIndex: 'nextPmsDue',
+            render: (d: string | null) => <DueCell date={d} daysLeft={d ? daysFromToday(d) : null} />,
+          },
           { title: 'Warranty', dataIndex: 'warrantyStatus', render: (v: AssetRow['warrantyStatus']) => <WarrantyTag status={v} /> },
           { title: 'Status', dataIndex: 'status', render: (v: AssetRow['status']) => <StatusTag status={v} /> },
           {
             title: '',
             key: 'actions',
             align: 'right',
+            width: 56,
             render: (_: unknown, row) => (
               <Dropdown
                 trigger={['click']}

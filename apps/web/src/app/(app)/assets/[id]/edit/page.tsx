@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Card, Result, Skeleton } from 'antd';
+import { Alert, Result, Skeleton } from 'antd';
 import { useParams } from 'next/navigation';
 import type { AssetDetail } from '@bme/shared';
 import { AssetForm } from '@/components/AssetForm';
@@ -17,11 +17,11 @@ export default function EditAssetPage() {
   return (
     <>
       <PageHeader title={asset.data ? `Edit ${asset.data.assetCode}` : 'Edit asset'} crumbs={['Assets', 'Edit']} />
-      <Card style={{ maxWidth: 960 }}>
+      <div style={{ maxWidth: 960 }}>
         {asset.error && <Alert type="error" showIcon message="Could not load this asset" description={asset.error} />}
         {asset.loading && !asset.data && <Skeleton active />}
         {asset.data && <AssetForm asset={asset.data} />}
-      </Card>
+      </div>
     </>
   );
 }

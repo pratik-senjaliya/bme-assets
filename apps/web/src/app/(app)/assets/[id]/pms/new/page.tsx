@@ -155,8 +155,8 @@ export default function PerformPmsPage() {
                         size="large"
                         value={typeof value === 'string' ? value : null}
                         options={[
-                          { label: 'Pass', value: 'pass' },
-                          { label: 'Fail', value: 'fail' },
+                          { label: <span className="pf-pass">Pass</span>, value: 'pass' },
+                          { label: <span className="pf-fail">Fail</span>, value: 'fail' },
                         ]}
                         onChange={(e) => set(item.id, e.target.value as PmsAnswer)}
                       />

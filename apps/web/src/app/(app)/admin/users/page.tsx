@@ -103,7 +103,7 @@ export default function UsersPage() {
             align: 'right',
             render: (_: unknown, row) => (
               <Space>
-                <Button size="small" onClick={() => open(row)}>
+                <Button size="small" type="text" onClick={() => open(row)}>
                   Edit
                 </Button>
                 {row.active && row.id !== me?.id && (
@@ -113,7 +113,7 @@ export default function UsersPage() {
                     okText="Deactivate"
                     onConfirm={() => deactivate(row)}
                   >
-                    <Button size="small" danger>
+                    <Button size="small" type="text" danger>
                       Deactivate
                     </Button>
                   </Popconfirm>

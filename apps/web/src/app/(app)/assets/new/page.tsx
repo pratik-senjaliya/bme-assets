@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Result } from 'antd';
+import { Result } from 'antd';
 import { AssetForm } from '@/components/AssetForm';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/lib/auth';
@@ -11,9 +11,9 @@ export default function NewAssetPage() {
   return (
     <>
       <PageHeader title="Add asset" subtitle="The asset ID is generated when you save" crumbs={['Assets', 'Add asset']} />
-      <Card style={{ maxWidth: 960 }}>
+      <div style={{ maxWidth: 960 }}>
         <AssetForm />
-      </Card>
+      </div>
     </>
   );
 }
