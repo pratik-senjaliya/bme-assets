@@ -1,5 +1,5 @@
 import type { FormInstance } from 'antd';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { z } from 'zod';
 import { ApiError } from './api';
 
@@ -81,3 +81,32 @@ export function useSingleFlight() {
 
 const plain = (m: string) =>
   m === 'Required' || /^String must contain at least 1 character/.test(m) ? 'Please fill this in' : m === 'Invalid email' ? 'Enter a valid email, like name@hospital.in' : m === 'Invalid uuid' ? 'Please choose one' : m;
+
+// While a form has unsaved input, ask before the page is left: closing or reloading the tab (the browser's own
+// question) and following a link inside the app (ours). Saving clears `dirty` first, so the move to the saved
+// record is not interrupted.
+export function useLeaveGuard(dirty: boolean, question = 'Leave this page? What you entered is not saved.') {
+  useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target === '_blank' || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      if (!window.confirm(question)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [dirty, question]);
+}

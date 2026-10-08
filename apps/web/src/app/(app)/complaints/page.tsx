@@ -3,7 +3,7 @@
 import { CheckCircleOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { App, Button, Card, Col, Form, Input, Modal, Row, Space, Tabs, Typography } from 'antd';
 import Link from 'next/link';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { resolveComplaintSchema, type ComplaintRow, type ComplaintStatus, type Paged } from '@bme/shared';
 import { ComplaintDrawer } from '@/components/ComplaintDrawer';
 import { ComplaintsHistory } from '@/components/ComplaintsHistory';
@@ -61,6 +61,15 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
   const [resolving, setResolving] = useState<ComplaintRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  // The board is watched for a while: refresh it every minute (new complaints, waiting times), but not while the
+  // tab is hidden or someone is writing a resolution.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible' && !resolving) setTick((n) => n + 1);
+    }, 60_000);
+    return () => clearInterval(t);
+  }, [resolving]);
 
   async function start(c: ComplaintRow) {
     try {
@@ -97,7 +106,7 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
           <Col key={col.status} xs={24} lg={8}>
             <BoardColumn
               {...col}
-              version={version}
+              version={version * 10_000 + tick}
               onOpen={onOpen}
               actions={(c) => (
                 <>

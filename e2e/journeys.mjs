@@ -81,6 +81,20 @@ await step('Dashboard tiles open the list behind them', async () => {
   await ap.locator('a[href="/complaints"]').first().click(); await ap.waitForURL(/\/complaints$/);
 }, ap);
 
+await step('Leaving a half-filled form asks first; an untouched form leaves without asking', async () => {
+  const asked = [];
+  const note = (d) => asked.push(d.message() || d.type());
+  bp.on('dialog', note);
+  await bp.goto(`${BASE}/assets/new`); await settle(bp);
+  await bp.getByRole('link', { name: 'Cancel' }).click(); await bp.waitForURL(/\/assets$/);
+  expect(asked.length === 0, 'asked although nothing was typed');
+  await bp.goto(`${BASE}/assets/new`); await settle(bp);
+  await fillField(bp, 'Name', 'E2E-Unsaved');
+  await bp.getByRole('link', { name: 'Cancel' }).click(); await bp.waitForURL(/\/assets$/);
+  bp.off('dialog', note);
+  expect(asked.some((m) => /not saved/i.test(m)), `no question before leaving (${asked.join(' | ')})`);
+}, bp);
+
 // ---------- Admin ----------
 await step('Equipment types: add, rename and remove through the screen', async () => {
   await ap.goto(`${BASE}/admin/equipment-types`); await settle(ap);

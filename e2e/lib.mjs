@@ -30,6 +30,8 @@ export async function session(browser, email, viewport = { width: 1440, height: 
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
   const page = await ctx.newPage();
   page.setDefaultTimeout(20000);
+  // A form with unsaved input asks before the page is left; the tests move on like a person choosing "Leave".
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   await page.goto(BASE + '/login');
   await page.fill('input[type=email]', email);
   await page.fill('input[type=password]', password);

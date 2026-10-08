@@ -461,3 +461,21 @@ a {
     font-size: 20px;
   }
 }
+
+/* A count next to a menu entry (requests waiting for the HOD). */
+.nav-count {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: #fde8e1;
+  color: #b2330e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+}
+.ant-menu-inline-collapsed .nav-count {
+  display: none;
+}

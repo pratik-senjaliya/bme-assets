@@ -24,11 +24,12 @@ import { Button, Dropdown, Grid, Layout, Menu, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { PermissionCode } from '@bme/shared';
+import type { ApprovalRow, PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ShellSkeleton } from '@/components/Skeletons';
+import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { initials, shortName } from '@/lib/format';
 import { loginHref } from '@/lib/nav';
@@ -76,6 +77,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   // Phones: the menu hides completely and slides over the page when opened (see .app-sider in globals.css).
   const phone = Grid.useBreakpoint().md === false;
+  // How many requests wait for the HOD, next to Approvals; checked again on every page change.
+  const waiting = useFetch<ApprovalRow[]>(user && can('approval.decide') ? '/approvals?status=pending' : null);
+  const reloadWaiting = waiting.reload;
+  useEffect(() => {
+    void reloadWaiting();
+  }, [pathname, reloadWaiting]);
+  const counts: Record<string, number> = { '/approvals': waiting.data?.length ?? 0 };
   const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
@@ -86,7 +94,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (loading || !user) return <ShellSkeleton />;
 
   const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can));
-  const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
+  const toItem = (i: Item) => ({
+    key: i.href,
+    icon: i.icon,
+    label: (
+      <Link href={i.href} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.label}</span>
+        {counts[i.href] > 0 && (
+          <span className="nav-count num" aria-label={`${counts[i.href]} waiting`}>
+            {counts[i.href]}
+          </span>
+        )}
+      </Link>
+    ),
+  });
   const items: MenuProps['items'] = GROUPS.map((g) => ({ ...g, items: g.items.filter(allowed) }))
     .filter((g) => g.items.length)
     .map((g, idx) => (g.title ? { type: 'group' as const, key: `g${idx}`, label: collapsed ? null : g.title, children: g.items.map(toItem) } : g.items.map(toItem)))

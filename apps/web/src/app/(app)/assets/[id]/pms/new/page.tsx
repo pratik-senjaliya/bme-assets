@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { submitPmsSchema, type AssetDetail, type PmsAnswer, type PmsItem, type PmsRecordRow, type PmsTemplateRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, ApiError, useFetch } from '@/lib/api';
+import { useLeaveGuard } from '@/lib/forms';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
 import { COLORS } from '@/theme';
@@ -34,6 +35,9 @@ export default function PerformPmsPage() {
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  // Leaving with answers filled in but not submitted asks first (the original answers of a correction count too).
+  useLeaveGuard(Object.keys(answers).length > 0 && !saving);
 
   // A correction starts from the original answers.
   useEffect(() => {

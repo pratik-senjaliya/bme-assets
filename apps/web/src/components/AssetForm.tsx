@@ -16,7 +16,7 @@ import {
 import { FilePicker } from '@/components/FilePicker';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useLeaveGuard, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
 
 type Department = { id: string; name: string };
@@ -88,8 +88,13 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const router = useRouter();
   const [form] = Form.useForm<Values>();
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   // Documents to attach once the asset exists (new assets only): the installation report, photos, the manual.
-  const [docs, setDocs] = useState<{ report: File[]; photos: File[]; manual: File[] }>({ report: [], photos: [], manual: [] });
+  const [docs, setDocsState] = useState<{ report: File[]; photos: File[]; manual: File[] }>({ report: [], photos: [], manual: [] });
+  const setDocs: typeof setDocsState = (v) => {
+    setDocsState(v);
+    setDirty(true);
+  };
 
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const departments = useFetch<Department[]>('/departments');
@@ -108,6 +113,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   }, [asset]);
 
   const needsApproval = !!asset && !can('asset.edit_key');
+  useLeaveGuard(dirty && !saving);
 
   const single = useSingleFlight();
 
@@ -169,6 +175,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
       layout="vertical"
       requiredMark
       onFinish={() => single(save)}
+      onValuesChange={() => setDirty(true)}
       // Enter in a field must not save a half-finished form (typing a date and pressing Enter is natural). Only the
       // Save button saves. Dropdowns keep Enter for choosing an option.
       onKeyDown={(e) => {
