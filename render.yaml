@@ -6,7 +6,8 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci && npm run build -w packages/shared && npm run build -w apps/api
+    # --include=dev: NODE_ENV=production would skip @types/* and typescript, which the build needs.
+    buildCommand: npm ci --include=dev && npm run build -w packages/shared && npm run build -w apps/api
     # Migrations run on every start; they are idempotent.
     startCommand: cd apps/api && npx prisma migrate deploy && node dist/index.js
     healthCheckPath: /api/v1/health
