@@ -8,8 +8,9 @@ services:
     region: singapore
     # --include=dev: NODE_ENV=production would skip @types/* and typescript, which the build needs.
     buildCommand: npm ci --include=dev && npm run build -w packages/shared && npm run build -w apps/api
-    # Migrations run on every start; they are idempotent.
-    startCommand: cd apps/api && npx prisma migrate deploy && node dist/index.js
+    # Migrations run on every start; they are idempotent. The demo seed is safe to repeat (upserts, assets only on an
+    # empty register) and runs only while SEED_ON_START=true, so a fresh database fills itself.
+    startCommand: cd apps/api && npx prisma migrate deploy && if [ "$SEED_ON_START" = "true" ]; then node dist/seed.js; fi && node dist/index.js
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
