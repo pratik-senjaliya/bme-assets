@@ -27,7 +27,8 @@ const ends = (daysLeft: number) => (daysLeft === 0 ? 'ends today' : `ends in ${i
 // reminder for where things stand now instead of a burst for every missed threshold.
 // `today` is a YYYY-MM-DD string so tests can fake the clock.
 export async function generateReminders(today: string): Promise<RunRemindersResult> {
-  const settings = await prisma.hospitalSettings.findFirstOrThrow();
+  const settings = await prisma.hospitalSettings.findFirst();
+  if (!settings) return { created: 0, emailed: 0 }; // a brand-new install that has not been set up yet
   const thresholds = [...settings.reminderDays].sort((a, b) => a - b);
   if (thresholds.length === 0) return { created: 0, emailed: 0 };
 
@@ -77,8 +78,8 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
 // One digest email per person for reminders not yet emailed. Only when SMTP is set up; a failed send
 // leaves the rows unsent so the next run retries (for 3 days, then the in-app reminder stands alone).
 export async function sendPendingEmails(): Promise<number> {
-  const settings = await prisma.hospitalSettings.findFirstOrThrow();
-  if (!smtpConfigured(settings)) return 0;
+  const settings = await prisma.hospitalSettings.findFirst();
+  if (!settings || !smtpConfigured(settings)) return 0;
 
   const since = new Date(Date.now() - 3 * 86_400_000);
   const pending = await prisma.notification.findMany({

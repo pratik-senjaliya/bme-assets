@@ -1,0 +1,93 @@
+# BME Asset Management: the hospital server install (one install = one hospital).
+# Copy .env.example to .env, fill it in, then:  docker compose up -d --build
+# Full steps: docs/install.md. (Local development uses docker-compose.dev.yml instead.)
+name: bme
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bme
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: bme
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bme -d bme"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://bme:${DB_PASSWORD}@db:5432/bme
+      DIRECT_URL: postgresql://bme:${DB_PASSWORD}@db:5432/bme
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      WEB_ORIGIN: ${PUBLIC_URL:-http://localhost}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Kolkata}
+      # Plain HTTP on the LAN by default. Set COOKIE_SECURE=true only after enabling HTTPS (docs/install.md).
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # One proxy hop in front of the API's own peer (the web container); the real client is in X-Forwarded-For from Caddy.
+      TRUST_PROXY: "1"
+      STORAGE_DRIVER: local
+      STORAGE_PATH: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # The web app's binding to the API, read at runtime (never baked into the image).
+      API_URL: http://api:4000
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+  # Nightly database + uploads backup, 14 days kept, written to ./backups on the server (BACKUP_DIR).
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: bme
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: bme
+      TZ: ${APP_TIMEZONE:-Asia/Kolkata}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    command: ["bash", "/backup.sh"]
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - uploads:/data/uploads:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+
+volumes:
+  db-data:
+  uploads:
+  caddy-data:

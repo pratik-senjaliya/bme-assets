@@ -1,6 +1,7 @@
 body {
   margin: 0;
   background: #f7f8fa;
+  font-family: var(--font-inter), system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-variant-numeric: tabular-nums;
 }
 

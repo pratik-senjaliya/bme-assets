@@ -34,7 +34,7 @@ No Supabase Auth, RLS or edge functions are used.
 
 1. New → Blueprint → pick this repo (`render.yaml`). Fill the `sync: false` values: `DATABASE_URL`, `DIRECT_URL`, `WEB_ORIGIN` (the Vercel URL, set after step 3), `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 2. The service builds, runs `prisma migrate deploy`, then starts. Check `https://<api>.onrender.com/api/v1/health` → `"database":"up"`.
-3. **Seed the demo data once**: Render dashboard → the service → Shell → `cd apps/api && npx prisma db seed`.
+3. **Seed the demo data once** (the seed also adds any missing permission codes): Render dashboard → the service → Shell → `cd apps/api && npx prisma db seed`.
 4. `TRUST_PROXY=2` (Vercel + Render in front) and `COOKIE_SECURE=true` (HTTPS) are already in the blueprint.
 
 The daily reminder job (pg-boss, 06:00 Asia/Kolkata) runs inside this service, on the **direct** connection (`DIRECT_URL`); it keeps its schedule in a `pgboss` schema it creates itself. The reminder check also runs at every start and is safe to repeat (one reminder per person per threshold), so a sleeping free-plan service catches up when it wakes. For a demo you can also press **Run reminders now** in Admin > Hospital settings. Set `DISABLE_JOBS=true` on any second instance.

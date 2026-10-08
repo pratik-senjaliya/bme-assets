@@ -11,7 +11,9 @@
     "prisma:migrate": "prisma migrate dev",
     "postinstall": "prisma generate",
     "db:seed": "tsx --env-file=.env src/seed.ts",
-    "test": "tsx --env-file=.env --test --test-concurrency=1 \"src/**/*.test.ts\""
+    "test": "tsx --env-file=.env --test --test-concurrency=1 \"src/**/*.test.ts\"",
+    "bootstrap": "node dist/bootstrap.js",
+    "db:seed:prod": "node dist/seed.js"
   },
   "prisma": {
     "seed": "tsx src/seed.ts"
@@ -28,6 +30,7 @@
     "multer": "^2.4.0",
     "nodemailer": "^10.0.16",
     "pg-boss": "^10.4.2",
+    "prisma": "^6.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -39,7 +42,6 @@
     "@types/multer": "^2.3.0",
     "@types/node": "^22.10.0",
     "@types/nodemailer": "^8.0.2",
-    "prisma": "^6.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

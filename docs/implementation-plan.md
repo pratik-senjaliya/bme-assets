@@ -56,12 +56,12 @@ Goal: four seeded users log in; each sees only what the role allows; every chang
 
 ## Phase 5 — Approvals, condemnation, reports, packaging (~2 weeks)
 
-- [ ] Approval requests applied transactionally with audit entry
-- [ ] Condemnation flow with EOL letters
-- [ ] Dashboard + all Excel reports + audit log viewer
-- [ ] Dockerfiles, docker-compose.yml (postgres, api, web, proxy), nightly backups (14 days)
-- [ ] Install and upgrade guides
-- Check: fresh Linux VM to working login in under 30 minutes
+- [x] Approval requests applied transactionally with audit entry
+- [x] Condemnation flow with EOL letters
+- [x] Dashboard + all Excel reports + audit log viewer
+- [x] Dockerfiles, docker-compose.yml (postgres, api, web, proxy), nightly backups (14 days)
+- [x] Install and upgrade guides
+- Check: fresh Linux VM to working login in under 30 minutes. *Every install step was run with the real images (see `docs/install.md`, "What was and was not tested"); the 30-minute clock was not timed on a fresh VM.*
 
 ## Open decisions
 
