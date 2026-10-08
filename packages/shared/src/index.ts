@@ -71,7 +71,9 @@ const BIOMED: PermissionCode[] = [
 
 // Defaults seeded into the DB; hospitals can adjust them later.
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, readonly PermissionCode[]> = {
-  super_admin: PERMISSIONS,
+  // The vendor's super admin is audited like everyone and cannot bypass the HOD: its key-field edits,
+  // condemnations and deletions are requests, and it cannot decide them.
+  super_admin: PERMISSIONS.filter((p) => p !== 'asset.edit_key' && p !== 'approval.decide'),
   admin: PERMISSIONS.filter((p) => p !== 'settings.pattern'),
   biomed: BIOMED,
   nursing: ['asset.view', 'complaint.view', 'complaint.create'],
@@ -527,7 +529,7 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract'] as const;
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -544,3 +546,60 @@ export type NotificationList = { items: NotificationRow[]; unread: number };
 
 export const smtpTestSchema = z.object({ to: z.string().trim().email() });
 export type RunRemindersResult = { created: number; emailed: number };
+
+// ---------- Approvals (business rule 3) ----------
+
+export const APPROVAL_TYPES = ['condemn', 'delete', 'edit_key_field'] as const;
+export type ApprovalType = (typeof APPROVAL_TYPES)[number];
+export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+// What a wrong entry can be: an asset created by mistake, or a record on one.
+export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense'] as const;
+export type DeletableTarget = (typeof DELETABLE_TARGETS)[number];
+
+export const condemnRequestSchema = z.object({ reason: z.string().trim().min(5, 'Say why it should be condemned').max(1000) });
+export type CondemnRequestInput = z.infer<typeof condemnRequestSchema>;
+
+export const deleteRequestSchema = z.object({
+  targetType: z.enum(DELETABLE_TARGETS),
+  targetId: z.string().uuid(),
+  reason: z.string().trim().min(5, 'Say why this entry is wrong').max(1000),
+});
+export type DeleteRequestInput = z.infer<typeof deleteRequestSchema>;
+
+export const approveApprovalSchema = z.object({ note: optionalText(500) });
+export type ApproveApprovalInput = z.infer<typeof approveApprovalSchema>;
+export const rejectApprovalSchema = z.object({ reason: z.string().trim().min(3, 'Say why it is rejected').max(500) });
+export type RejectApprovalInput = z.infer<typeof rejectApprovalSchema>;
+
+export const approvalListQuerySchema = z.object({
+  status: z.enum([...APPROVAL_STATUSES, 'all']).default('pending'),
+  assetId: z.string().uuid().optional(),
+});
+
+export type ApprovalRow = {
+  id: string;
+  type: ApprovalType;
+  status: ApprovalStatus;
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  summary: string; // what will change if approved, in words
+  requestReason: string | null; // the requester's reason (condemn / delete)
+  requestedByName: string;
+  createdAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null; // approver's note, or the reason for rejecting
+};
+
+export type CondemnationInfo = {
+  hospitalName: string;
+  reason: string;
+  requestedByName: string;
+  requestedAt: string;
+  approvedByName: string;
+  approvedAt: string;
+  eolLetter: { id: string; fileName: string } | null;
+};

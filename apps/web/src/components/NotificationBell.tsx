@@ -8,7 +8,7 @@ import type { NotificationList, NotificationRow } from '@bme/shared';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
-const TAB: Record<NotificationRow['type'], string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase' };
+const TAB: Record<Exclude<NotificationRow['type'], 'approval'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase' };
 
 // In-app reminders (PMS, calibration, warranty, contracts). Checked every minute while the app is open.
 export function NotificationBell() {
@@ -34,7 +34,8 @@ export function NotificationBell() {
     setOpen(false);
     if (!n.readAt) await api(`/notifications/${n.id}/read`, { method: 'POST' }).catch(() => undefined);
     void load();
-    if (n.assetId) router.push(`/assets/${n.assetId}?tab=${TAB[n.type]}`);
+    if (n.type === 'approval') router.push('/approvals');
+    else if (n.assetId) router.push(`/assets/${n.assetId}?tab=${TAB[n.type]}`);
   }
 
   async function readAll() {

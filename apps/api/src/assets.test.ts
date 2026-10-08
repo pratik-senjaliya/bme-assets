@@ -20,6 +20,7 @@ let admin = '';
 let biomed = '';
 let nursing = '';
 const ids: Record<string, string> = {};
+const startedAt = new Date();
 
 // Smallest valid PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -40,6 +41,7 @@ before(async () => {
 after(async () => {
   const test = await prisma.asset.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } });
   const assetIds = test.map((a) => a.id);
+  await prisma.notification.deleteMany({ where: { createdAt: { gte: startedAt } } }); // approval notices from key-field requests
   await prisma.attachment.deleteMany({ where: { ownerType: 'asset', ownerId: { in: assetIds } } });
   await prisma.approvalRequest.deleteMany({ where: { targetId: { in: assetIds } } });
   await prisma.purchaseOrder.deleteMany({ where: { assetId: { in: assetIds } } });

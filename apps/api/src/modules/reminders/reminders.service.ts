@@ -2,31 +2,18 @@ import type { PermissionCode } from '@bme/shared';
 import type { NotificationType, RunRemindersResult } from '@bme/shared';
 import { addMonths, daysBetween, parseDate, prettyDate } from '../../lib/dates';
 import { sendMail, smtpConfigured } from '../../lib/mail';
+import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 
 // Who gets which reminder: people whose role can act on it (and can read notifications).
-const RECIPIENT_PERMISSION: Record<NotificationType, PermissionCode> = {
+const RECIPIENT_PERMISSION: Record<'pms' | 'calibration' | 'warranty' | 'contract', PermissionCode> = {
   pms: 'pms.perform',
   calibration: 'calibration.manage',
   warranty: 'asset.edit',
   contract: 'asset.edit',
 };
 
-async function recipients(type: NotificationType) {
-  const users = await prisma.user.findMany({
-    where: {
-      active: true,
-      role: {
-        AND: [
-          { rolePermissions: { some: { permission: { code: RECIPIENT_PERMISSION[type] } } } },
-          { rolePermissions: { some: { permission: { code: 'notification.view' } } } },
-        ],
-      },
-    },
-    select: { id: true },
-  });
-  return users.map((u) => u.id);
-}
+const recipients = (type: NotificationType) => usersWithPermissions(RECIPIENT_PERMISSION[type as keyof typeof RECIPIENT_PERMISSION], 'notification.view');
 
 type Candidate = { type: NotificationType; assetId: string; dueDate: Date; message: (daysLeft: number) => string };
 

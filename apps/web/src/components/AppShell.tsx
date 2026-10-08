@@ -4,6 +4,7 @@ import {
   ApartmentOutlined,
   BarcodeOutlined,
   ToolOutlined,
+  AuditOutlined,
   CalendarOutlined,
   ScheduleOutlined,
   DashboardOutlined,
@@ -22,13 +23,14 @@ import type { PermissionCode } from '@bme/shared';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useAuth } from '@/lib/auth';
 
-type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode };
+type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
 const MAIN: Item[] = [
   { href: '/', label: 'Dashboard', icon: <DashboardOutlined /> },
   { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
   { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
+  { href: '/approvals', label: 'Approvals', icon: <AuditOutlined />, anyOf: ['approval.decide', 'asset.request_change'] },
   { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
 ];
 const ADMIN: Item[] = [
@@ -61,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const toItem = (i: Item) => ({ key: i.href, icon: i.icon, label: <Link href={i.href}>{i.label}</Link> });
   const admin = ADMIN.filter((i) => !i.permission || can(i.permission));
   const items: MenuProps['items'] = [
-    ...MAIN.filter((i) => !i.permission || can(i.permission)).map(toItem),
+    ...MAIN.filter((i) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can))).map(toItem),
     ...(admin.length ? [{ type: 'group' as const, label: collapsed ? '' : 'Admin', children: admin.map(toItem) }] : []),
   ];
   const selected = [...MAIN, ...ADMIN].filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);

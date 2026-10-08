@@ -11,6 +11,8 @@ const STATUS = {
   in_progress: { color: 'gold', label: 'In progress' },
   resolved: { color: 'green', label: 'Resolved' },
   pending: { color: 'blue', label: 'Pending approval' },
+  approved: { color: 'green', label: 'Approved' },
+  rejected: { color: 'default', label: 'Rejected' },
   pass: { color: 'green', label: 'Pass' },
   fail: { color: 'red', label: 'Fail' },
   warranty_active: { color: 'green', label: 'In warranty' },

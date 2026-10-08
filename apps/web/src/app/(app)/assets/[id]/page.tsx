@@ -2,7 +2,7 @@
 
 import { InboxOutlined, LockOutlined } from '@ant-design/icons';
 import {
-  Alert, App, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Result, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload,
+  Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Result, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload,
 } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
@@ -26,12 +26,14 @@ import {
   type ServiceContractRow,
   type TimelineEvent,
 } from '@bme/shared';
+import { AssetApprovalBanners } from '@/components/AssetApprovalBanners';
 import { AssetCalibrationTab } from '@/components/AssetCalibrationTab';
 import { AssetPmsTab } from '@/components/AssetPmsTab';
 import { ComplaintsTable } from '@/components/ComplaintsTable';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
+import { RequestCondemnModal, RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -57,6 +59,9 @@ export default function AssetDetailPage() {
   const initialTab = useSearchParams().get('tab') ?? 'overview';
   const [raising, setRaising] = useState(false);
   const [complaintsVersion, setComplaintsVersion] = useState(0);
+  const [condemning, setCondemning] = useState(false);
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const [requests, setRequests] = useState(0); // bumps to refresh the "waiting for HOD" banners
 
   if (asset.error) {
     return <Result status="404" title="Asset not found" subTitle="It may not exist, or it belongs to another department." extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
@@ -77,14 +82,29 @@ export default function AssetDetailPage() {
                 Raise complaint
               </Button>
             )}
-            {can('asset.edit') && (
+            {can('asset.edit') && a.status !== 'condemned' && (
               <Link href={`/assets/${a.id}/edit`}>
                 <Button type="primary">Edit asset</Button>
               </Link>
             )}
+            {can('asset.request_change') && (
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    ...(a.status !== 'condemned' ? [{ key: 'condemn', label: 'Request condemnation' }] : []),
+                    { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
+                  ],
+                  onClick: ({ key }) => (key === 'condemn' ? setCondemning(true) : setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` })),
+                }}
+              >
+                <Button>More</Button>
+              </Dropdown>
+            )}
           </Space>
         }
       />
+      <AssetApprovalBanners asset={a} version={requests} />
       <Card style={{ marginBottom: 16 }}>
         <Space size={[32, 16]} wrap align="start">
           <Stat label="Status"><StatusTag status={a.status} /></Stat>
@@ -108,11 +128,13 @@ export default function AssetDetailPage() {
           ...(can('pms.perform') ? [{ key: 'pms', label: 'PMS', children: <AssetPmsTab asset={a} /> }] : []),
           ...(can('calibration.manage') ? [{ key: 'calibration', label: 'Calibration', children: <AssetCalibrationTab asset={a} onChanged={asset.reload} /> }] : []),
           ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsTable assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
-          ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} /> }] : []),
-          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit')} /> },
+          ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
+          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
           { key: 'documents', label: 'Documents', children: <DocumentsTab id={a.id} canEdit={can('asset.edit')} /> },
         ]}
       />
+      <RequestCondemnModal open={condemning} asset={a} onClose={() => setCondemning(false)} onRequested={() => setRequests((v) => v + 1)} />
+      <RequestDeleteModal target={deleting} onClose={() => setDeleting(null)} onRequested={() => setRequests((v) => v + 1)} />
       <RaiseComplaintModal
         open={raising}
         asset={{ id: a.id, assetCode: a.assetCode, name: a.name }}
@@ -178,7 +200,15 @@ function TimelineTab({ id }: { id: string }) {
 
 // ---------- Purchase orders and contracts ----------
 
-function PurchaseTab({ id, canEdit }: { id: string; canEdit: boolean }) {
+type RowAction = { canRequest: boolean; requestDelete: (t: DeleteTarget) => void };
+
+// A "Request delete" button for each row, for people who can ask the HOD to remove a wrong entry.
+const deleteColumn = <T extends { id: string }>({ canRequest, requestDelete }: RowAction, type: DeleteTarget['type'], labelOf: (r: T) => string) =>
+  canRequest
+    ? [{ title: '', key: 'request-delete', align: 'right' as const, render: (_: unknown, r: T) => <Button size="small" type="text" danger onClick={() => requestDelete({ type, id: r.id, label: labelOf(r) })}>Request delete</Button> }]
+    : [];
+
+function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; canEdit: boolean } & RowAction) {
   const { message } = App.useApp();
   const orders = useFetch<PurchaseOrderRow[]>(`/assets/${id}/purchase-orders`);
   const contracts = useFetch<ServiceContractRow[]>(`/assets/${id}/contracts`);
@@ -235,6 +265,7 @@ function PurchaseTab({ id, canEdit }: { id: string; canEdit: boolean }) {
             { title: 'Date', dataIndex: 'poDate', render: formatDate },
             { title: 'Vendor', dataIndex: 'vendor' },
             { title: 'Cost', dataIndex: 'cost', align: 'right', render: formatMoney },
+            ...deleteColumn<PurchaseOrderRow>({ canRequest, requestDelete }, 'purchase_order', (r) => `Purchase order ${r.poNumber} (${r.vendor}, ${formatMoney(r.cost)})`),
           ]}
         />
       </Card>
@@ -251,6 +282,7 @@ function PurchaseTab({ id, canEdit }: { id: string; canEdit: boolean }) {
             { title: 'Starts', dataIndex: 'startDate', render: formatDate },
             { title: 'Ends', dataIndex: 'endDate', render: formatDate },
             { title: 'Cost', dataIndex: 'cost', align: 'right', render: (c: number | null) => (c == null ? '—' : formatMoney(c)) },
+            ...deleteColumn<ServiceContractRow>({ canRequest, requestDelete }, 'service_contract', (r) => `${r.type.toUpperCase().replace('_', '-')} contract with ${r.vendor}`),
           ]}
         />
       </Card>
@@ -369,7 +401,7 @@ function DocumentsTab({ id, canEdit }: { id: string; canEdit: boolean }) {
 
 // ---------- Expenses ----------
 
-function ExpensesTab({ id }: { id: string }) {
+function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowAction) {
   const { message } = App.useApp();
   const expenses = useFetch<ExpenseList>(`/assets/${id}/expenses`);
   const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?assetId=${id}&pageSize=100`);
@@ -427,6 +459,7 @@ function ExpensesTab({ id }: { id: string }) {
           { title: 'Vendor', dataIndex: 'vendor', render: (v: string | null) => v ?? '—' },
           { title: 'Complaint', dataIndex: 'complaintNo', render: (v: string | null) => v ?? '—' },
           { title: 'Amount', dataIndex: 'amount', align: 'right', render: formatMoney },
+          ...deleteColumn<ExpenseRow>({ canRequest, requestDelete }, 'service_expense', (r) => `Expense "${r.description}" (${formatMoney(r.amount)})`),
         ]}
       />
       <Modal open={adding} title="Add expense" okText="Save" confirmLoading={saving} onOk={save} onCancel={() => setAdding(false)} destroyOnHidden>

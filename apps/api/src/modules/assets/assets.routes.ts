@@ -25,6 +25,7 @@ import { isoDate, parseDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
+import { approvers, notify } from '../approvals/approvals.service';
 import { storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
@@ -93,6 +94,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   const me = currentUser(req);
   const input = req.body as UpdateAssetInput;
   const before = await findScoped(req);
+  if (before.status === 'condemned') throw new HttpError(409, 'A condemned asset can no longer be edited');
 
   const changes: Record<string, unknown> = {};
   const keyChanges: Record<string, unknown> = {};
@@ -150,6 +152,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
         },
       });
       await audit(tx, req, { action: 'approval.request', entityType: 'approval_request', entityId: request.id, after: request });
+      await notify(tx, await approvers(), `${me.name} asks to change key details of ${before.assetCode} ${before.name}`, before.id);
     }
   });
 
