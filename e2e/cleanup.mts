@@ -22,7 +22,7 @@ await prisma.$transaction([prisma.$queryRaw`select set_config('bme.allow_pms_cle
 await prisma.approvalRequest.deleteMany({ where: { targetId: { in: owners } } });
 await prisma.notification.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.asset.deleteMany({ where: { id: { in: ids } } });
-const types = await prisma.equipmentType.findMany({ where: { code: 'E2ET' }, select: { id: true } });
+const types = await prisma.equipmentType.findMany({ where: { code: { in: ['E2ET', 'E2EJ'] } }, select: { id: true } });
 await prisma.pmsTemplate.deleteMany({ where: { equipmentTypeId: { in: types.map((t) => t.id) } } });
 await prisma.asset.deleteMany({ where: { equipmentTypeId: { in: types.map((t) => t.id) } } }).catch(() => {});
 await prisma.equipmentType.deleteMany({ where: { id: { in: types.map((t) => t.id) } } }).catch((e) => console.log('type left:', String(e).slice(0, 80)));

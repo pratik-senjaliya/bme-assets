@@ -100,12 +100,12 @@ await step('Equipment types: add, rename and remove through the screen', async (
   await ap.goto(`${BASE}/admin/equipment-types`); await settle(ap);
   await ap.getByRole('button', { name: 'Add equipment type' }).click();
   const m = ap.locator('.ant-modal');
-  await fillField(ap, 'Name', 'E2E Type', m); await fillField(ap, 'Code', 'E2ET', m); await fillField(ap, 'Default PMS interval', 6, m);
+  await fillField(ap, 'Name', 'E2E Journey Type', m); await fillField(ap, 'Code', 'E2EJ', m); await fillField(ap, 'Default PMS interval', 6, m);
   await modalOk(ap); await ap.locator('.ant-message-success').first().waitFor(); await ap.waitForTimeout(500);
-  const row = () => ap.locator('tbody tr', { hasText: 'E2ET' });
+  const row = () => ap.locator('tbody tr', { hasText: 'E2EJ' });
   await row().getByRole('button', { name: 'Edit' }).click();
-  await fillField(ap, 'Name', 'E2E Type renamed', ap.locator('.ant-modal')); await modalOk(ap); await ap.waitForTimeout(800);
-  expect(/E2E Type renamed/.test(await row().innerText()), 'rename not shown');
+  await fillField(ap, 'Name', 'E2E Journey renamed', ap.locator('.ant-modal')); await modalOk(ap); await ap.waitForTimeout(800);
+  expect(/E2E Journey renamed/.test(await row().innerText()), 'rename not shown');
   await row().getByRole('button', { name: 'Remove' }).click();
   await ap.locator('.ant-popconfirm .ant-btn-primary').click(); await ap.waitForTimeout(800);
   expect((await row().count()) === 0, 'type still listed after remove');

@@ -8,6 +8,7 @@ import { safeNext } from '@/lib/nav';
 import { loginSchema } from '@bme/shared';
 import { useAuth } from '@/lib/auth';
 import { parseForm } from '@/lib/forms';
+import { useDocumentTitle } from '@/lib/title';
 import { COLORS } from '@/theme';
 
 export default function LoginPage() {
@@ -22,8 +23,8 @@ export default function LoginPage() {
   // The page the person was on (or asked for) before being sent here, read from the address.
   const nextPage = () => safeNext(new URLSearchParams(window.location.search).get('next'));
 
+  useDocumentTitle('Sign in · BME Assets');
   useEffect(() => {
-    document.title = 'Sign in · BME Assets';
     setExpired(new URLSearchParams(window.location.search).get('expired') === '1');
   }, []);
   useEffect(() => {
