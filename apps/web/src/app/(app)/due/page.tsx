@@ -2,7 +2,8 @@
 
 import { Button, Result, Select, Space, Tabs } from 'antd';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import type { DueRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
@@ -26,9 +27,10 @@ const untilFor = (r: Range) => {
   return r === 'overdue' ? addDaysISO(today, -1) : r === 'month' ? endOfMonthISO(today) : addDaysISO(today, Number(r));
 };
 
-export default function DuePage() {
+function DueList() {
   const { can } = useAuth();
-  const [range, setRange] = useState<Range>('month');
+  const asked = useSearchParams().get('range');
+  const [range, setRange] = useState<Range>(RANGES.some((r) => r.value === asked) ? (asked as Range) : 'month');
   const [tab, setTab] = useState<'pms' | 'calibration'>('pms');
   const until = untilFor(range);
   const pms = useFetch<DueRow[]>(can('pms.perform') ? `/pms/due?until=${until}` : null);
@@ -94,5 +96,14 @@ export default function DuePage() {
       </Space>
       <Tabs activeKey={tab} onChange={(k) => setTab(k as 'pms' | 'calibration')} items={items} />
     </>
+  );
+}
+
+export default function DuePage() {
+  // useSearchParams needs a Suspense boundary for static rendering.
+  return (
+    <Suspense fallback={null}>
+      <DueList />
+    </Suspense>
   );
 }

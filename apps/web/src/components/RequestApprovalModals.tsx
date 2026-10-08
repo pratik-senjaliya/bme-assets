@@ -2,7 +2,7 @@
 
 import { App, Form, Input, Modal, Typography, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MAX_UPLOAD_BYTES, condemnRequestSchema, deleteRequestSchema, type DeletableTarget } from '@bme/shared';
 import { api } from '@/lib/api';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
@@ -13,6 +13,14 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
   const [form] = Form.useForm<{ reason: string }>();
   const [letter, setLetter] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Start clean each time it opens (not after the opening animation, which would wipe what was just typed).
+  useEffect(() => {
+    if (open) {
+      form.resetFields();
+      setLetter(null);
+    }
+  }, [open, form]);
 
   async function save() {
     const input = parseForm(form, condemnRequestSchema, form.getFieldsValue());
@@ -42,7 +50,6 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
       confirmLoading={saving}
       onOk={save}
       onCancel={onClose}
-      afterOpenChange={(o) => o && (form.resetFields(), setLetter(null))}
       destroyOnHidden
     >
       <Typography.Paragraph type="secondary">
@@ -81,6 +88,10 @@ export function RequestDeleteModal({ target, onClose, onRequested }: { target: D
   const [form] = Form.useForm<{ reason: string }>();
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (target) form.resetFields();
+  }, [target, form]);
+
   async function save() {
     if (!target) return;
     const input = parseForm(form, deleteRequestSchema, { targetType: target.type, targetId: target.id, reason: form.getFieldValue('reason') });
@@ -107,7 +118,6 @@ export function RequestDeleteModal({ target, onClose, onRequested }: { target: D
       confirmLoading={saving}
       onOk={save}
       onCancel={onClose}
-      afterOpenChange={(o) => o && form.resetFields()}
       destroyOnHidden
     >
       <Typography.Paragraph>

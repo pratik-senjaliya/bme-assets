@@ -4,13 +4,16 @@ import { authenticate } from './lib/auth';
 import { prisma } from './lib/prisma';
 import { approvalsRouter } from './modules/approvals/approvals.routes';
 import { assetsRouter, attachmentsRouter } from './modules/assets/assets.routes';
+import { auditRouter } from './modules/audit/audit.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { calibrationRouter } from './modules/calibration/calibration.routes';
 import { complaintsRouter } from './modules/complaints/complaints.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { expensesRouter } from './modules/expenses/expenses.routes';
 import { importRouter } from './modules/import/import.routes';
 import { notificationsRouter } from './modules/notifications/notifications.routes';
 import { pmsRouter } from './modules/pms/pms.routes';
+import { reportsRouter } from './modules/reports/reports.routes';
 import { rolesRouter } from './modules/roles/roles.routes';
 import { settingsRouter } from './modules/settings/settings.routes';
 import { setupRouter } from './modules/setup/setup.routes';
@@ -33,6 +36,9 @@ v1.use('/auth', authRouter);
 
 // Everything below needs a signed-in user; each route then declares its own permission.
 v1.use(authenticate);
+v1.use(dashboardRouter); // /dashboard
+v1.use(auditRouter); // /audit-logs
+v1.use(reportsRouter); // /reports/:type
 v1.use(approvalsRouter); // /assets/:id/condemn, /assets/:id/condemnation, /approvals
 v1.use('/assets', assetsRouter);
 v1.use('/assets', expensesRouter); // /assets/:id/expenses

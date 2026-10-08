@@ -5,6 +5,8 @@ import {
   BarcodeOutlined,
   ToolOutlined,
   AuditOutlined,
+  BarChartOutlined,
+  HistoryOutlined,
   CalendarOutlined,
   ScheduleOutlined,
   DashboardOutlined,
@@ -31,6 +33,7 @@ const MAIN: Item[] = [
   { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
   { href: '/complaints', label: 'Complaints', icon: <ToolOutlined />, permission: 'complaint.view' },
   { href: '/approvals', label: 'Approvals', icon: <AuditOutlined />, anyOf: ['approval.decide', 'asset.request_change'] },
+  { href: '/reports', label: 'Reports', icon: <BarChartOutlined />, permission: 'report.view' },
   { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
 ];
 const ADMIN: Item[] = [
@@ -38,6 +41,7 @@ const ADMIN: Item[] = [
   { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
   { href: '/admin/departments', label: 'Departments & locations', icon: <ApartmentOutlined />, permission: 'setup.manage' },
   { href: '/admin/pms-templates', label: 'PMS checklists', icon: <ScheduleOutlined />, permission: 'setup.manage' },
+  { href: '/admin/audit', label: 'Audit log', icon: <HistoryOutlined />, permission: 'audit.view' },
   { href: '/admin/equipment-types', label: 'Equipment types', icon: <MedicineBoxOutlined />, permission: 'setup.manage' },
   { href: '/admin/settings', label: 'Hospital settings', icon: <SettingOutlined />, permission: 'setup.manage' },
 ];

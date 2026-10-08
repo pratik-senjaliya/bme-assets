@@ -24,3 +24,34 @@ export const daysFromToday = (due: Date) => daysBetween(parseDate(todayISO()), d
 // 07 Oct 2026, for messages and emails.
 export const prettyDate = (d: Date) =>
   new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(d);
+
+// ---- Hospital-timezone helpers (reports and the dashboard bucket by hospital days and months) ----
+
+// YYYY-MM-DD of an instant, as seen in APP_TIMEZONE.
+export const dayInTz = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: config.timezone }).format(d);
+export const monthInTz = (d: Date) => dayInTz(d).slice(0, 7);
+
+function tzOffsetMinutes(at: Date): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: config.timezone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      .formatToParts(at)
+      .map((x) => [x.type, x.value]),
+  );
+  return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - at.getTime()) / 60_000;
+}
+
+// The instant a calendar day starts in the hospital timezone (00:00 on that date there).
+export function zonedDayStart(iso: string): Date {
+  const utcMidnight = parseDate(iso);
+  return new Date(utcMidnight.getTime() - tzOffsetMinutes(utcMidnight) * 60_000);
+}
+
+export const addDaysISO = (iso: string, days: number) => {
+  const d = parseDate(iso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return isoDate(d);
+};
+export const endOfMonthISO = (iso: string) => {
+  const [y, m] = iso.split('-').map(Number);
+  return isoDate(new Date(Date.UTC(y, m, 0)));
+};

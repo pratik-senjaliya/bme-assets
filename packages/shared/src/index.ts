@@ -603,3 +603,77 @@ export type CondemnationInfo = {
   approvedAt: string;
   eolLetter: { id: string; fileName: string } | null;
 };
+
+// ---------- Dashboard ----------
+
+export type DashboardMonth = { month: string; label: string; breakdowns: number; downtimeHours: number };
+export type DashboardDueItem = {
+  kind: 'pms' | 'calibration';
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  dueDate: string;
+  daysLeft: number; // negative = overdue
+};
+export type DashboardResponse = {
+  scope: 'hospital' | 'department';
+  departmentName: string | null;
+  activeAssets: number;
+  openComplaints: number; // open + in progress
+  // null when the signed-in user's role does not see PMS / calibration / approvals
+  dueThisMonth: number | null;
+  overdue: number | null;
+  pendingApprovals: number | null;
+  dueSoon: DashboardDueItem[] | null;
+  openList: ComplaintRow[];
+  months: DashboardMonth[]; // last 6 months, oldest first
+};
+
+// ---------- Reports (Excel) ----------
+
+export const REPORTS = [
+  { type: 'asset-master', title: 'Asset master', description: 'Every asset with its department, location, criticality, status, warranty and next due dates. Condemned and not-in-use assets are included and labelled.', range: false },
+  { type: 'pms', title: 'PMS records', description: 'Preventive maintenance done in the period, with a summary per equipment type.', range: true },
+  { type: 'calibration', title: 'Calibration', description: 'Calibrations done in the period, and every active asset’s next calibration due date.', range: true },
+  { type: 'breakdowns', title: 'Breakdowns', description: 'Complaints raised in the period with response time and downtime, summarised by month or year.', range: true, group: true },
+  { type: 'uptime', title: 'Equipment uptime', description: 'Uptime per asset over the period, from complaint downtime (24 hours a day).', range: true },
+  { type: 'critical-downtime', title: 'Downtime of critical equipment', description: 'Uptime and every downtime event for assets marked Critical.', range: true },
+  { type: 'equipment-age', title: 'Equipment age', description: 'Age of every asset, grouped into age bands and by equipment type.', range: false },
+  { type: 'expenses', title: 'Service expenses', description: 'Repair and spare-part costs in the period, per asset and per month.', range: true },
+] as const;
+export type ReportType = (typeof REPORTS)[number]['type'];
+
+export const reportQuerySchema = z
+  .object({
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional(),
+    group: z.enum(['month', 'year']).default('month'),
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'The start date is after the end date', path: ['from'] });
+export type ReportQuery = z.infer<typeof reportQuerySchema>;
+
+// ---------- Audit log viewer ----------
+
+export const auditQuerySchema = z.object({
+  entityType: z.string().trim().max(60).optional(),
+  entityId: z.string().trim().max(60).optional(),
+  action: z.string().trim().max(60).optional(), // contains
+  actorId: z.string().uuid().optional(),
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+export type AuditRow = {
+  id: string;
+  at: string;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  before: unknown;
+  after: unknown;
+  ip: string | null;
+};
