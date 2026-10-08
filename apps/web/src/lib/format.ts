@@ -1,3 +1,4 @@
+import type { ValueFmt } from '@bme/shared';
 const TZ = 'Asia/Kolkata';
 
 // 07 Oct 2026
@@ -62,3 +63,43 @@ export const endOfMonthISO = (iso: string) => {
 };
 
 export const daysFromToday = (iso: string) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - new Date(`${todayIST()}T00:00:00Z`).getTime()) / 86_400_000);
+
+// "Dr. Meera Shah (HOD)" → "Dr. Meera Shah"; first name "Meera"; initials "MS". Titles are not names.
+const TITLE = /^(dr|mr|mrs|ms|sister|sr|nurse)\.?\s+/i;
+export const shortName = (name: string) => name.replace(/\s*\(.*\)\s*$/, '').trim();
+export const firstName = (name: string) => shortName(name).replace(TITLE, '').split(/\s+/)[0] ?? '';
+export const initials = (name: string) =>
+  shortName(name)
+    .replace(TITLE, '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+
+// A number or text as its report column or chart says it should read.
+export function formatValue(v: unknown, fmt: ValueFmt | undefined): string {
+  if (v == null || v === '') return '—';
+  if (typeof v === 'string') return fmt === 'date' ? formatDate(v) : v;
+  if (typeof v !== 'number') return String(v);
+  const n = (digits: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(v);
+  switch (fmt) {
+    case 'money':
+      return `₹ ${n(0)}`;
+    case 'pct':
+      return `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 }).format(v * 100)}%`;
+    case 'hours':
+      return `${n(1)} h`;
+    case 'years':
+      return `${n(1)} y`;
+    default:
+      return n(Number.isInteger(v) ? 0 : 1);
+  }
+}
+
+// Short numbers for chart axes: 1.2L, 45K, 98%.
+export function formatAxis(v: number, fmt: ValueFmt): string {
+  if (fmt === 'pct') return `${Math.round(v * 100)}%`;
+  const abs = Math.abs(v);
+  const short = abs >= 1e7 ? `${+(v / 1e7).toFixed(1)}Cr` : abs >= 1e5 ? `${+(v / 1e5).toFixed(1)}L` : abs >= 1e4 ? `${+(v / 1e3).toFixed(0)}K` : String(+v.toFixed(1));
+  return fmt === 'money' ? `₹${short}` : short;
+}

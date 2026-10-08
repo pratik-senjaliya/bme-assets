@@ -223,7 +223,7 @@ describe('purchase orders, contracts and timeline', () => {
 });
 
 describe('Excel import', () => {
-  const HEADERS = ['Equipment type code', 'Name', 'Make', 'Model', 'Serial no', 'Department code', 'Location code', 'Criticality', 'Installation date', 'Warranty months', 'PMS frequency months'];
+  const HEADERS = ['Equipment type code', 'Name', 'Make', 'Model', 'Serial no', 'Department code', 'Location code', 'Criticality', 'Installation date', 'Warranty months', 'PMS frequency months', 'Last PMS done', 'Last calibration done'];
 
   async function workbook(rows: (string | number | undefined)[][]) {
     const wb = new ExcelJS.Workbook();

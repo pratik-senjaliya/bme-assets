@@ -66,10 +66,10 @@ const table = (wb: ExcelJS.Workbook, sheet: string) => {
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
 describe('every report downloads as a valid Excel file', () => {
-  it('has all eight, each with data sheets and an About sheet', async () => {
+  it('has all nine, each with data sheets and an About sheet', async () => {
     const expected: Record<string, string[]> = {
       'asset-master': ['Asset master'], pms: ['PMS records', 'Summary'], calibration: ['Calibrations done', 'Next due (active assets)'], breakdowns: ['Breakdowns', 'By month'],
-      uptime: ['Uptime', 'Summary'], 'critical-downtime': ['Uptime', 'Downtime events'], 'equipment-age': ['Assets by age', 'Age bands', 'By equipment type'], expenses: ['Expenses', 'By asset', 'By month'],
+      uptime: ['Uptime', 'Summary'], 'critical-downtime': ['Uptime', 'Downtime events'], 'equipment-age': ['Assets by age', 'Age bands', 'By equipment type'], expenses: ['Expenses', 'By asset', 'By month'], 'warranty-contracts': ['Warranty', 'Contracts', 'No cover (active)'],
     };
     assert.deepEqual(REPORTS.map((r) => r.type).sort(), Object.keys(expected).sort());
     for (const [type, sheets] of Object.entries(expected)) {
@@ -249,5 +249,100 @@ describe('audit log', () => {
     await assert.rejects(prisma.auditLog.deleteMany({ where: { id: row.id } }), /append-only/);
     assert.equal((await prisma.auditLog.findUniqueOrThrow({ where: { id: row.id } })).action, row.action);
     assert.equal(isoDate(parseDate(today)), today);
+  });
+});
+
+describe('reports on screen and as PDF', () => {
+  const asJson = async (cookie: string, type: string, qs = '') => {
+    const res = await fetch(`${base}/reports/${type}?format=json${qs ? `&${qs.replace(/^\?/, '')}` : ''}`, { headers: { cookie } });
+    return { res, data: (await res.json()) as import('@bme/shared').ReportData };
+  };
+
+  it('gives every report as data: figures, charts and tables, the same ones Excel is made from', async () => {
+    for (const { type } of REPORTS) {
+      const { res, data } = await asJson(biomed, type);
+      assert.equal(res.status, 200, type);
+      assert.match(res.headers.get('content-type') ?? '', /json/);
+      assert.equal(data.type, type);
+      assert.ok(data.kpis.length > 0, `${type} has headline figures`);
+      assert.ok(data.sheets.length > 0, `${type} has tables`);
+      for (const c of data.charts) {
+        assert.ok(c.series.length > 0 && c.series.every((s) => c.data.every((d) => s.key in d)), `${type}/${c.id} chart data matches its series`);
+      }
+      // Excel is made from this very data: same sheet names and row counts.
+      const { wb } = await report(biomed, type);
+      for (const s of data.sheets) assert.equal(wb.getWorksheet(s.name)!.rowCount, s.rows.length + 1 + (s.totals?.length && s.rows.length ? 1 : 0), `${type}/${s.name} rows`);
+    }
+  });
+
+  it('sends dates as plain YYYY-MM-DD and never records a screen view as an export', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'report.export' } });
+    const { data } = await asJson(biomed, 'asset-master');
+    const installed = data.sheets[0].rows.map((r) => r.installed).find((v) => v != null);
+    assert.match(String(installed), /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(await prisma.auditLog.count({ where: { action: 'report.export' } }), before, 'looking is not exporting');
+  });
+
+  it('makes a PDF that is a real PDF, audited like Excel, for report viewers only', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'report.export' } });
+    const res = await fetch(`${base}/reports/breakdowns?format=pdf&from=2026-01-01&to=${today}`, { headers: { cookie: biomed } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'application/pdf');
+    assert.match(res.headers.get('content-disposition') ?? '', /bme-breakdowns-.*\.pdf/);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+    assert.ok(bytes.length > 2000);
+    assert.equal(await prisma.auditLog.count({ where: { action: 'report.export' } }), before + 1);
+    assert.equal((await fetch(`${base}/reports/breakdowns?format=pdf`, { headers: { cookie: nursing } })).status, 403);
+    assert.equal((await fetch(`${base}/reports/breakdowns?format=json`, { headers: { cookie: nursing } })).status, 403);
+  });
+
+  it('makes a valid PDF of every report and of one equipment’s history (totals rows included)', async () => {
+    const isPdf = async (res: Response) => {
+      assert.equal(res.status, 200);
+      const bytes = Buffer.from(await res.arrayBuffer());
+      assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+      assert.ok(bytes.subarray(-1024).toString('latin1').includes('%%EOF'), 'the file is complete');
+    };
+    for (const { type } of REPORTS) await isPdf(await fetch(`${base}/reports/${type}?format=pdf`, { headers: { cookie: biomed } }));
+    const asset = await prisma.asset.findFirstOrThrow({ orderBy: { assetCode: 'asc' } });
+    await isPdf(await fetch(`${base}/assets/${asset.id}/history?format=pdf`, { headers: { cookie: biomed } }));
+    const json = await fetch(`${base}/assets/${asset.id}/history?format=json`, { headers: { cookie: biomed } });
+    assert.equal(((await json.json()) as import('@bme/shared').ReportData).type, 'asset-history');
+    assert.equal((await fetch(`${base}/assets/${asset.id}/history?format=pdf`, { headers: { cookie: nursing } })).status, 403);
+  });
+
+  it('works out the warranty and contract picture, including active equipment with no cover', async () => {
+    const { data } = await asJson(biomed, 'warranty-contracts');
+    const k = Object.fromEntries(data.kpis.map((x) => [x.label, x.value]));
+    assert.equal(typeof k['Active equipment with no cover'], 'number');
+    const noCover = data.sheets.find((s) => s.name === 'No cover (active)')!;
+    assert.equal(noCover.rows.length, k['Active equipment with no cover']);
+  });
+});
+
+describe('richer dashboard', () => {
+  const dash = async (cookie: string) => (await (await fetch(`${base}/dashboard`, { headers: { cookie } })).json()) as import('@bme/shared').DashboardResponse;
+
+  it('gives the HOD figures and charts for the whole hospital, with every chart matching its series', async () => {
+    const d = await dash(admin);
+    const labels = d.kpis.map((k) => k.label);
+    assert.ok(labels.includes('Uptime, last 30 days') && labels.includes('Service spend this month'));
+    const ids = d.charts.map((c) => c.id);
+    for (const id of ['breakdowns', 'downtime', 'due-ahead', 'by-department', 'spend', 'age']) assert.ok(ids.includes(id), `chart ${id}`);
+    assert.equal(d.charts.find((c) => c.id === 'breakdowns')!.data.length, 12, 'twelve months, quiet ones as zero');
+    for (const c of d.charts) assert.ok(c.series.every((s) => c.data.every((row) => s.key in row)), c.id);
+    const uptime = d.kpis.find((k) => k.label === 'Uptime, last 30 days')!.value as number;
+    assert.ok(uptime >= 0 && uptime <= 1);
+    assert.ok(Array.isArray(d.topBreakdowns) && Array.isArray(d.expiring));
+  });
+
+  it('shows nursing only its own department, with no costs, due dates or cover figures', async () => {
+    const d = await dash(nursing);
+    assert.equal(d.scope, 'department');
+    const ids = d.charts.map((c) => c.id);
+    for (const id of ['spend', 'due-ahead', 'by-department']) assert.ok(!ids.includes(id), `no ${id} chart for nursing`);
+    assert.ok(!d.kpis.some((k) => /spend|Cover/.test(k.label)));
+    assert.equal(d.expiring, null);
   });
 });

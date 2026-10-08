@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
 import multer from 'multer';
 import type { AttachmentKind as DbAttachmentKind, Prisma } from '@prisma/client';
-import { MAX_UPLOAD_BYTES, type AttachmentRow } from '@bme/shared';
+import { MAX_UPLOAD_BYTES, type AttachmentOwnerType, type AttachmentRow } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { getStorage } from '../../lib/storage';
+import { prisma } from '../../lib/prisma';
 
 export const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
 
@@ -61,5 +62,30 @@ export async function storeAttachment(
   } catch (e) {
     await storage.remove(key).catch(() => undefined); // don't leave an orphan file behind
     throw e;
+  }
+}
+
+// Every document belongs to one asset, directly or through one of its records. This finds that asset, so the
+// department scope and permissions of the asset apply to the document too.
+export async function assetIdOfOwner(ownerType: string, ownerId: string): Promise<string | undefined> {
+  const t = ownerType as AttachmentOwnerType;
+  const id = { where: { id: ownerId } };
+  switch (t) {
+    case 'asset':
+      return ownerId;
+    case 'complaint':
+      return (await prisma.complaint.findUnique(id))?.assetId;
+    case 'service_log':
+      return (await prisma.serviceLog.findUnique(id))?.assetId;
+    case 'service_expense':
+      return (await prisma.serviceExpense.findUnique(id))?.assetId;
+    case 'service_contract':
+      return (await prisma.serviceContract.findUnique(id))?.assetId;
+    case 'purchase_order':
+      return (await prisma.purchaseOrder.findUnique(id))?.assetId;
+    case 'calibration_record':
+      return (await prisma.calibrationRecord.findUnique(id))?.assetId;
+    default:
+      return undefined;
   }
 }

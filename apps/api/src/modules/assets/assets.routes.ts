@@ -3,12 +3,16 @@ import type { Prisma } from '@prisma/client';
 import {
   KEY_FIELDS,
   assetListQuerySchema,
+  attachmentCreateSchema,
+  attachmentOwnerSchema,
   attachmentUploadSchema,
   createAssetSchema,
   purchaseOrderSchema,
   serviceContractSchema,
   updateAssetSchema,
   type AssetRow,
+  type AttachmentOwnerType,
+  type PermissionCode,
   type CreateAssetInput,
   type Paged,
   type PurchaseOrderInput,
@@ -26,19 +30,23 @@ import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
 import { approvers, notify } from '../approvals/approvals.service';
-import { storeAttachment, toAttachmentRow, upload } from './attachments.service';
+import { assetIdOfOwner, storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
   CREATE_TX_OPTIONS,
   assertLocationInDepartment,
+  assertOpeningDate,
   assertSerialFree,
   assetInclude,
   createAssets,
   findScopedAsset,
+  firstDue,
   toAssetDetail,
   toAssetRow,
   warrantyEndFor,
 } from './assets.service';
+
+const SERVICE_LABEL = { amc_visit: 'AMC visit', cmc_visit: 'CMC visit', repair: 'Repair', inspection: 'Inspection', other: 'Other' } as const;
 
 export const assetsRouter = Router();
 
@@ -118,8 +126,27 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
     if ('serialNo' in keyChanges) await assertSerialFree(keyChanges.serialNo as string | null, before.id);
   }
 
-  const apply = canEditKey ? { ...changes, ...keyChanges } : changes;
+  // Opening dates are not columns to copy as strings: they set the first due date, and only while no real
+  // PMS / calibration record exists (after that the records decide).
+  const { openingPmsOn, openingCalibrationOn, ...plain } = changes as { openingPmsOn?: string | null; openingCalibrationOn?: string | null } & Record<string, unknown>;
+  const apply = canEditKey ? { ...plain, ...keyChanges } : plain;
   const data: Prisma.AssetUncheckedUpdateInput = { ...apply };
+  const installIso = 'installationDate' in apply ? (apply.installationDate as string | null) : before.installationDate ? isoDate(before.installationDate) : null;
+  if (openingPmsOn !== undefined) {
+    assertOpeningDate('openingPmsOn', openingPmsOn, installIso);
+    if (await prisma.pmsRecord.count({ where: { assetId: before.id } })) throw new HttpError(409, 'PMS has already been recorded for this equipment, so the starting date can no longer be changed');
+    const months = ('pmsFrequencyMonths' in apply ? (apply.pmsFrequencyMonths as number | null) : before.pmsFrequencyMonths) ?? null;
+    const from = openingPmsOn ? parseDate(openingPmsOn) : before.installationDate;
+    data.openingPmsOn = openingPmsOn ? parseDate(openingPmsOn) : null;
+    data.nextPmsDue = firstDue(from, months);
+  }
+  if (openingCalibrationOn !== undefined) {
+    assertOpeningDate('openingCalibrationOn', openingCalibrationOn, installIso);
+    if (await prisma.calibrationRecord.count({ where: { assetId: before.id } })) throw new HttpError(409, 'Calibration has already been recorded for this equipment, so the starting date can no longer be changed');
+    const from = openingCalibrationOn ? parseDate(openingCalibrationOn) : before.installationDate;
+    data.openingCalibrationOn = openingCalibrationOn ? parseDate(openingCalibrationOn) : null;
+    data.nextCalibrationDue = firstDue(from, before.equipmentType.defaultCalibrationMonths);
+  }
   if ('installationDate' in apply || 'warrantyMonths' in apply) {
     const installationDate = 'installationDate' in apply ? (apply.installationDate ? parseDate(apply.installationDate as string) : null) : before.installationDate;
     const months = 'warrantyMonths' in apply ? ((apply.warrantyMonths as number | null) ?? null) : before.warrantyMonths;
@@ -129,13 +156,14 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   }
 
   const requestKeyChange = hasKeyChanges && !canEditKey;
-  if (Object.keys(apply).length === 0 && !requestKeyChange) {
+  const touched = Object.keys(data).length > 0;
+  if (!touched && !requestKeyChange) {
     res.json({ asset: toAssetDetail(before), pendingApproval: false } satisfies UpdateAssetResponse);
     return;
   }
 
   await prisma.$transaction(async (tx) => {
-    if (Object.keys(apply).length > 0) {
+    if (touched) {
       const after = await tx.asset.update({ where: { id: before.id }, data });
       await audit(tx, req, { action: 'asset.update', entityType: 'asset', entityId: before.id, before, after });
     }
@@ -163,19 +191,22 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
 
 assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
-  const [orders, contracts, attachments, pms, calibrations, complaints] = await Promise.all([
+  const [orders, contracts, attachments, pms, calibrations, complaints, serviceLogs] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { assetId: asset.id } }),
     prisma.serviceContract.findMany({ where: { assetId: asset.id } }),
     prisma.attachment.findMany({ where: { ownerType: 'asset', ownerId: asset.id } }),
     prisma.pmsRecord.findMany({ where: { assetId: asset.id } }),
     prisma.calibrationRecord.findMany({ where: { assetId: asset.id } }),
     prisma.complaint.findMany({ where: { assetId: asset.id } }),
+    prisma.serviceLog.findMany({ where: { assetId: asset.id } }),
   ]);
 
   const events: TimelineEvent[] = [
     { date: asset.createdAt.toISOString(), kind: 'registered', title: `Registered as ${asset.assetCode}` },
     ...orders.map((o): TimelineEvent => ({ date: isoDate(o.poDate), kind: 'purchase_order', title: `Purchase order ${o.poNumber}`, detail: o.vendor })),
     ...(asset.installationDate ? [{ date: isoDate(asset.installationDate), kind: 'installation', title: 'Installed' } satisfies TimelineEvent] : []),
+    ...(asset.openingPmsOn ? [{ date: isoDate(asset.openingPmsOn), kind: 'opening', title: 'Last PMS before this system', detail: 'Entered when the equipment was registered' } satisfies TimelineEvent] : []),
+    ...(asset.openingCalibrationOn ? [{ date: isoDate(asset.openingCalibrationOn), kind: 'opening', title: 'Last calibration before this system', detail: 'Entered when the equipment was registered' } satisfies TimelineEvent] : []),
     ...(asset.installationDate && asset.warrantyEnd
       ? [{ date: isoDate(asset.warrantyEnd), kind: 'warranty', title: 'Warranty ends', detail: `${asset.warrantyMonths} months from installation` } satisfies TimelineEvent]
       : []),
@@ -184,6 +215,7 @@ assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, r
       { date: isoDate(c.endDate), kind: 'contract', title: `${c.type.toUpperCase()} contract ends`, detail: c.vendor },
     ]),
     ...attachments.map((a): TimelineEvent => ({ date: a.createdAt.toISOString(), kind: 'document', title: `Document added: ${a.fileName || a.kind}` })),
+    ...serviceLogs.map((l): TimelineEvent => ({ date: isoDate(l.serviceDate), kind: 'service', title: `Service: ${SERVICE_LABEL[l.kind]}`, detail: [l.vendor, l.description].filter(Boolean).join(' · ') })),
     ...pms.map((p): TimelineEvent => ({ date: isoDate(p.performedOn), kind: 'pms', title: 'PMS done', detail: p.result })),
     ...calibrations.map((c): TimelineEvent => ({ date: isoDate(c.doneOn), kind: 'calibration', title: 'Calibration done', detail: `${c.agency} · ${c.result}` })),
     ...complaints.flatMap((c): TimelineEvent[] => [
@@ -255,16 +287,63 @@ assetsRouter.post('/:id/attachments', requirePermission('asset.edit'), upload.si
 // department checks as the asset itself.
 export const attachmentsRouter = Router();
 
+// Who may read / add documents on each kind of record. Costs and calibration stay with the staff who manage them;
+// nursing can see and add photos on complaints of their own department only (asset scope applies to every file).
+const READ_PERMISSION: Record<AttachmentOwnerType, PermissionCode> = {
+  asset: 'asset.view',
+  complaint: 'complaint.view',
+  service_log: 'asset.view',
+  service_expense: 'expense.manage',
+  service_contract: 'asset.view',
+  purchase_order: 'asset.view',
+  calibration_record: 'calibration.manage',
+};
+const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
+  asset: ['asset.edit'],
+  complaint: ['complaint.create', 'complaint.start', 'complaint.resolve'],
+  service_log: ['asset.edit'],
+  service_expense: ['expense.manage'],
+  service_contract: ['asset.edit'],
+  purchase_order: ['asset.edit'],
+  calibration_record: ['calibration.manage'],
+};
+
+// The owner's asset, loaded with the department scope: a foreign record looks like a missing one.
+async function scopedOwnerAsset(req: Request, ownerType: AttachmentOwnerType, ownerId: string) {
+  const assetId = await assetIdOfOwner(ownerType, ownerId);
+  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...departmentScope(currentUser(req)) } }) : null;
+  if (!asset) throw new HttpError(404, 'Not found');
+  return asset;
+}
+
+attachmentsRouter.get('/', async (req, res) => {
+  const { ownerType, ownerId } = attachmentOwnerSchema.parse(req.query);
+  if (!currentUser(req).permissions.includes(READ_PERMISSION[ownerType])) throw new HttpError(403, 'You do not have permission to see these documents');
+  await scopedOwnerAsset(req, ownerType, ownerId);
+  const rows = await prisma.attachment.findMany({ where: { ownerType, ownerId }, orderBy: { createdAt: 'desc' } });
+  res.json(rows.map(toAttachmentRow));
+});
+
+attachmentsRouter.post('/', upload.single('file'), async (req, res) => {
+  const { ownerType, ownerId, kind } = attachmentCreateSchema.parse(req.body);
+  const me = currentUser(req);
+  if (!WRITE_PERMISSIONS[ownerType].some((p) => me.permissions.includes(p))) throw new HttpError(403, 'You do not have permission to add documents here');
+  const asset = await scopedOwnerAsset(req, ownerType, ownerId);
+  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so documents can no longer be added');
+  if (ownerType === 'complaint') {
+    const c = await prisma.complaint.findUniqueOrThrow({ where: { id: ownerId } });
+    if (c.status === 'resolved') throw new HttpError(409, 'This complaint is resolved and closed, so documents can no longer be added');
+  }
+  res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset.id, ownerType, ownerId, kind })));
+});
+
 attachmentsRouter.get('/:id/download', requirePermission('asset.view'), async (req, res) => {
   const file = await prisma.attachment.findUnique({ where: { id: idOf(req) } });
   if (!file) throw new HttpError(404, 'File not found');
-  // Files belong to an asset directly, or through one of its records (e.g. a calibration certificate).
-  const assetId =
-    file.ownerType === 'asset'
-      ? file.ownerId
-      : file.ownerType === 'calibration_record'
-        ? (await prisma.calibrationRecord.findUnique({ where: { id: file.ownerId } }))?.assetId
-        : undefined;
+  const need = READ_PERMISSION[file.ownerType as AttachmentOwnerType];
+  if (need && !currentUser(req).permissions.includes(need)) throw new HttpError(404, 'File not found');
+  // Files belong to an asset directly, or through one of its records (a certificate, a complaint photo, ...).
+  const assetId = await assetIdOfOwner(file.ownerType, file.ownerId);
   const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...departmentScope(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'File not found');
 

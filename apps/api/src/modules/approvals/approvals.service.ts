@@ -2,6 +2,7 @@ import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import type { ApprovalRow, ApprovalStatus, ApprovalType } from '@bme/shared';
 import { audit } from '../../lib/audit';
+import { prettyDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
@@ -66,44 +67,67 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
 
 async function applyDelete(tx: Db, req: Request, targetType: string, targetId: string): Promise<string[]> {
   const gone = () => new HttpError(409, 'That entry no longer exists. Reject this request.');
+  // Documents belong to the record, so they go with it (rows now, files after the transaction commits).
+  const takeFiles = async (ownerType: string, ownerId: string = targetId) => {
+    const files = await tx.attachment.findMany({ where: { ownerType, ownerId } });
+    await tx.attachment.deleteMany({ where: { ownerType, ownerId } });
+    return files.map((f) => f.filePath);
+  };
   if (targetType === 'purchase_order') {
     const row = await tx.purchaseOrder.findUnique({ where: { id: targetId } });
     if (!row) throw gone();
+    const files = await takeFiles('purchase_order');
     await tx.purchaseOrder.delete({ where: { id: targetId } });
     await audit(tx, req, { action: 'purchase_order.delete', entityType: 'purchase_order', entityId: targetId, before: row });
+    return files;
   } else if (targetType === 'service_contract') {
     const row = await tx.serviceContract.findUnique({ where: { id: targetId } });
     if (!row) throw gone();
+    const files = await takeFiles('service_contract');
     await tx.serviceContract.delete({ where: { id: targetId } });
     await audit(tx, req, { action: 'service_contract.delete', entityType: 'service_contract', entityId: targetId, before: row });
+    return files;
   } else if (targetType === 'service_expense') {
     const row = await tx.serviceExpense.findUnique({ where: { id: targetId } });
     if (!row) throw gone();
+    const files = await takeFiles('service_expense');
     await tx.serviceExpense.delete({ where: { id: targetId } });
     await audit(tx, req, { action: 'service_expense.delete', entityType: 'service_expense', entityId: targetId, before: row });
+    return files;
+  } else if (targetType === 'service_log') {
+    const row = await tx.serviceLog.findUnique({ where: { id: targetId } });
+    if (!row) throw gone();
+    const files = await takeFiles('service_log');
+    await tx.serviceLog.delete({ where: { id: targetId } });
+    await audit(tx, req, { action: 'service_log.delete', entityType: 'service_log', entityId: targetId, before: row });
+    return files;
   } else if (targetType === 'asset') {
     const asset = await tx.asset.findUnique({ where: { id: targetId } });
     if (!asset) throw gone();
     // An asset with history is not a wrong entry: its PMS and calibration records are permanent and a complaint
     // is evidence. Those go through condemnation instead.
-    const [pms, calibrations, complaints, expenses] = await Promise.all([
+    const [pms, calibrations, complaints, expenses, serviceLogs] = await Promise.all([
       tx.pmsRecord.count({ where: { assetId: targetId } }),
       tx.calibrationRecord.count({ where: { assetId: targetId } }),
       tx.complaint.count({ where: { assetId: targetId } }),
       tx.serviceExpense.count({ where: { assetId: targetId } }),
+      tx.serviceLog.count({ where: { assetId: targetId } }),
     ]);
-    if (pms + calibrations + complaints + expenses > 0) {
-      throw new HttpError(409, 'This asset already has PMS, calibration, complaint or expense history, so it cannot be deleted. Reject this request and condemn the asset instead.');
+    if (pms + calibrations + complaints + expenses + serviceLogs > 0) {
+      throw new HttpError(409, 'This asset already has PMS, calibration, complaint, service or expense history, so it cannot be deleted. Reject this request and condemn the asset instead.');
     }
-    const attachments = await tx.attachment.findMany({ where: { ownerType: 'asset', ownerId: targetId } });
-    await tx.attachment.deleteMany({ where: { ownerType: 'asset', ownerId: targetId } });
+    const files = [
+      ...(await takeFiles('asset')),
+      ...(await Promise.all((await tx.purchaseOrder.findMany({ where: { assetId: targetId }, select: { id: true } })).map((x) => takeFiles('purchase_order', x.id)))).flat(),
+      ...(await Promise.all((await tx.serviceContract.findMany({ where: { assetId: targetId }, select: { id: true } })).map((x) => takeFiles('service_contract', x.id)))).flat(),
+    ];
     await tx.purchaseOrder.deleteMany({ where: { assetId: targetId } });
     await tx.serviceContract.deleteMany({ where: { assetId: targetId } });
     await tx.notification.deleteMany({ where: { assetId: targetId } });
     await tx.asset.delete({ where: { id: targetId } });
     // The asset ID is not handed out again: the counter only ever goes up.
     await audit(tx, req, { action: 'asset.delete', entityType: 'asset', entityId: targetId, before: asset });
-    return attachments.map((a) => a.filePath);
+    return files;
   } else {
     throw new HttpError(400, 'Unknown target');
   }
@@ -126,10 +150,11 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
   const payloads = rows.map((r) => ({ r, p: r.payload as Payload }));
   const changeIds = (key: string) => payloads.map(({ p }) => p.changes?.[key]).filter((v): v is string => typeof v === 'string');
 
-  const [pos, contracts, expenses, users, locations, departments, types] = await Promise.all([
+  const [pos, contracts, expenses, serviceLogs, users, locations, departments, types] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { id: { in: ids('purchase_order') } } }),
     prisma.serviceContract.findMany({ where: { id: { in: ids('service_contract') } } }),
     prisma.serviceExpense.findMany({ where: { id: { in: ids('service_expense') } } }),
+    prisma.serviceLog.findMany({ where: { id: { in: ids('service_log') } } }),
     prisma.user.findMany({ where: { id: { in: rows.flatMap((r) => [r.requestedBy, r.decidedBy].filter((x): x is string => !!x)) } }, select: { id: true, name: true } }),
     prisma.location.findMany({ where: { id: { in: [...changeIds('locationId'), ...payloads.map(({ p }) => p.previous?.locationId).filter((v): v is string => typeof v === 'string')] } } }),
     prisma.department.findMany({ where: { id: { in: [...changeIds('departmentId'), ...payloads.map(({ p }) => p.previous?.departmentId).filter((v): v is string => typeof v === 'string')] } } }),
@@ -140,6 +165,7 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
     : r.targetType === 'purchase_order' ? pos.find((x) => x.id === r.targetId)?.assetId
     : r.targetType === 'service_contract' ? contracts.find((x) => x.id === r.targetId)?.assetId
     : r.targetType === 'service_expense' ? expenses.find((x) => x.id === r.targetId)?.assetId
+    : r.targetType === 'service_log' ? serviceLogs.find((x) => x.id === r.targetId)?.assetId
     : undefined;
   const assetIds = [...new Set(rows.map(assetIdOf).filter((x): x is string => !!x))];
   const assets = await prisma.asset.findMany({ where: { id: { in: assetIds } } });
@@ -167,10 +193,12 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
       const po = pos.find((x) => x.id === r.targetId);
       const c = contracts.find((x) => x.id === r.targetId);
       const e = expenses.find((x) => x.id === r.targetId);
+      const sl = serviceLogs.find((x) => x.id === r.targetId);
       summary =
         r.targetType === 'asset' ? 'Delete this asset (entered by mistake). Its ID is not reused.'
         : r.targetType === 'purchase_order' ? `Delete purchase order ${po?.poNumber ?? '(already removed)'}${po ? ` (${po.vendor}, ${money(po.cost)})` : ''}`
         : r.targetType === 'service_contract' ? `Delete ${c ? `${c.type.toUpperCase().replace('_', '-')} contract with ${c.vendor}` : 'contract (already removed)'}`
+        : r.targetType === 'service_log' ? `Delete service entry ${sl ? `"${sl.description.slice(0, 60)}" (${prettyDate(sl.serviceDate)})` : '(already removed)'}`
         : `Delete expense ${e ? `"${e.description}" (${money(e.amount)})` : '(already removed)'}`;
     }
     return {

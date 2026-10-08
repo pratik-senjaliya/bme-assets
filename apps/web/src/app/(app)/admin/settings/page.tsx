@@ -34,6 +34,7 @@ export default function SettingsPage() {
       name: values.name,
       shortCode: values.shortCode,
       reminderDays: values.reminderDays,
+      criticalDowntimeHours: values.criticalDowntimeHours,
       smtpHost: values.smtpHost ?? null,
       smtpPort: values.smtpPort ?? null,
       smtpUser: values.smtpUser ?? null,
@@ -132,6 +133,13 @@ export default function SettingsPage() {
                 open={false}
                 onChange={(v: string[]) => form.setFieldValue('reminderDays', v.map(Number).filter((n) => Number.isInteger(n) && n > 0))}
               />
+            </Form.Item>
+            <Form.Item
+              label="Critical equipment downtime limit (hours)"
+              name="criticalDowntimeHours"
+              extra="A breakdown on Critical equipment that runs longer than this is flagged on the complaints board, history and the critical downtime report."
+            >
+              <InputNumber min={1} max={720} style={{ width: 160 }} />
             </Form.Item>
             </Card>
           <Card title="Email for reminders (optional)">

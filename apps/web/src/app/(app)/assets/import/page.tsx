@@ -84,6 +84,9 @@ export default function ImportPage() {
             <Typography.Paragraph type="secondary">
               Fill one row per asset. Equipment type, department and location are picked by code; the Lists sheet shows the valid codes. Leave the asset ID out, it is generated.
             </Typography.Paragraph>
+            <Typography.Paragraph type="secondary">
+              Loading equipment that is already in use? Fill <strong>Last PMS done</strong> and <strong>Last calibration done</strong> (for example 15/03/2026), so the first due dates count from then and not from the installation date. Leave them blank for new equipment.
+            </Typography.Paragraph>
             <a href="/api/v1/import/template">
               <Button icon={<DownloadOutlined />}>Download template (.xlsx)</Button>
             </a>

@@ -1,11 +1,13 @@
 'use client';
 
-import { App, Button, Card, Form, Input, Typography } from 'antd';
+import { CheckCircleFilled, LockOutlined, MailOutlined, MedicineBoxFilled } from '@ant-design/icons';
+import { App, Button, Form, Input, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { loginSchema } from '@bme/shared';
 import { useAuth } from '@/lib/auth';
 import { parseForm } from '@/lib/forms';
+import { COLORS } from '@/theme';
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -33,24 +35,55 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 16 }}>
-      <Card style={{ width: 400, maxWidth: '100%' }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
-          BME Asset Management
-        </Typography.Title>
-        <Typography.Paragraph type="secondary">Sign in with the login given by your Biomedical HOD.</Typography.Paragraph>
-        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
-            <Input type="email" autoComplete="username" autoFocus size="large" />
-          </Form.Item>
-          <Form.Item label="Password" name="password" rules={[{ required: true, message: 'Enter your password' }]}>
-            <Input.Password autoComplete="current-password" size="large" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" size="large" block loading={submitting}>
+    <main className="login-grid">
+      <section className="login-hero">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="brand-mark">
+            <MedicineBoxFilled style={{ fontSize: 17 }} />
+          </div>
+          <span style={{ fontWeight: 650, fontSize: 16 }}>BME Assets</span>
+        </div>
+        <div>
+          <h2 style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 650, letterSpacing: '-0.02em', margin: '0 0 16px', color: '#fff' }}>
+            Every device accounted for,
+            <br />
+            from purchase to condemnation.
+          </h2>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12, color: '#A9B7C9' }}>
+            {['Preventive maintenance and calibration, never missed', 'Breakdowns tracked with response time and downtime', 'HOD approvals and a complete audit trail'].map((t) => (
+              <li key={t} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <CheckCircleFilled style={{ color: '#2DD4BF' }} />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <span style={{ color: '#6B7C93', fontSize: 12 }}>Biomedical engineering department</span>
+      </section>
+      <section style={{ display: 'grid', placeItems: 'center', padding: 24, background: '#fff' }}>
+        <div style={{ width: 380, maxWidth: '100%' }}>
+          <Typography.Title level={2} style={{ marginTop: 0, marginBottom: 4, fontWeight: 650 }}>
             Sign in
-          </Button>
-        </Form>
-      </Card>
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 28 }}>
+            Use the login given to you by your Biomedical HOD.
+          </Typography.Paragraph>
+          <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
+            <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
+              <Input type="email" autoComplete="username" autoFocus size="large" prefix={<MailOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />
+            </Form.Item>
+            <Form.Item label="Password" name="password" rules={[{ required: true, message: 'Enter your password' }]}>
+              <Input.Password autoComplete="current-password" size="large" prefix={<LockOutlined style={{ color: COLORS.faint }} />} placeholder="Your password" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ marginTop: 8 }}>
+              Sign in
+            </Button>
+          </Form>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 24, fontSize: 13 }}>
+            Forgot your password? Ask your Biomedical HOD to reset it.
+          </Typography.Paragraph>
+        </div>
+      </section>
     </main>
   );
 }

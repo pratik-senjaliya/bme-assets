@@ -35,7 +35,7 @@ Switching environment changes env vars only, never code.
 7. **Condemnation** — request + EOL letters, HOD approves, asset archived but kept in history.
 8. **Approvals** — HOD queue for condemn, delete, key-field edits.
 9. **Reminders** — daily job, 30/15/5-day in-app alerts, optional email.
-10. **Dashboard and reports** — Excel exports: asset master, PMS, calibration, breakdowns (monthly/yearly), uptime, downtime of critical equipment, equipment age, expenses.
+10. **Dashboard and reports** — read on screen with charts, exported to Excel or PDF: asset master, PMS, calibration, breakdowns (monthly/yearly), uptime, downtime of critical equipment, equipment age, expenses.
 11. **Settings, import, audit** — departments, locations, equipment types, PMS templates, reminder days, SMTP, bulk Excel import, audit log.
 
 ## Data model (PostgreSQL, Prisma)
@@ -81,7 +81,7 @@ Uptime, downtime, breakdown counts and equipment age are computed by queries, no
 | Complaints | GET/POST /complaints, POST /complaints/:id/start, POST /complaints/:id/resolve |
 | Approvals | GET /approvals, POST /approvals/:id/approve, POST /approvals/:id/reject |
 | Notifications | GET /notifications, POST /notifications/:id/read |
-| Reports | GET /dashboard, GET /reports/:type?from&to&format=xlsx |
+| Reports | GET /dashboard, GET /reports/:type?from&to&group&format=json\|xlsx\|pdf, GET /assets/:id/history?format=json\|xlsx\|pdf |
 | Import | POST /import/assets, GET /import/template |
 | Audit | GET /audit-logs |
 | Health | GET /health |

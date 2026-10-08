@@ -17,6 +17,7 @@ const toResponse = (s: Row): SettingsResponse => ({
   assetIdPattern: s.assetIdPattern,
   patternLocked: s.patternLocked,
   reminderDays: s.reminderDays,
+  criticalDowntimeHours: s.criticalDowntimeHours,
   smtpHost: s.smtpHost,
   smtpPort: s.smtpPort,
   smtpUser: s.smtpUser,

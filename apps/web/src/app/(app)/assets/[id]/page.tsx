@@ -1,12 +1,12 @@
 'use client';
 
-import { InboxOutlined, LockOutlined } from '@ant-design/icons';
+import { FileTextOutlined, InboxOutlined, LockOutlined } from '@ant-design/icons';
 import {
   Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Result, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload,
 } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import {
   ATTACHMENT_KINDS,
@@ -28,33 +28,31 @@ import {
 } from '@bme/shared';
 import { AssetApprovalBanners } from '@/components/AssetApprovalBanners';
 import { AssetCalibrationTab } from '@/components/AssetCalibrationTab';
+import { AssetServiceLogTab } from '@/components/AssetServiceLogTab';
 import { AssetPmsTab } from '@/components/AssetPmsTab';
-import { ComplaintsTable } from '@/components/ComplaintsTable';
+import { ComplaintsHistory } from '@/components/ComplaintsHistory';
 import { DataTable } from '@/components/DataTable';
+import { DocumentsButton } from '@/components/DocumentList';
+import { FilePicker } from '@/components/FilePicker';
 import { PageHeader } from '@/components/PageHeader';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { RequestCondemnModal, RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
+import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize } from '@/lib/format';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 
-const KIND_LABEL: Record<string, string> = {
-  po: 'Purchase order',
-  installation_report: 'Installation report',
-  photo: 'Photo',
-  manual: 'Manual',
-  certificate: 'Certificate',
-  eol_letter: 'End-of-life letter',
-};
 const TIMELINE_COLOR: Record<TimelineEvent['kind'], string> = {
-  registered: 'blue', purchase_order: 'gray', installation: 'green', warranty: 'gray', contract: 'gray', document: 'gray', pms: 'green', calibration: 'green', complaint: 'red',
+  registered: 'blue', purchase_order: 'gray', installation: 'green', warranty: 'gray', contract: 'gray', document: 'gray', pms: 'green', calibration: 'green', complaint: 'red', service: 'green', opening: 'gray',
 };
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
+  const router = useRouter();
   const asset = useFetch<AssetDetail>(`/assets/${id}`);
   const initialTab = useSearchParams().get('tab') ?? 'overview';
   const [raising, setRaising] = useState(false);
@@ -72,8 +70,9 @@ export default function AssetDetailPage() {
   return (
     <>
       <PageHeader
-        title={a.assetCode}
-        subtitle={a.name}
+        title={<span className="code">{a.assetCode}</span>}
+        meta={<StatusTag status={a.status} />}
+        subtitle={`${a.name}${a.make || a.model ? ` · ${[a.make, a.model].filter(Boolean).join(' ')}` : ''}`}
         crumbs={['Assets', a.assetCode]}
         action={
           <Space>
@@ -87,15 +86,24 @@ export default function AssetDetailPage() {
                 <Button type="primary">Edit asset</Button>
               </Link>
             )}
-            {can('asset.request_change') && (
+            {(can('asset.request_change') || can('report.view')) && (
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
-                    ...(a.status !== 'condemned' ? [{ key: 'condemn', label: 'Request condemnation' }] : []),
-                    { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
+                    ...(can('report.view') ? [{ key: 'history', icon: <FileTextOutlined />, label: 'Full history report' }] : []),
+                    ...(can('asset.request_change')
+                      ? [
+                          ...(a.status !== 'condemned' ? [{ key: 'condemn', label: 'Request condemnation' }] : []),
+                          { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
+                        ]
+                      : []),
                   ],
-                  onClick: ({ key }) => (key === 'condemn' ? setCondemning(true) : setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` })),
+                  onClick: ({ key }) => {
+                    if (key === 'history') router.push(`/assets/${a.id}/history`);
+                    else if (key === 'condemn') setCondemning(true);
+                    else setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` });
+                  },
                 }}
               >
                 <Button>More</Button>
@@ -105,20 +113,28 @@ export default function AssetDetailPage() {
         }
       />
       <AssetApprovalBanners asset={a} version={requests} />
-      <Card style={{ marginBottom: 16 }}>
-        <Space size={[32, 16]} wrap align="start">
-          <Stat label="Status"><StatusTag status={a.status} /></Stat>
+      {a.status === 'active' && a.nextPmsDue && daysFromToday(a.nextPmsDue) < 0 && can('pms.perform') && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="error"
+          showIcon
+          message={`PMS is overdue by ${-daysFromToday(a.nextPmsDue)} ${-daysFromToday(a.nextPmsDue) === 1 ? 'day' : 'days'}`}
+          description={`It was due on ${formatDate(a.nextPmsDue)}.`}
+          action={<Link href={`/assets/${a.id}/pms/new`}><Button danger>Perform PMS</Button></Link>}
+        />
+      )}
+      <Card style={{ marginBottom: 20 }} styles={{ body: { padding: 20 } }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '20px 32px' }}>
+          <Stat label="Location">{a.departmentName}<Sub>{a.locationName}</Sub></Stat>
           <Stat label="Criticality"><CriticalityTag value={a.criticality} /></Stat>
-          <Stat label="Department · location">{a.departmentName} · {a.locationName}</Stat>
-          <Stat label="Make · model">{[a.make, a.model].filter(Boolean).join(' · ') || '—'}</Stat>
-          <Stat label="Age">{formatAge(a.ageMonths)}</Stat>
+          <Stat label="Age">{formatAge(a.ageMonths)}<Sub>{a.installationDate ? `Installed ${formatDate(a.installationDate)}` : 'Installation date not set'}</Sub></Stat>
           <Stat label="Warranty">
             <WarrantyTag status={a.warrantyStatus} />
-            {a.warrantyEnd && <span style={{ marginLeft: 8, color: '#6B7280' }}>until {formatDate(a.warrantyEnd)}</span>}
+            {a.warrantyEnd && <Sub>until {formatDate(a.warrantyEnd)}</Sub>}
           </Stat>
-          <Stat label="Next PMS due">{a.nextPmsDue ? <Space size={4}>{formatDate(a.nextPmsDue)}<DueTag daysLeft={daysFromToday(a.nextPmsDue)} /></Space> : '—'}</Stat>
-          <Stat label="Next calibration due">{a.nextCalibrationDue ? <Space size={4}>{formatDate(a.nextCalibrationDue)}<DueTag daysLeft={daysFromToday(a.nextCalibrationDue)} /></Space> : '—'}</Stat>
-        </Space>
+          <Stat label="Next PMS">{a.nextPmsDue ? <>{formatDate(a.nextPmsDue)}<Sub><DueTag daysLeft={daysFromToday(a.nextPmsDue)} /></Sub></> : '—'}</Stat>
+          <Stat label="Next calibration">{a.nextCalibrationDue ? <>{formatDate(a.nextCalibrationDue)}<Sub><DueTag daysLeft={daysFromToday(a.nextCalibrationDue)} /></Sub></> : '—'}</Stat>
+        </div>
       </Card>
       <Tabs
         defaultActiveKey={initialTab}
@@ -127,7 +143,8 @@ export default function AssetDetailPage() {
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
           ...(can('pms.perform') ? [{ key: 'pms', label: 'PMS', children: <AssetPmsTab asset={a} /> }] : []),
           ...(can('calibration.manage') ? [{ key: 'calibration', label: 'Calibration', children: <AssetCalibrationTab asset={a} onChanged={asset.reload} /> }] : []),
-          ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsTable assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
+          ...(can('asset.edit') ? [{ key: 'service', label: 'Service log', children: <AssetServiceLogTab assetId={a.id} canEdit={a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
+          ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsHistory assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
           ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
           { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
           { key: 'documents', label: 'Documents', children: <DocumentsTab id={a.id} canEdit={can('asset.edit')} /> },
@@ -148,24 +165,33 @@ export default function AssetDetailPage() {
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 4 }}>{label}</div>
-      <div>{children}</div>
+      <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontWeight: 500, color: COLORS.ink }}>{children}</div>
     </div>
   );
 }
 
+const Sub = ({ children }: { children: React.ReactNode }) => <div style={{ fontWeight: 400, color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{children}</div>;
+
 function Overview({ a }: { a: AssetDetail }) {
   return (
     <Card>
-      <Descriptions column={{ xs: 1, md: 2 }} size="small">
+      <Descriptions
+        column={{ xs: 1, md: 3 }}
+        layout="vertical"
+        colon={false}
+        styles={{ label: { color: COLORS.muted, fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }, content: { color: COLORS.ink, fontWeight: 500, paddingBottom: 12 } }}
+      >
         <Descriptions.Item label={<span>Asset ID <Tooltip title="Generated by the system and never changes"><LockOutlined aria-label="Locked" /></Tooltip></span>}>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{a.assetCode}</span>
+          <span className="code">{a.assetCode}</span>
         </Descriptions.Item>
         <Descriptions.Item label="Equipment type">{a.equipmentTypeName}</Descriptions.Item>
         <Descriptions.Item label="Serial number">{a.serialNo ?? '—'}</Descriptions.Item>
         <Descriptions.Item label="Installed">{formatDate(a.installationDate)}</Descriptions.Item>
         <Descriptions.Item label="Warranty">{a.warrantyMonths != null ? `${a.warrantyMonths} months` : '—'}</Descriptions.Item>
         <Descriptions.Item label="PMS interval">{a.pmsFrequencyMonths ? `Every ${a.pmsFrequencyMonths} months` : '—'}</Descriptions.Item>
+        {a.openingPmsOn && <Descriptions.Item label="Last PMS before this system">{formatDate(a.openingPmsOn)}</Descriptions.Item>}
+        {a.openingCalibrationOn && <Descriptions.Item label="Last calibration before this system">{formatDate(a.openingCalibrationOn)}</Descriptions.Item>}
         <Descriptions.Item label="Registered">{formatDateTime(a.createdAt)}</Descriptions.Item>
       </Descriptions>
     </Card>
@@ -208,12 +234,21 @@ const deleteColumn = <T extends { id: string }>({ canRequest, requestDelete }: R
     ? [{ title: '', key: 'request-delete', align: 'right' as const, render: (_: unknown, r: T) => <Button size="small" type="text" danger onClick={() => requestDelete({ type, id: r.id, label: labelOf(r) })}>Request delete</Button> }]
     : [];
 
+// A "Documents" link for each row: the contract copy, the bill, ... attached to that record.
+const docsColumn = <T extends { id: string }>(ownerType: 'purchase_order' | 'service_contract' | 'service_expense', kinds: string[], canUpload: boolean, titleOf: (r: T) => string) => ({
+  title: '',
+  key: 'documents',
+  align: 'right' as const,
+  render: (_: unknown, r: T) => <DocumentsButton ownerType={ownerType} ownerId={r.id} title={titleOf(r)} kinds={kinds} canUpload={canUpload} />,
+});
+
 function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; canEdit: boolean } & RowAction) {
   const { message } = App.useApp();
   const orders = useFetch<PurchaseOrderRow[]>(`/assets/${id}/purchase-orders`);
   const contracts = useFetch<ServiceContractRow[]>(`/assets/${id}/contracts`);
   const [adding, setAdding] = useState<'po' | 'contract' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [form] = Form.useForm();
 
   async function save() {
@@ -228,8 +263,10 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
     if (!input) return;
     setSaving(true);
     try {
-      await api(`/assets/${id}/${po ? 'purchase-orders' : 'contracts'}`, { body: input });
-      message.success(po ? 'Purchase order added' : 'Contract added');
+      const row = await api<{ id: string }>(`/assets/${id}/${po ? 'purchase-orders' : 'contracts'}`, { body: input });
+      const failed = await uploadAll(files, { ownerType: po ? 'purchase_order' : 'service_contract', ownerId: row.id }, () => (po ? 'po' : 'contract'));
+      if (failed.length) message.warning(`${po ? 'Purchase order' : 'Contract'} added, but ${failed.join(', ')} could not be uploaded. Use Documents on the row to add it again.`, 8);
+      else message.success(po ? 'Purchase order added' : 'Contract added');
       setAdding(null);
       (po ? orders : contracts).reload();
     } catch (e) {
@@ -244,6 +281,7 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
       <Button
         onClick={() => {
           form.resetFields();
+          setFiles([]);
           setAdding(kind);
         }}
       >
@@ -265,6 +303,7 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
             { title: 'Date', dataIndex: 'poDate', render: formatDate },
             { title: 'Vendor', dataIndex: 'vendor' },
             { title: 'Cost', dataIndex: 'cost', align: 'right', render: formatMoney },
+            docsColumn<PurchaseOrderRow>('purchase_order', ['po', 'other'], canEdit, (r) => `PO ${r.poNumber}`),
             ...deleteColumn<PurchaseOrderRow>({ canRequest, requestDelete }, 'purchase_order', (r) => `Purchase order ${r.poNumber} (${r.vendor}, ${formatMoney(r.cost)})`),
           ]}
         />
@@ -282,6 +321,7 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
             { title: 'Starts', dataIndex: 'startDate', render: formatDate },
             { title: 'Ends', dataIndex: 'endDate', render: formatDate },
             { title: 'Cost', dataIndex: 'cost', align: 'right', render: (c: number | null) => (c == null ? '—' : formatMoney(c)) },
+            docsColumn<ServiceContractRow>('service_contract', ['contract', 'other'], canEdit, (r) => `${r.type.toUpperCase().replace('_', '-')} contract`),
             ...deleteColumn<ServiceContractRow>({ canRequest, requestDelete }, 'service_contract', (r) => `${r.type.toUpperCase().replace('_', '-')} contract with ${r.vendor}`),
           ]}
         />
@@ -316,6 +356,9 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
               <Form.Item label="Cost (₹)" name="cost"><InputNumber min={0} prefix="₹" style={{ width: '100%' }} /></Form.Item>
             </>
           )}
+          <Form.Item label={adding === 'po' ? 'Purchase order copy' : 'Contract copy'} extra="Optional. PDF, JPG or PNG, up to 10 MB.">
+            <FilePicker files={files} onChange={setFiles} label={adding === 'po' ? 'Attach the PO' : 'Attach the contract'} max={3} />
+          </Form.Item>
         </Form>
       </Modal>
     </Space>
@@ -407,6 +450,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
   const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?assetId=${id}&pageSize=100`);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [form] = Form.useForm();
 
   async function save() {
@@ -420,8 +464,10 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
     if (!input) return;
     setSaving(true);
     try {
-      await api(`/assets/${id}/expenses`, { body: input });
-      message.success('Expense added');
+      const row = await api<{ id: string }>(`/assets/${id}/expenses`, { body: input });
+      const failed = await uploadAll(files, { ownerType: 'service_expense', ownerId: row.id }, () => 'invoice');
+      if (failed.length) message.warning(`Expense added, but ${failed.join(', ')} could not be uploaded. Use Documents on the row to add it again.`, 8);
+      else message.success('Expense added');
       setAdding(false);
       expenses.reload();
     } catch (e) {
@@ -439,6 +485,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
           onClick={() => {
             form.resetFields();
             form.setFieldsValue({ type: 'repair', date: dayjs() });
+            setFiles([]);
             setAdding(true);
           }}
         >
@@ -459,6 +506,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
           { title: 'Vendor', dataIndex: 'vendor', render: (v: string | null) => v ?? '—' },
           { title: 'Complaint', dataIndex: 'complaintNo', render: (v: string | null) => v ?? '—' },
           { title: 'Amount', dataIndex: 'amount', align: 'right', render: formatMoney },
+          docsColumn<ExpenseRow>('service_expense', ['invoice', 'other'], true, (r) => `expense ${r.description}`),
           ...deleteColumn<ExpenseRow>({ canRequest, requestDelete }, 'service_expense', (r) => `Expense "${r.description}" (${formatMoney(r.amount)})`),
         ]}
       />
@@ -484,6 +532,9 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
               allowClear
               options={(complaints.data?.items ?? []).map((c) => ({ value: c.id, label: `${c.complaintNo} · ${c.description.slice(0, 40)}` }))}
             />
+          </Form.Item>
+          <Form.Item label="Invoice or bill" extra="Optional. PDF, JPG or PNG, up to 10 MB.">
+            <FilePicker files={files} onChange={setFiles} label="Attach the bill" max={3} />
           </Form.Item>
         </Form>
       </Modal>

@@ -7,7 +7,7 @@ import { Suspense, useState } from 'react';
 import type { DueRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
-import { CriticalityTag, DueTag } from '@/components/StatusTag';
+import { CriticalityTag, DueText } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { addDaysISO, endOfMonthISO, formatDate, todayIST } from '@/lib/format';
@@ -60,7 +60,7 @@ function DueList() {
           { title: 'Location', key: 'loc', render: (_: unknown, r) => `${r.departmentName} · ${r.locationName}` },
           { title: 'Criticality', dataIndex: 'criticality', render: (v: string) => <CriticalityTag value={v} /> },
           { title: 'Due', dataIndex: 'dueDate', render: formatDate },
-          { title: 'Status', dataIndex: 'daysLeft', render: (d: number) => <DueTag daysLeft={d} /> },
+          { title: 'Status', dataIndex: 'daysLeft', render: (d: number) => <DueText daysLeft={d} /> },
           {
             title: '',
             key: 'action',

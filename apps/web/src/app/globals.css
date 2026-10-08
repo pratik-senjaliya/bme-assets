@@ -1,14 +1,130 @@
+:root {
+  --primary: #0e7490;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --page: #f4f6f9;
+}
+
+html,
 body {
   margin: 0;
-  background: #f7f8fa;
+  background: var(--page);
+  color: #1e293b;
   font-family: var(--font-inter), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures for IDs, dates, money and counts so columns line up. */
+.num,
+.ant-table,
+.ant-statistic,
+.ant-descriptions {
   font-variant-numeric: tabular-nums;
+}
+
+/* Asset IDs and complaint numbers: a fixed-width look so they are easy to scan and compare. */
+.code {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero', 'tnum';
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+
+a {
+  text-decoration: none;
 }
 
 /* Visible focus ring for keyboard users. */
 :focus-visible {
-  outline: 2px solid #0e7490;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* Tables: quiet uppercase headers, no heavy lines, clickable rows feel alive. */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.ant-table-wrapper .ant-table {
+  border-radius: 12px;
+}
+.ant-table-wrapper .ant-table-container {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.ant-table-wrapper .ant-table-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+
+/* Cards sit on a soft border rather than a shadow. */
+.ant-card {
+  border-color: var(--line);
+}
+
+/* The app shell. */
+.app-sider {
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  align-self: flex-start;
+  overflow: auto;
+}
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--primary);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: saturate(1.4) blur(8px);
+}
+
+/* Soft-tinted status pill (see StatusTag). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+/* Rows that are links to a detail page. */
+.row-link {
+  cursor: pointer;
+}
+
+/* Tablet: bigger tap targets in lists and menus. */
+@media (max-width: 1100px) {
+  .ant-table-wrapper .ant-table-tbody > tr > td {
+    padding-block: 14px;
+  }
 }
 
 /* Printing a PMS record: only the record, on a plain page. */
@@ -27,5 +143,78 @@ body {
   .print-sheet {
     border: 0 !important;
     box-shadow: none !important;
+  }
+}
+
+/* Login: brand panel on the left, form on the right; the panel is hidden on narrow screens. */
+.login-grid {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(420px, 5fr) 6fr;
+}
+.login-hero {
+  background: #0f1b2d;
+  color: #fff;
+  padding: 40px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+@media (max-width: 900px) {
+  .login-grid {
+    grid-template-columns: 1fr;
+  }
+  .login-hero {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .user-label {
+    display: none;
+  }
+}
+
+/* Form footer: Cancel and Save stay in view while a long form scrolls. */
+.form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 0;
+  margin-top: 8px;
+  background: var(--page);
+  border-top: 1px solid var(--line);
+}
+
+/* PMS checklist: a chosen Pass is green and a chosen Fail is red, so the answers read at a glance. */
+.ant-radio-button-wrapper-checked:has(.pf-pass),
+.ant-radio-button-wrapper-checked:has(.pf-pass):hover {
+  background: #047857 !important;
+  border-color: #047857 !important;
+  color: #fff !important;
+}
+.ant-radio-button-wrapper-checked:has(.pf-fail),
+.ant-radio-button-wrapper-checked:has(.pf-fail):hover {
+  background: #b91c1c !important;
+  border-color: #b91c1c !important;
+  color: #fff !important;
+}
+
+/* Figure tiles: --cols across on a desktop, two across on a tablet, one on a phone. */
+.kpi-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

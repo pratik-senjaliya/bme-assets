@@ -17,6 +17,7 @@ import { reportsRouter } from './modules/reports/reports.routes';
 import { rolesRouter } from './modules/roles/roles.routes';
 import { settingsRouter } from './modules/settings/settings.routes';
 import { setupRouter } from './modules/setup/setup.routes';
+import { serviceLogRouter } from './modules/service-log/service-log.routes';
 import { usersRouter } from './modules/users/users.routes';
 
 export const v1 = Router();
@@ -42,6 +43,7 @@ v1.use(reportsRouter); // /reports/:type
 v1.use(approvalsRouter); // /assets/:id/condemn, /assets/:id/condemnation, /approvals
 v1.use('/assets', assetsRouter);
 v1.use('/assets', expensesRouter); // /assets/:id/expenses
+v1.use('/assets', serviceLogRouter); // /assets/:id/service-logs
 v1.use('/complaints', complaintsRouter);
 v1.use(pmsRouter); // /pms-templates, /assets/:id/pms, /pms/due, /pms/:id
 v1.use(calibrationRouter); // /assets/:id/calibrations, /calibration/due

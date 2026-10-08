@@ -8,7 +8,7 @@ import { requirePermission } from '../../lib/auth';
 import { isoDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { CREATE_TX_OPTIONS, createAssets, type NewAsset } from '../assets/assets.service';
+import { CREATE_TX_OPTIONS, assertOpeningDate, createAssets, type NewAsset } from '../assets/assets.service';
 
 export const importRouter = Router();
 importRouter.use(requirePermission('asset.create'));
@@ -18,7 +18,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 type ColumnKey =
   | 'equipmentTypeCode' | 'name' | 'make' | 'model' | 'serialNo' | 'departmentCode' | 'locationCode'
-  | 'criticality' | 'installationDate' | 'warrantyMonths' | 'pmsFrequencyMonths';
+  | 'criticality' | 'installationDate' | 'warrantyMonths' | 'pmsFrequencyMonths' | 'openingPmsOn' | 'openingCalibrationOn';
 
 // Template columns: header text → key. Headers are matched case-insensitively, so users can reorder columns.
 const COLUMNS: { key: ColumnKey; header: string; required?: boolean; width: number }[] = [
@@ -33,6 +33,8 @@ const COLUMNS: { key: ColumnKey; header: string; required?: boolean; width: numb
   { key: 'installationDate', header: 'Installation date', width: 18 },
   { key: 'warrantyMonths', header: 'Warranty months', width: 16 },
   { key: 'pmsFrequencyMonths', header: 'PMS frequency months', width: 20 },
+  { key: 'openingPmsOn', header: 'Last PMS done', width: 18 },
+  { key: 'openingCalibrationOn', header: 'Last calibration done', width: 22 },
 ];
 const headerOf = Object.fromEntries(COLUMNS.map((c) => [c.key, c.header])) as Record<ColumnKey, string>;
 
@@ -53,6 +55,10 @@ importRouter.get('/template', async (_req, res) => {
   COLUMNS.forEach((c, i) => {
     if (c.required) sheet.getCell(1, i + 1).note = 'Required';
   });
+  // For equipment that is already in use: when PMS / calibration was last done. The first due date runs from it.
+  for (const key of ['openingPmsOn', 'openingCalibrationOn'] as const) {
+    sheet.getCell(1, COLUMNS.findIndex((c) => c.key === key) + 1).note = 'Existing equipment only: the date it was last done before this system. Leave blank for new equipment.';
+  }
 
   // Reference lists, used by the dropdowns and as a quick lookup for the person filling the sheet.
   const lists = wb.addWorksheet('Lists');
@@ -125,6 +131,8 @@ const rowSchema = z.object({
   installationDate: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
   warrantyMonths: number(240),
   pmsFrequencyMonths: number(120, 1),
+  openingPmsOn: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
+  openingCalibrationOn: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
 });
 
 importRouter.post('/assets', upload.single('file'), async (req, res) => {
@@ -190,6 +198,13 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
       if (first) errors.push({ row, field: headerOf.serialNo, message: `Serial number repeated from row ${first}` });
       else serialRows.set(v.serialNo, row);
     }
+    for (const key of ['openingPmsOn', 'openingCalibrationOn'] as const) {
+      try {
+        assertOpeningDate(key, v[key], v.installationDate);
+      } catch (e) {
+        errors.push({ row, field: headerOf[key], message: e instanceof Error ? e.message : 'Invalid date' });
+      }
+    }
     if (type && dept && loc) {
       valid.push({
         equipmentTypeId: type.id,
@@ -203,6 +218,8 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
         installationDate: v.installationDate,
         warrantyMonths: v.warrantyMonths,
         pmsFrequencyMonths: v.pmsFrequencyMonths,
+        openingPmsOn: v.openingPmsOn,
+        openingCalibrationOn: v.openingCalibrationOn,
       });
     }
   }

@@ -17,7 +17,8 @@
     "dayjs": "^1.11.13",
     "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -1,26 +1,27 @@
-import { Tag, Typography } from 'antd';
+import { Typography } from 'antd';
 import Link from 'next/link';
 import type { ComplaintRow } from '@bme/shared';
 import { StatusTag } from '@/components/StatusTag';
+import { COLORS } from '@/theme';
 import { formatDateTime } from '@/lib/format';
 
 // Compact list of complaints for the dashboard, longest-waiting first.
 export function ComplaintsMiniList({ rows }: { rows: ComplaintRow[] }) {
-  if (rows.length === 0) return <Typography.Text type="secondary">No open complaints.</Typography.Text>;
+  if (rows.length === 0) return <div style={{ color: COLORS.muted, padding: '24px 0', textAlign: 'center' }}>No open complaints. Everything is running.</div>;
   return (
     <>
       {rows.map((c) => (
-        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
           <div style={{ minWidth: 0 }}>
-            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{c.complaintNo}</span>{' '}
-            <Link href={`/assets/${c.assetId}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <span className="code">{c.complaintNo}</span>{' · '}
+            <Link href={`/assets/${c.assetId}`} className="code">
               {c.assetCode}
             </Link>
-            {c.criticality === 'critical' && <Tag style={{ marginLeft: 8, fontWeight: 600 }}>Critical</Tag>}
-            <Typography.Paragraph ellipsis={{ rows: 1, tooltip: c.description }} style={{ margin: 0, color: '#6B7280', fontSize: 12 }}>
+            {c.criticality === 'critical' && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 600 }}>Critical</span>}
+            <Typography.Paragraph ellipsis={{ rows: 1, tooltip: c.description }} style={{ margin: 0, color: COLORS.muted, fontSize: 12.5 }}>
               {c.description}
             </Typography.Paragraph>
-            <div style={{ color: '#6B7280', fontSize: 12 }}>{formatDateTime(c.raisedAt)}</div>
+            <div style={{ color: COLORS.muted, fontSize: 12 }}>{formatDateTime(c.raisedAt)}</div>
           </div>
           <StatusTag status={c.status} />
         </div>

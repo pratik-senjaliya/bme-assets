@@ -59,6 +59,8 @@ export const toAssetDetail = (a: AssetWithRefs): AssetDetail => ({
   ...toAssetRow(a),
   warrantyMonths: a.warrantyMonths,
   pmsFrequencyMonths: a.pmsFrequencyMonths,
+  openingPmsOn: isoDateOrNull(a.openingPmsOn),
+  openingCalibrationOn: isoDateOrNull(a.openingCalibrationOn),
   createdAt: a.createdAt.toISOString(),
 });
 
@@ -97,7 +99,18 @@ export type NewAsset = {
   installationDate?: string | null;
   warrantyMonths?: number | null;
   pmsFrequencyMonths?: number | null;
+  openingPmsOn?: string | null;
+  openingCalibrationOn?: string | null;
 };
+
+// "Last done before this system" dates for existing equipment: a real past date, not before installation.
+// Throws a field error the form can show. (Not a PMS record: the PMS date lock does not apply to it.)
+export function assertOpeningDate(field: 'openingPmsOn' | 'openingCalibrationOn', value: string | null | undefined, installationDate?: string | null) {
+  if (!value) return;
+  const fail = (message: string) => new HttpError(400, message, { fieldErrors: { [field]: [message] } });
+  if (value > todayISO()) throw fail('Cannot be in the future');
+  if (installationDate && value < installationDate) throw fail('Cannot be before the installation date');
+}
 
 // Creates assets with generated IDs. The sequence is taken with ONE atomic increment on the settings
 // row inside the caller's transaction, so concurrent creates serialize on that row lock and can never
@@ -120,8 +133,15 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
   });
   const firstSeq = settings.assetSeq - inputs.length + 1;
 
+  for (const i of inputs) {
+    assertOpeningDate('openingPmsOn', i.openingPmsOn, i.installationDate);
+    assertOpeningDate('openingCalibrationOn', i.openingCalibrationOn, i.installationDate);
+  }
+
   const data = inputs.map((i, n) => {
     const installationDate = i.installationDate ? parseDate(i.installationDate) : null;
+    const openingPmsOn = i.openingPmsOn ? parseDate(i.openingPmsOn) : null;
+    const openingCalibrationOn = i.openingCalibrationOn ? parseDate(i.openingCalibrationOn) : null;
     const equipmentType = type.get(i.equipmentTypeId)!;
     const sequenceNo = firstSeq + n;
     const pmsFrequencyMonths = i.pmsFrequencyMonths ?? equipmentType.defaultPmsMonths;
@@ -146,10 +166,12 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       warrantyMonths: i.warrantyMonths ?? null,
       warrantyEnd: warrantyEndFor(installationDate, i.warrantyMonths),
       pmsFrequencyMonths,
-      // First due dates run from installation; after that PMS and calibration records move them on.
-      nextPmsDue: installationDate && pmsFrequencyMonths ? addMonths(installationDate, pmsFrequencyMonths) : null,
-      nextCalibrationDue:
-        installationDate && equipmentType.defaultCalibrationMonths ? addMonths(installationDate, equipmentType.defaultCalibrationMonths) : null,
+      openingPmsOn,
+      openingCalibrationOn,
+      // First due dates run from the last PMS / calibration done before this system (existing equipment), else from
+      // installation; after that PMS and calibration records move them on.
+      nextPmsDue: firstDue(openingPmsOn ?? installationDate, pmsFrequencyMonths),
+      nextCalibrationDue: firstDue(openingCalibrationOn ?? installationDate, equipmentType.defaultCalibrationMonths),
       createdBy: req.user?.id ?? null,
     };
   });
@@ -162,6 +184,8 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
   );
   return rows;
 }
+
+export const firstDue = (from: Date | null, months: number | null | undefined) => (from && months ? addMonths(from, months) : null);
 
 // Long enough for large imports while other creates wait on the counter row.
 export const CREATE_TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
