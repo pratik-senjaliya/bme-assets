@@ -8,8 +8,9 @@ import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { RequirePermission } from '@/components/RequirePermission';
 
-export default function SettingsPage() {
+function SettingsPageScreen() {
   const { message } = App.useApp();
   const { can } = useAuth();
   const settings = useFetch<SettingsResponse>('/settings');
@@ -171,5 +172,14 @@ export default function SettingsPage() {
         </Form>
       )}
     </>
+  );
+}
+
+
+export default function SettingsPage() {
+  return (
+    <RequirePermission code="setup.manage" what="change hospital settings">
+      <SettingsPageScreen />
+    </RequirePermission>
   );
 }

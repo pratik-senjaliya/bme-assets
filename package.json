@@ -15,6 +15,12 @@
     "dev:api": "npm run build -w packages/shared && npm run dev -w apps/api",
     "dev:web": "npm run build -w packages/shared && npm run dev -w apps/web",
     "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "e2e": "node e2e/run.mjs",
+    "e2e:cleanup": "tsx --env-file=apps/api/.env e2e/cleanup.mts"
+  },
+  "devDependencies": {
+    "axe-core": "^4.14.0",
+    "playwright-core": "^1.64.0"
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Input, InputNumber, Radio, Result, Skeleton, Space, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, InputNumber, Radio, Skeleton, Space, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import { submitPmsSchema, type AssetDetail, type PmsAnswer, type PmsItem, type P
 import { PageHeader } from '@/components/PageHeader';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { StatusResult } from '@/components/StatusResult';
 
 const rangeText = (i: PmsItem) =>
   i.min != null && i.max != null ? `${i.min}–${i.max}` : i.min != null ? `at least ${i.min}` : i.max != null ? `at most ${i.max}` : '';
@@ -22,9 +23,10 @@ export default function PerformPmsPage() {
   const { can } = useAuth();
   const { message, modal } = App.useApp();
 
-  const asset = useFetch<AssetDetail>(`/assets/${id}`);
-  const template = useFetch<PmsTemplateRow>(`/assets/${id}/pms-template`);
-  const original = useFetch<PmsRecordRow>(corrects ? `/pms/${corrects}` : null);
+  const allowed = can('pms.perform'); // ask only if the answer will be used
+  const asset = useFetch<AssetDetail>(allowed ? `/assets/${id}` : null);
+  const template = useFetch<PmsTemplateRow>(allowed ? `/assets/${id}/pms-template` : null);
+  const original = useFetch<PmsRecordRow>(allowed && corrects ? `/pms/${corrects}` : null);
 
   const [answers, setAnswers] = useState<Record<string, PmsAnswer>>({});
   const [reason, setReason] = useState('');
@@ -36,8 +38,8 @@ export default function PerformPmsPage() {
     if (original.data) setAnswers(original.data.answers);
   }, [original.data]);
 
-  if (!can('pms.perform')) return <Result status="403" title="You cannot record PMS" />;
-  if (asset.error) return <Result status="404" title="Asset not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
+  if (!can('pms.perform')) return <StatusResult status="403" title="You cannot record PMS" />;
+  if (asset.error) return <StatusResult status="404" title="Asset not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
   if (!asset.data || (template.loading && !template.data)) return <Skeleton active />;
   const a = asset.data;
   const items = template.data?.items ?? [];
@@ -141,7 +143,7 @@ export default function PerformPmsPage() {
                       {item.label}
                       {!item.required && <Typography.Text type="secondary"> (optional)</Typography.Text>}
                       {item.type === 'reading' && (
-                        <div style={{ color: '#6B7280', fontSize: 12 }}>
+                        <div style={{ color: '#526173', fontSize: 12 }}>
                           {rangeText(item) ? `Allowed: ${rangeText(item)}` : ''} {item.unit ?? ''}
                         </div>
                       )}
@@ -155,8 +157,8 @@ export default function PerformPmsPage() {
                         size="large"
                         value={typeof value === 'string' ? value : null}
                         options={[
-                          { label: <span className="pf-pass">Pass</span>, value: 'pass' },
-                          { label: <span className="pf-fail">Fail</span>, value: 'fail' },
+                          { label: 'Pass', value: 'pass', className: 'pf-pass' },
+                          { label: 'Fail', value: 'fail', className: 'pf-fail' },
                         ]}
                         onChange={(e) => set(item.id, e.target.value as PmsAnswer)}
                       />
@@ -166,7 +168,7 @@ export default function PerformPmsPage() {
                         aria-label={item.label}
                         size="large"
                         style={{ width: 180 }}
-                        addonAfter={item.unit}
+                        suffix={item.unit}
                         status={bad || errors[item.id] ? 'error' : undefined}
                         value={typeof value === 'number' ? value : null}
                         onChange={(v) => set(item.id, v ?? undefined)}

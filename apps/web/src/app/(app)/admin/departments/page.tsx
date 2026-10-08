@@ -6,13 +6,14 @@ import { departmentSchema, locationSchema } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { RequirePermission } from '@/components/RequirePermission';
 
 type Department = { id: string; name: string; code: string };
 type Location = { id: string; departmentId: string; name: string; code: string };
 type Editing = { kind: 'department'; row: Department | null } | { kind: 'location'; row: Location | null } | null;
 
-export default function DepartmentsPage() {
+function DepartmentsPageScreen() {
   const { message } = App.useApp();
   const departments = useFetch<Department[]>('/departments');
   const locations = useFetch<Location[]>('/locations');
@@ -28,6 +29,8 @@ export default function DepartmentsPage() {
     form.setFieldsValue(next.row ?? {});
     setEditing(next);
   }
+
+  const single = useSingleFlight();
 
   async function save() {
     if (!editing) return;
@@ -89,7 +92,7 @@ export default function DepartmentsPage() {
                   { title: 'Name', dataIndex: 'name' },
                   { title: 'Code', dataIndex: 'code' },
                   {
-                    title: '',
+                    title: <span className="sr-only">Actions</span>,
                     key: 'actions',
                     align: 'right',
                     render: (_: unknown, row) => (
@@ -129,7 +132,7 @@ export default function DepartmentsPage() {
                   { title: 'Code', dataIndex: 'code' },
                   { title: 'Department', dataIndex: 'departmentId', render: deptName },
                   {
-                    title: '',
+                    title: <span className="sr-only">Actions</span>,
                     key: 'actions',
                     align: 'right',
                     render: (_: unknown, row) => (
@@ -161,7 +164,7 @@ export default function DepartmentsPage() {
         title={`${editing?.row ? 'Edit' : 'Add'} ${editing?.kind ?? ''}`}
         okText="Save"
         confirmLoading={saving}
-        onOk={save}
+        onOk={() => single(save)}
         onCancel={() => setEditing(null)}
         destroyOnHidden
       >
@@ -180,5 +183,14 @@ export default function DepartmentsPage() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+
+export default function DepartmentsPage() {
+  return (
+    <RequirePermission code="setup.manage" what="change departments and locations">
+      <DepartmentsPageScreen />
+    </RequirePermission>
   );
 }

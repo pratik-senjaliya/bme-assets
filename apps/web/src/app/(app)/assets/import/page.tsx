@@ -1,7 +1,7 @@
 'use client';
 
 import { DownloadOutlined, InboxOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Result, Space, Steps, Typography, Upload } from 'antd';
+import { Alert, App, Button, Card, Space, Steps, Typography, Upload } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { ImportError, ImportResult } from '@bme/shared';
@@ -11,11 +11,15 @@ import { useAuth } from '@/lib/auth';
 
 type Row = ImportError & { id: string };
 
+import { notifySignedOut } from '@/lib/nav';
+import { StatusResult } from '@/components/StatusResult';
+
 // POSTs the file. 422 is an expected answer (it carries the per-row problems), not a failure.
 async function sendFile(file: File, dryRun: boolean): Promise<ImportResult> {
   const body = new FormData();
   body.set('file', file);
   const res = await fetch(`/api/v1/import/assets${dryRun ? '?dryRun=true' : ''}`, { method: 'POST', body });
+  if (res.status === 401) notifySignedOut();
   const json = await res.json().catch(() => null);
   if (res.ok || res.status === 422) return json as ImportResult;
   throw new Error(json?.error?.message ?? 'Could not read that file');
@@ -29,7 +33,7 @@ export default function ImportPage() {
   const [done, setDone] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!can('asset.create')) return <Result status="403" title="You cannot import assets" />;
+  if (!can('asset.create')) return <StatusResult status="403" title="You cannot import assets" />;
 
   async function choose(f: File) {
     setFile(f);
@@ -72,7 +76,7 @@ export default function ImportPage() {
       />
 
       {done ? (
-        <Result
+        <StatusResult
           status="success"
           title={`${done.created} assets imported`}
           subTitle="Each one has its own generated asset ID."

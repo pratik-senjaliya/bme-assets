@@ -1,15 +1,17 @@
 'use client';
 
-import { Alert, Button, DatePicker, Result, Segmented, Skeleton, Space } from 'antd';
+import { Alert, Button, DatePicker, Segmented, Skeleton, Space } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { REPORTS, type ReportData } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
-import { ExportMenu, ReportView } from '@/components/ReportView';
+import { ExportMenu } from '@/components/ExportMenu';
+import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { StatusResult } from '@/components/StatusResult';
 
 const fmt = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD');
 
@@ -33,8 +35,8 @@ function ReportPage() {
   const path = `/reports/${type}${query.size ? `?${query}` : ''}`;
   const report = useFetch<ReportData>(can('report.view') && meta ? `${path}${query.size ? '&' : '?'}format=json` : null);
 
-  if (!can('report.view')) return <Result status="403" title="You cannot see reports" />;
-  if (!meta) return <Result status="404" title="Report not found" extra={<Link href="/reports"><Button>All reports</Button></Link>} />;
+  if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
+  if (!meta) return <StatusResult status="404" title="Report not found" extra={<Link href="/reports"><Button>All reports</Button></Link>} />;
 
   const set = (next: Record<string, string>) => router.replace(`${pathname}?${new URLSearchParams({ from, to, group, ...next })}`);
 

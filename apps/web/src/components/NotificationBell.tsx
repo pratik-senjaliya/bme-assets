@@ -56,7 +56,7 @@ export function NotificationBell() {
             <List.Item style={{ cursor: 'pointer', paddingInline: 8 }} onClick={() => void go(n)}>
               <div>
                 <Typography.Text strong={!n.readAt}>{n.message}</Typography.Text>
-                <div style={{ color: '#6B7280', fontSize: 12 }}>{formatDate(n.createdAt)}</div>
+                <div style={{ color: '#526173', fontSize: 12 }}>{formatDate(n.createdAt)}</div>
               </div>
             </List.Item>
           )}

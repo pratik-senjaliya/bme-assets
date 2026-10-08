@@ -10,7 +10,7 @@ import { FilePicker } from '@/components/FilePicker';
 import type { DeleteTarget } from '@/components/RequestApprovalModals';
 import { api, useFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
 import { COLORS } from '@/theme';
 
@@ -26,6 +26,8 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [form] = Form.useForm();
+
+  const single = useSingleFlight();
 
   async function save() {
     const v = form.getFieldsValue();
@@ -77,7 +79,7 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
           { title: 'Vendor', dataIndex: 'vendor', render: (v: string | null) => v ?? '—' },
           { title: 'What was done', dataIndex: 'description' },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'docs',
             align: 'right',
             render: (_: unknown, r: ServiceLogRow) => (
@@ -87,7 +89,7 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
           ...(canRequest
             ? [
                 {
-                  title: '',
+                  title: <span className="sr-only">Actions</span>,
                   key: 'request-delete',
                   align: 'right' as const,
                   render: (_: unknown, r: ServiceLogRow) => (
@@ -100,7 +102,7 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
             : []),
         ]}
       />
-      <Modal open={adding} title="Log service" okText="Save" confirmLoading={saving} onOk={save} onCancel={() => setAdding(false)} destroyOnHidden>
+      <Modal open={adding} title="Log service" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setAdding(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Date of service" name="serviceDate" rules={[{ required: true, message: 'Choose the date' }]} extra="The day it happened. It cannot be in the future.">
             <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />

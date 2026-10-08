@@ -52,8 +52,9 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
     ...departmentScope(currentUser(req)), // last, so it cannot be widened from the query
   };
   // Waiting complaints: longest-waiting first. Resolved: most recent first. Mixed: newest first.
-  const orderBy: Prisma.ComplaintOrderByWithRelationInput =
-    q.status === 'open' || q.status === 'in_progress' ? { raisedAt: 'asc' } : q.status === 'resolved' ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
+  const orderBy: Prisma.ComplaintOrderByWithRelationInput | Prisma.ComplaintOrderByWithRelationInput[] = q.sortBy
+    ? [{ [q.sortBy]: q.order }, { complaintNo: 'desc' }]
+    : q.status === 'open' || q.status === 'in_progress' ? { raisedAt: 'asc' } : q.status === 'resolved' ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
   const [total, rows] = await prisma.$transaction([
     prisma.complaint.count({ where }),
     prisma.complaint.findMany({ where, include: complaintInclude, orderBy, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),

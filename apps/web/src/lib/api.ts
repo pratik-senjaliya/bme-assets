@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { notifySignedOut } from '@/lib/nav';
 
 export class ApiError extends Error {
   constructor(
@@ -22,6 +23,8 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   });
   if (res.status === 204) return undefined as T;
   const json = await res.json().catch(() => null);
+  // 401 anywhere except signing in and the first "who am I" check means the session ended.
+  if (res.status === 401 && path !== '/auth/login' && path !== '/auth/me') notifySignedOut();
   if (!res.ok) throw new ApiError(res.status, json?.error?.message ?? 'Something went wrong', json?.error?.details);
   return json as T;
 }

@@ -19,7 +19,7 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
         <Space size={32} wrap align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
           <Space size={32} wrap>
             <div>
-              <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 4 }}>Next PMS due</div>
+              <div style={{ color: '#526173', fontSize: 12, marginBottom: 4 }}>Next PMS due</div>
               {asset.nextPmsDue ? (
                 <Space>
                   <span>{formatDate(asset.nextPmsDue)}</span>
@@ -30,7 +30,7 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
               )}
             </div>
             <div>
-              <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 4 }}>Interval</div>
+              <div style={{ color: '#526173', fontSize: 12, marginBottom: 4 }}>Interval</div>
               {asset.pmsFrequencyMonths ? `Every ${asset.pmsFrequencyMonths} months` : '—'}
             </div>
           </Space>
@@ -54,7 +54,7 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
             render: (d: string) => (
               <Tooltip title="Recorded by the system. It cannot be changed.">
                 <span>
-                  {formatDate(d)} <LockOutlined aria-label="Locked" style={{ color: '#6B7280' }} />
+                  {formatDate(d)} <LockOutlined aria-label="Locked" style={{ color: '#526173' }} />
                 </span>
               </Tooltip>
             ),
@@ -76,7 +76,7 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
           },
           { title: 'Submitted', dataIndex: 'submittedAt', render: formatDateTime },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'view',
             align: 'right',
             render: (_: unknown, r) => (

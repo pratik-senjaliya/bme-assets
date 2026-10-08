@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { CRITICALITIES, type AssetRow, type Paged } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
+import { ExportMenu } from '@/components/ExportMenu';
 import { PageHeader } from '@/components/PageHeader';
 import { CriticalityTag, DueCell, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
@@ -54,8 +55,14 @@ function AssetList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const filtered = Object.keys(q).some((k) => k !== 'page' && k !== 'status');
+  const filtered = Object.keys(q).some((k) => !['page', 'status', 'sortBy', 'order'].includes(k));
   const canAdd = can('asset.create');
+  // Sorting is the server's, so it works across every page, and it lives in the address like the filters.
+  const sortOf = (key: string) => (q.sortBy === key ? (q.order === 'desc' ? ('descend' as const) : ('ascend' as const)) : null);
+  // Export gives what is on screen: the same search and filters, every page of it.
+  const exportQuery = new URLSearchParams(
+    Object.entries({ search: q.search, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, assetStatus: q.status ?? 'active' }).filter(([, v]) => v) as [string, string][],
+  );
   const select = (key: string, placeholder: string, options: { value: string; label: string }[]) => (
     <Select
       allowClear
@@ -75,14 +82,19 @@ function AssetList() {
         subtitle={user?.role === 'nursing' ? 'Equipment in your department' : 'Every piece of equipment in the hospital'}
         crumbs={['Assets']}
         action={
-          canAdd && (
-            <Space>
-              <Link href="/assets/import">
-                <Button>Import from Excel</Button>
-              </Link>
-              <Link href="/assets/new">
-                <Button type="primary">Add asset</Button>
-              </Link>
+          (canAdd || can('report.view')) && (
+            <Space wrap>
+              {can('report.view') && <ExportMenu path={`/reports/asset-master?${exportQuery}`} name="bme-assets" />}
+              {canAdd && (
+                <>
+                  <Link href="/assets/import">
+                    <Button>Import from Excel</Button>
+                  </Link>
+                  <Link href="/assets/new">
+                    <Button type="primary">Add asset</Button>
+                  </Link>
+                </>
+              )}
             </Space>
           )
         }
@@ -139,6 +151,11 @@ function AssetList() {
           hideOnSinglePage: true,
           onChange: (page) => set({ page: String(page) }),
         }}
+        onChange={(_p, _f, sorter, extra) => {
+          if (extra.action !== 'sort') return; // paging has its own handler
+          const one = Array.isArray(sorter) ? sorter[0] : sorter;
+          set({ sortBy: one?.order ? String(one.columnKey) : undefined, order: one?.order === 'descend' ? 'desc' : one?.order ? 'asc' : undefined });
+        }}
         onRow={(row) => ({
           className: 'row-link',
           onClick: (e) => {
@@ -149,7 +166,10 @@ function AssetList() {
         columns={[
           {
             title: 'Asset ID',
+            key: 'assetCode',
             dataIndex: 'assetCode',
+            sorter: true,
+            sortOrder: sortOf('assetCode'),
             render: (code: string, row) => (
               <Link href={`/assets/${row.id}`} className="code">
                 {code}
@@ -158,7 +178,10 @@ function AssetList() {
           },
           {
             title: 'Equipment',
+            key: 'name',
             dataIndex: 'name',
+            sorter: true,
+            sortOrder: sortOf('name'),
             render: (name: string, row) => (
               <div style={{ lineHeight: 1.35 }}>
                 <div style={{ fontWeight: 500, color: COLORS.ink }}>{name}</div>
@@ -168,7 +191,9 @@ function AssetList() {
           },
           {
             title: 'Location',
-            key: 'location',
+            key: 'department',
+            sorter: true,
+            sortOrder: sortOf('department'),
             render: (_: unknown, row) => (
               <div style={{ lineHeight: 1.35 }}>
                 <div>{row.departmentName}</div>
@@ -176,16 +201,19 @@ function AssetList() {
               </div>
             ),
           },
-          { title: 'Criticality', dataIndex: 'criticality', render: (v: string) => <CriticalityTag value={v} /> },
+          { title: 'Criticality', key: 'criticality', dataIndex: 'criticality', sorter: true, sortOrder: sortOf('criticality'), render: (v: string) => <CriticalityTag value={v} /> },
           {
             title: 'Next PMS',
+            key: 'nextPmsDue',
             dataIndex: 'nextPmsDue',
+            sorter: true,
+            sortOrder: sortOf('nextPmsDue'),
             render: (d: string | null) => <DueCell date={d} daysLeft={d ? daysFromToday(d) : null} />,
           },
           { title: 'Warranty', dataIndex: 'warrantyStatus', render: (v: AssetRow['warrantyStatus']) => <WarrantyTag status={v} /> },
-          { title: 'Status', dataIndex: 'status', render: (v: AssetRow['status']) => <StatusTag status={v} /> },
+          { title: 'Status', key: 'status', dataIndex: 'status', sorter: true, sortOrder: sortOf('status'), render: (v: AssetRow['status']) => <StatusTag status={v} /> },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'actions',
             align: 'right',
             width: 56,

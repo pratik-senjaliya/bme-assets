@@ -9,12 +9,13 @@ import { StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { RequirePermission } from '@/components/RequirePermission';
 
 type Department = { id: string; name: string };
 type FormValues = { name: string; email: string; role: RoleName; departmentId?: string; password?: string; active: boolean };
 
-export default function UsersPage() {
+function UsersPageScreen() {
   const { message } = App.useApp();
   const { user: me } = useAuth();
   const users = useFetch<UserRow[]>('/users');
@@ -39,6 +40,8 @@ export default function UsersPage() {
     );
     setEditing(row);
   }
+
+  const single = useSingleFlight();
 
   async function save() {
     const isNew = editing === 'new';
@@ -98,10 +101,11 @@ export default function UsersPage() {
           { title: 'Status', dataIndex: 'active', render: (a: boolean) => <StatusTag status={a ? 'active' : 'inactive'} /> },
           { title: 'Added', dataIndex: 'createdAt', render: formatDate },
           {
-            title: '',
+            title: <span className="sr-only">Actions</span>,
             key: 'actions',
             align: 'right',
-            render: (_: unknown, row) => (
+            // The vendor's super admin login is not the hospital's to change; the server refuses it, so do not offer it.
+            render: (_: unknown, row) => row.role === 'super_admin' && me?.role !== 'super_admin' ? <span style={{ color: '#64748B' }}>Managed by the vendor</span> : (
               <Space>
                 <Button size="small" type="text" onClick={() => open(row)}>
                   Edit
@@ -128,7 +132,7 @@ export default function UsersPage() {
         title={editing === 'new' ? 'Add user' : 'Edit user'}
         okText="Save"
         confirmLoading={saving}
-        onOk={save}
+        onOk={() => single(save)}
         onCancel={() => setEditing(null)}
         destroyOnHidden
       >
@@ -168,5 +172,14 @@ export default function UsersPage() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+
+export default function UsersPage() {
+  return (
+    <RequirePermission code="user.manage" what="manage users">
+      <UsersPageScreen />
+    </RequirePermission>
   );
 }

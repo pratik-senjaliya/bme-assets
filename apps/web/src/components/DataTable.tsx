@@ -2,6 +2,7 @@
 
 import { Alert, Button, Table, type TableProps } from 'antd';
 import type { ReactNode } from 'react';
+import { COLORS } from '@/theme';
 
 type Props<T> = Omit<TableProps<T>, 'dataSource' | 'loading' | 'size'> & {
   rows: T[] | null;
@@ -32,7 +33,7 @@ export function DataTable<T extends { id: string }>({ rows, loading, error, onRe
       loading={loading}
       dataSource={rows ?? []}
       pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
-      locale={{ emptyText: loading ? ' ' : (emptyText ?? 'Nothing here yet') }}
+      locale={{ emptyText: loading ? ' ' : <span style={{ color: COLORS.muted }}>{emptyText ?? 'Nothing here yet'}</span> }}
       scroll={{ x: 'max-content' }}
       {...rest}
     />

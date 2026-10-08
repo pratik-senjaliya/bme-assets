@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined, PrinterOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Descriptions, Result, Skeleton, Space, Table, Tooltip, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Skeleton, Space, Table, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { AssetDetail, PmsItem, PmsRecordRow } from '@bme/shared';
@@ -9,6 +9,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { StatusResult } from '@/components/StatusResult';
+import { useAuth } from '@/lib/auth';
 
 const itemOk = (i: PmsItem, v: unknown) => {
   if (i.type === 'check') return v === 'pass';
@@ -18,10 +20,12 @@ const itemOk = (i: PmsItem, v: unknown) => {
 
 export default function PmsRecordPage() {
   const { id } = useParams<{ id: string }>();
-  const rec = useFetch<PmsRecordRow>(`/pms/${id}`);
+  const { can } = useAuth();
+  const rec = useFetch<PmsRecordRow>(can('pms.perform') ? `/pms/${id}` : null); // ask only if the answer will be used
   const asset = useFetch<AssetDetail>(rec.data ? `/assets/${rec.data.assetId}` : null);
 
-  if (rec.error) return <Result status="404" title="PMS record not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
+  if (!can('pms.perform')) return <StatusResult status="403" title="You cannot see PMS records" extra={<Link href="/"><Button>Back to the dashboard</Button></Link>} />;
+  if (rec.error) return <StatusResult status="404" title="PMS record not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
   if (!rec.data) return <Skeleton active />;
   const r = rec.data;
   const a = asset.data;
@@ -93,7 +97,7 @@ export default function PmsRecordPage() {
           <Descriptions.Item label="Performed on">
             <Tooltip title="Recorded by the system. It cannot be changed.">
               <span>
-                {formatDate(r.performedOn)} <LockOutlined aria-label="Locked" style={{ color: '#6B7280' }} />
+                {formatDate(r.performedOn)} <LockOutlined aria-label="Locked" style={{ color: '#526173' }} />
               </span>
             </Tooltip>
           </Descriptions.Item>
@@ -125,7 +129,7 @@ export default function PmsRecordPage() {
               render: (_: unknown, i) => (i.type === 'reading' && (i.min != null || i.max != null) ? `${i.min ?? '…'} – ${i.max ?? '…'} ${i.unit ?? ''}` : ''),
             },
             {
-              title: '',
+              title: <span className="sr-only">Actions</span>,
               key: 'ok',
               width: 90,
               render: (_: unknown, i) => (i.type === 'text' || r.answers[i.id] === undefined ? '' : <StatusTag status={itemOk(i, r.answers[i.id]) ? 'pass' : 'fail'} />),
@@ -137,7 +141,7 @@ export default function PmsRecordPage() {
           {['Performed by (signature)', 'Verified by (Biomedical HOD)'].map((label) => (
             <div key={label} style={{ flex: '1 1 260px' }}>
               <div style={{ borderBottom: '1px solid #9CA3AF', height: 40 }} />
-              <div style={{ color: '#6B7280', fontSize: 12, marginTop: 4 }}>{label} · Date</div>
+              <div style={{ color: '#526173', fontSize: 12, marginTop: 4 }}>{label} · Date</div>
             </div>
           ))}
         </div>

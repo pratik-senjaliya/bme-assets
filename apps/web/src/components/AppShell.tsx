@@ -9,6 +9,7 @@ import {
   DashboardOutlined,
   DownOutlined,
   HistoryOutlined,
+  KeyOutlined,
   LogoutOutlined,
   MedicineBoxFilled,
   MedicineBoxOutlined,
@@ -25,10 +26,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { PermissionCode } from '@bme/shared';
+import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useAuth } from '@/lib/auth';
 import { initials, shortName } from '@/lib/format';
+import { loginHref } from '@/lib/nav';
 import { COLORS } from '@/theme';
 
 type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[] };
@@ -67,14 +70,16 @@ const GROUPS: Group[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, loading, logout, can } = useAuth();
+  const { user, loading, logout, can, sessionExpired } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
-  }, [loading, user, router]);
+    // Not signed in (or the session ended): go to sign in, and come back to this page afterwards.
+    if (!loading && !user) router.replace(loginHref(sessionExpired()));
+  }, [loading, user, router, sessionExpired]);
 
   if (loading || !user) {
     return (
@@ -113,7 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {!collapsed && (
             <div style={{ lineHeight: 1.2, whiteSpace: 'nowrap' }}>
               <div style={{ color: '#fff', fontWeight: 650, fontSize: 15 }}>BME Assets</div>
-              <div style={{ color: '#6B7C93', fontSize: 11 }}>Biomedical engineering</div>
+              <div style={{ color: '#9AABC0', fontSize: 11 }}>Biomedical engineering</div>
             </div>
           )}
         </div>
@@ -136,10 +141,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             menu={{
               items: [
                 { key: 'role', label: `${user.roleLabel}`, disabled: true },
+                { key: 'password', icon: <KeyOutlined />, label: 'Change password' },
                 { type: 'divider' },
                 { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out' },
               ],
               onClick: async ({ key }) => {
+                if (key === 'password') setChangingPassword(true);
                 if (key === 'logout') {
                   await logout();
                   router.replace('/login');
@@ -149,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <button
               type="button"
-              aria-label="User menu"
+              data-testid="account-menu"
               style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 0, cursor: 'pointer', minHeight: 44, padding: '0 4px', font: 'inherit', lineHeight: 1 }}
             >
               <span
@@ -169,6 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Layout.Content style={{ padding: 24 }}>
           <div style={{ maxWidth: 1440, margin: '0 auto' }}>{children}</div>
         </Layout.Content>
+        <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
       </Layout>
     </Layout>
   );

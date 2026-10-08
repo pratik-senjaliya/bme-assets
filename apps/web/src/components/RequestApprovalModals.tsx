@@ -5,7 +5,7 @@ import { InboxOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { MAX_UPLOAD_BYTES, condemnRequestSchema, deleteRequestSchema, type DeletableTarget } from '@bme/shared';
 import { api } from '@/lib/api';
-import { parseForm, showApiFieldErrors } from '@/lib/forms';
+import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
 // Condemning and deleting are requests: nothing changes until the Biomedical HOD approves.
 export function RequestCondemnModal({ open, asset, onClose, onRequested }: { open: boolean; asset: { id: string; assetCode: string }; onClose: () => void; onRequested: () => void }) {
@@ -21,6 +21,8 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
       setLetter(null);
     }
   }, [open, form]);
+
+  const single = useSingleFlight();
 
   async function save() {
     const input = parseForm(form, condemnRequestSchema, form.getFieldsValue());
@@ -48,7 +50,7 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
       okText="Send request"
       okButtonProps={{ danger: true }}
       confirmLoading={saving}
-      onOk={save}
+      onOk={() => single(save)}
       onCancel={onClose}
       destroyOnHidden
     >
@@ -92,6 +94,8 @@ export function RequestDeleteModal({ target, onClose, onRequested }: { target: D
     if (target) form.resetFields();
   }, [target, form]);
 
+  const single = useSingleFlight();
+
   async function save() {
     if (!target) return;
     const input = parseForm(form, deleteRequestSchema, { targetType: target.type, targetId: target.id, reason: form.getFieldValue('reason') });
@@ -116,7 +120,7 @@ export function RequestDeleteModal({ target, onClose, onRequested }: { target: D
       okText="Send request"
       okButtonProps={{ danger: true }}
       confirmLoading={saving}
-      onOk={save}
+      onOk={() => single(save)}
       onCancel={onClose}
       destroyOnHidden
     >

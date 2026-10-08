@@ -5,6 +5,9 @@ import { useEffect, useState } from 'react';
 import { PERMISSIONS, type PermissionCode, type RoleRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
+import { PERMISSION_TEXT } from '@/lib/permissions';
+import { COLORS } from '@/theme';
+import { RequirePermission } from '@/components/RequirePermission';
 
 // Grouped by area so the list is scannable.
 const GROUPS: Record<string, string> = {
@@ -20,9 +23,10 @@ const GROUPS: Record<string, string> = {
   settings: 'Settings',
   audit: 'Audit',
   report: 'Reports',
+  notification: 'Reminders',
 };
 
-export default function RolesPage() {
+function RolesPageScreen() {
   const { message } = App.useApp();
   const roles = useFetch<RoleRow[]>('/roles');
   const [roleId, setRoleId] = useState<string>();
@@ -77,14 +81,15 @@ export default function RolesPage() {
             options={roles.data!.map((r) => ({ value: r.id, label: r.label }))}
           />
           {locked && <Alert type="info" showIcon message="Super admin permissions are fixed and cannot be changed." />}
-          <Checkbox.Group value={selected} onChange={(v) => setSelected(v as PermissionCode[])} disabled={locked} style={{ width: '100%' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+          <Checkbox.Group value={selected} onChange={(v) => setSelected(v as PermissionCode[])} disabled={locked} style={{ display: 'block', width: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
               {Object.entries(GROUPS).map(([prefix, label]) => (
                 <Card key={prefix} size="small" title={label}>
-                  <Space direction="vertical">
+                  <Space direction="vertical" size={12}>
                     {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`)).map((p) => (
                       <Checkbox key={p} value={p}>
-                        {p}
+                        <span style={{ fontWeight: 500 }}>{PERMISSION_TEXT[p].label}</span>
+                        <span style={{ display: 'block', color: COLORS.muted, fontSize: 12.5 }}>{PERMISSION_TEXT[p].hint}</span>
                       </Checkbox>
                     ))}
                   </Space>
@@ -95,5 +100,14 @@ export default function RolesPage() {
         </Space>
       )}
     </>
+  );
+}
+
+
+export default function RolesPage() {
+  return (
+    <RequirePermission code="role.manage" what="change roles and permissions">
+      <RolesPageScreen />
+    </RequirePermission>
   );
 }

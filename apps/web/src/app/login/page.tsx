@@ -1,9 +1,10 @@
 'use client';
 
 import { CheckCircleFilled, LockOutlined, MailOutlined, MedicineBoxFilled } from '@ant-design/icons';
-import { App, Button, Form, Input, Typography } from 'antd';
+import { Alert, App, Button, Form, Input, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { safeNext } from '@/lib/nav';
 import { loginSchema } from '@bme/shared';
 import { useAuth } from '@/lib/auth';
 import { parseForm } from '@/lib/forms';
@@ -15,9 +16,17 @@ export default function LoginPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [expired, setExpired] = useState(false);
+  // The page the person was on (or asked for) before being sent here, read from the address.
+  const nextPage = () => safeNext(new URLSearchParams(window.location.search).get('next'));
 
   useEffect(() => {
-    if (!loading && user) router.replace('/');
+    document.title = 'Sign in · BME Assets';
+    setExpired(new URLSearchParams(window.location.search).get('expired') === '1');
+  }, []);
+  useEffect(() => {
+    if (!loading && user) router.replace(nextPage());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, router]);
 
   async function onFinish(values: unknown) {
@@ -26,7 +35,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(input);
-      router.replace('/');
+      router.replace(nextPage());
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Could not sign in');
     } finally {
@@ -58,16 +67,17 @@ export default function LoginPage() {
             ))}
           </ul>
         </div>
-        <span style={{ color: '#6B7C93', fontSize: 12 }}>Biomedical engineering department</span>
+        <span style={{ color: '#9AABC0', fontSize: 12 }}>Biomedical engineering department</span>
       </section>
       <section style={{ display: 'grid', placeItems: 'center', padding: 24, background: '#fff' }}>
         <div style={{ width: 380, maxWidth: '100%' }}>
-          <Typography.Title level={2} style={{ marginTop: 0, marginBottom: 4, fontWeight: 650 }}>
+          <Typography.Title level={1} style={{ marginTop: 0, marginBottom: 4, fontWeight: 650, fontSize: 30, lineHeight: 1.25 }}>
             Sign in
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 28 }}>
             Use the login given to you by your Biomedical HOD.
           </Typography.Paragraph>
+          {expired && <Alert type="info" showIcon style={{ marginBottom: 20 }} message="You were signed out" description="Your session ended, so please sign in again. You will come back to the page you were on." />}
           <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
               <Input type="email" autoComplete="username" autoFocus size="large" prefix={<MailOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />

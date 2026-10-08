@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { ComplaintRow, Paged } from '@bme/shared';
 import { ComplaintDrawer } from '@/components/ComplaintDrawer';
 import { DataTable } from '@/components/DataTable';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Pill, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -19,7 +20,7 @@ type StatusFilter = 'all' | ComplaintRow['status'];
 // Every complaint, newest first, with filters; click a row for its whole story. The API applies the department
 // scope, so a nurse only ever gets their own. With `assetId` it is one equipment's complaint history.
 export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { assetId?: string; reloadKey?: number; onChanged?: () => void }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [search, setSearch] = useState('');
   const [text, setText] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -27,6 +28,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ by?: 'raisedAt' | 'complaintNo' | 'status'; order: 'asc' | 'desc' }>({ order: 'desc' });
 
   useEffect(() => {
     const t = setTimeout(() => (setText(search), setPage(1)), 300);
@@ -43,7 +45,17 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
     ...(departmentId && { departmentId }),
     ...(range?.[0] && { from: range[0].format('YYYY-MM-DD') }),
     ...(range?.[1] && { to: range[1].format('YYYY-MM-DD') }),
+    ...(sort.by && { sortBy: sort.by, order: sort.order }),
   });
+  // Export gives what is on screen. With no dates chosen it covers everything since the system began.
+  const exportQuery = new URLSearchParams({
+    from: range?.[0]?.format('YYYY-MM-DD') ?? '2000-01-01',
+    to: range?.[1]?.format('YYYY-MM-DD') ?? dayjs().format('YYYY-MM-DD'),
+    ...(text && { search: text }),
+    ...(departmentId && { departmentId }),
+    ...(status !== 'all' && { complaintStatus: status }),
+  });
+  const sortOf = (key: string) => (sort.by === key ? (sort.order === 'asc' ? ('ascend' as const) : ('descend' as const)) : null);
   const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?${qs}&k=${reloadKey}`);
   const filtered = !!(text || departmentId || range?.[0] || range?.[1] || status !== 'all');
 
@@ -87,6 +99,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           </Button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+          {can('report.view') && !assetId && <ExportMenu path={`/reports/breakdowns?${exportQuery}`} name="bme-complaints" />}
           <span style={{ color: COLORS.muted }}>{complaints.data ? `${complaints.data.total.toLocaleString('en-IN')} ${complaints.data.total === 1 ? 'complaint' : 'complaints'}` : ' '}</span>
           <Segmented
             aria-label="Status"
@@ -108,6 +121,12 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
         onRetry={complaints.reload}
         emptyText={filtered ? 'No complaints match these filters.' : 'No complaints yet.'}
         pagination={{ current: page, pageSize: 20, total: complaints.data?.total ?? 0, showSizeChanger: false, hideOnSinglePage: true, onChange: setPage }}
+        onChange={(_p, _f, sorter, extra) => {
+          if (extra.action !== 'sort') return;
+          const one = Array.isArray(sorter) ? sorter[0] : sorter;
+          setSort(one?.order ? { by: String(one.columnKey) as 'raisedAt', order: one.order === 'ascend' ? 'asc' : 'desc' } : { order: 'desc' });
+          setPage(1);
+        }}
         onRow={(c) => ({
           className: 'row-link',
           onClick: (e) => {
@@ -117,7 +136,10 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
         columns={[
           {
             title: 'No.',
+            key: 'complaintNo',
             dataIndex: 'complaintNo',
+            sorter: true,
+            sortOrder: sortOf('complaintNo'),
             render: (n: string, c) => (
               <Button type="link" style={{ padding: 0, height: 'auto' }} className="code" onClick={() => setOpenId(c.id)}>
                 {n}
@@ -160,7 +182,10 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           },
           {
             title: 'Raised',
+            key: 'raisedAt',
             dataIndex: 'raisedAt',
+            sorter: true,
+            sortOrder: sortOf('raisedAt'),
             render: (v: string, c) => (
               <div style={{ lineHeight: 1.35 }}>
                 <div>{formatDateTime(v)}</div>
@@ -170,7 +195,10 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           },
           {
             title: 'Status',
+            key: 'status',
             dataIndex: 'status',
+            sorter: true,
+            sortOrder: sortOf('status'),
             render: (s: ComplaintRow['status'], c) => (
               <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                 <StatusTag status={s} />

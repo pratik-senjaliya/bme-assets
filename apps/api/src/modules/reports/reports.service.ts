@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { Prisma } from '@prisma/client';
 import { REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
@@ -64,7 +65,16 @@ const hoursOf = (seconds: number | null) => (seconds == null ? null : Math.round
 // Business rule 7: condemned and not-in-use assets stay in every export, labelled in a Status column.
 
 async function assetMaster(wb: Collector, c: Ctx) {
-  const assets = await prisma.asset.findMany({ where: { ...c.scope }, include: assetInclude, orderBy: { assetCode: 'asc' } });
+  const { q } = c;
+  const where: Prisma.AssetWhereInput = {
+    ...c.scope,
+    ...(q.assetStatus && q.assetStatus !== 'all' && { status: q.assetStatus }),
+    ...(q.departmentId && { departmentId: q.departmentId }),
+    ...(q.equipmentTypeId && { equipmentTypeId: q.equipmentTypeId }),
+    ...(q.criticality && { criticality: q.criticality }),
+    ...(q.search && { OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })) }),
+  };
+  const assets = await prisma.asset.findMany({ where, include: assetInclude, orderBy: { assetCode: 'asc' } });
   const rowsOf = assets.map(toAssetRow);
   const active = assets.filter((a) => a.status === 'active');
   kpi(wb, 'Assets', assets.length, 'int', 'All, including archived');
@@ -159,7 +169,8 @@ async function calibration(wb: Collector, c: Ctx) {
 
 async function breakdowns(wb: Collector, c: Ctx) {
   const complaints = await prisma.complaint.findMany({
-    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, ...c.scope },
+    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, ...c.scope, ...(c.q.departmentId && { departmentId: c.q.departmentId }), ...(c.q.complaintStatus && { status: c.q.complaintStatus }),
+      ...(c.q.search && { OR: [{ complaintNo: { contains: c.q.search, mode: 'insensitive' as const } }, { description: { contains: c.q.search, mode: 'insensitive' as const } }, { asset: { assetCode: { contains: c.q.search, mode: 'insensitive' as const } } }, { asset: { name: { contains: c.q.search, mode: 'insensitive' as const } } }] }) },
     include: { asset: true, department: true, raisedBy: true },
     orderBy: { raisedAt: 'asc' },
   });

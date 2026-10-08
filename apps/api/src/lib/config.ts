@@ -13,6 +13,9 @@ export const config = {
   sessionHours: Number(process.env.SESSION_HOURS ?? 12),
   // Only true when the site is served over HTTPS (demo). On-prem LAN over plain HTTP needs false.
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  // Wrong passwords allowed for one login before it is locked for a while (brute-force protection).
+  loginMaxFailures: Number(process.env.LOGIN_MAX_FAILURES ?? 5),
+  loginLockMinutes: Number(process.env.LOGIN_LOCK_MINUTES ?? 15),
   // Proxy hops in front of the API, so req.ip (audit log) is the real client.
   trustProxy: Number(process.env.TRUST_PROXY ?? 1),
 };
