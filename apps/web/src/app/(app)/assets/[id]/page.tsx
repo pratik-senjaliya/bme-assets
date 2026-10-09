@@ -155,7 +155,7 @@ export default function AssetDetailPage() {
           ...(can('asset.edit') ? [{ key: 'service', label: 'Service log', children: <AssetServiceLogTab assetId={a.id} canEdit={a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
           ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsHistory assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
           ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
-          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
+          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && a.status !== 'condemned'} showCosts={can('expense.manage')} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
           { key: 'documents', label: 'Documents', children: <DocumentsTab id={a.id} canEdit={can('asset.edit')} /> },
         ]}
       />
@@ -252,7 +252,8 @@ const docsColumn = <T extends { id: string }>(ownerType: 'purchase_order' | 'ser
   render: (_: unknown, r: T) => <DocumentsButton ownerType={ownerType} ownerId={r.id} title={titleOf(r)} kinds={kinds} canUpload={canUpload} />,
 });
 
-function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; canEdit: boolean } & RowAction) {
+// Without expense.manage (nursing) the costs, and the PO and contract copies that show them, are left out.
+function PurchaseTab({ id, canEdit, showCosts, canRequest, requestDelete }: { id: string; canEdit: boolean; showCosts: boolean } & RowAction) {
   const { message } = App.useApp();
   const orders = useFetch<PurchaseOrderRow[]>(`/assets/${id}/purchase-orders`);
   const contracts = useFetch<ServiceContractRow[]>(`/assets/${id}/contracts`);
@@ -314,9 +315,13 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
             { title: 'PO number', dataIndex: 'poNumber' },
             { title: 'Date', dataIndex: 'poDate', render: formatDate },
             { title: 'Vendor', dataIndex: 'vendor' },
-            { title: 'Cost', dataIndex: 'cost', align: 'right', render: formatMoney },
-            docsColumn<PurchaseOrderRow>('purchase_order', ['po', 'other'], canEdit, (r) => `PO ${r.poNumber}`),
-            ...deleteColumn<PurchaseOrderRow>({ canRequest, requestDelete }, 'purchase_order', (r) => `Purchase order ${r.poNumber} (${r.vendor}, ${formatMoney(r.cost)})`),
+            ...(showCosts
+              ? [
+                  { title: 'Cost', dataIndex: 'cost', align: 'right' as const, render: formatMoney },
+                  docsColumn<PurchaseOrderRow>('purchase_order', ['po', 'other'], canEdit, (r) => `PO ${r.poNumber}`),
+                ]
+              : []),
+            ...deleteColumn<PurchaseOrderRow>({ canRequest, requestDelete }, 'purchase_order', (r) => `Purchase order ${r.poNumber} (${[r.vendor, r.cost != null && formatMoney(r.cost)].filter(Boolean).join(', ')})`),
           ]}
         />
       </Card>
@@ -332,8 +337,12 @@ function PurchaseTab({ id, canEdit, canRequest, requestDelete }: { id: string; c
             { title: 'Vendor', dataIndex: 'vendor' },
             { title: 'Starts', dataIndex: 'startDate', render: formatDate },
             { title: 'Ends', dataIndex: 'endDate', render: formatDate },
-            { title: 'Cost', dataIndex: 'cost', align: 'right', render: (c: number | null) => (c == null ? '—' : formatMoney(c)) },
-            docsColumn<ServiceContractRow>('service_contract', ['contract', 'other'], canEdit, (r) => `${r.type.toUpperCase().replace('_', '-')} contract`),
+            ...(showCosts
+              ? [
+                  { title: 'Cost', dataIndex: 'cost', align: 'right' as const, render: (c: number | null) => (c == null ? '—' : formatMoney(c)) },
+                  docsColumn<ServiceContractRow>('service_contract', ['contract', 'other'], canEdit, (r) => `${r.type.toUpperCase().replace('_', '-')} contract`),
+                ]
+              : []),
             ...deleteColumn<ServiceContractRow>({ canRequest, requestDelete }, 'service_contract', (r) => `${r.type.toUpperCase().replace('_', '-')} contract with ${r.vendor}`),
           ]}
         />

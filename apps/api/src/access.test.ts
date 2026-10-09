@@ -62,6 +62,29 @@ describe('permissions', () => {
     assert.ok(locations.every((l: { departmentId: string }) => l.departmentId === nurse.departmentId));
   });
 
+  it('nursing sees purchase orders and contracts without costs or their copies', async () => {
+    const nurseCookie = await login('nursing@demo.local');
+    const nurse = await (await get('/auth/me', nurseCookie)).json();
+    const asset = await prisma.asset.findFirstOrThrow({ where: { departmentId: nurse.departmentId } });
+    const biomedCookie = await login('biomed@demo.local');
+    const po = await (await fetch(`${base}/assets/${asset.id}/purchase-orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: biomedCookie },
+      body: JSON.stringify({ poNumber: 'TEST-COST', poDate: '2026-01-05', vendor: 'Test Vendor', cost: 250000 }),
+    })).json();
+    try {
+      const seen = async (cookie: string) => (await (await get(`/assets/${asset.id}/purchase-orders`, cookie)).json()).find((o: { id: string }) => o.id === po.id);
+      assert.equal((await seen(biomedCookie)).cost, 250000);
+      const forNurse = await seen(nurseCookie);
+      assert.equal(forNurse.vendor, 'Test Vendor');
+      assert.ok(!('cost' in forNurse));
+      for (const c of await (await get(`/assets/${asset.id}/contracts`, nurseCookie)).json()) assert.ok(!('cost' in c));
+      assert.equal((await get(`/attachments?ownerType=purchase_order&ownerId=${po.id}`, nurseCookie)).status, 403);
+    } finally {
+      await prisma.purchaseOrder.delete({ where: { id: po.id } });
+    }
+  });
+
   it('admin cannot change the asset ID pattern (super admin only)', async () => {
     const cookie = await login('admin@demo.local');
     const res = await fetch(`${base}/settings`, {

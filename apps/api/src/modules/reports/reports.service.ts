@@ -482,7 +482,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     ['service_log', logs.map((l) => l.id)], ['calibration_record', calibrations.map((c) => c.id)], ['service_expense', expenses.map((e) => e.id)],
   ];
   const files = (await Promise.all(owners.map(([ownerType, ids]) => prisma.attachment.findMany({ where: { ownerType, ownerId: { in: ids } }, orderBy: { createdAt: 'asc' } })))).flat()
-    .filter((f) => canSeeCosts || f.ownerType !== 'service_expense');
+    .filter((f) => canSeeCosts || !['service_expense', 'purchase_order', 'service_contract'].includes(f.ownerType));
   const users = await prisma.user.findMany({ where: { id: { in: pmsRecords.map((p) => p.performedBy) } }, select: { id: true, name: true } });
   const r = toAssetRow(asset);
   const downtimeS = complaints.reduce((s, c) => s + (complaintMetrics(c).downtimeSeconds ?? 0), 0);
@@ -510,9 +510,10 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     ...(canSeeCosts ? [{ k: 'Total expenses (₹)', v: expenses.reduce((s, e) => s + Number(e.amount), 0) }] : []),
     { k: 'Documents on file', v: files.length },
   ]);
-  addSheet(wb, 'Purchase orders', [{ header: 'PO number', key: 'no', width: 20 }, { header: 'PO date', key: 'date', fmt: 'date' }, { header: 'Vendor', key: 'vendor', width: 26 }, { header: 'Cost', key: 'cost', fmt: 'money', width: 16 }],
+  const costColumn = canSeeCosts ? [{ header: 'Cost', key: 'cost', fmt: 'money' as const, width: 16 }] : [];
+  addSheet(wb, 'Purchase orders', [{ header: 'PO number', key: 'no', width: 20 }, { header: 'PO date', key: 'date', fmt: 'date' }, { header: 'Vendor', key: 'vendor', width: 26 }, ...costColumn],
     orders.map((o) => ({ no: o.poNumber, date: o.poDate, vendor: o.vendor, cost: Number(o.cost) })));
-  addSheet(wb, 'Contracts', [{ header: 'Type', key: 'type' }, { header: 'Vendor', key: 'vendor', width: 26 }, { header: 'Start', key: 'start', fmt: 'date' }, { header: 'End', key: 'end', fmt: 'date' }, { header: 'Cost', key: 'cost', fmt: 'money', width: 16 }],
+  addSheet(wb, 'Contracts', [{ header: 'Type', key: 'type' }, { header: 'Vendor', key: 'vendor', width: 26 }, { header: 'Start', key: 'start', fmt: 'date' }, { header: 'End', key: 'end', fmt: 'date' }, ...costColumn],
     contracts.map((c) => ({ type: c.type.toUpperCase().replace('_', '-'), vendor: c.vendor, start: c.startDate, end: c.endDate, cost: c.cost == null ? null : Number(c.cost) })));
   addSheet(wb, 'PMS', [{ header: 'Date', key: 'date', fmt: 'date' }, { header: 'Done by', key: 'by', width: 22 }, { header: 'Result', key: 'result' }, { header: 'Correction of an earlier record', key: 'corr', width: 30 }, { header: 'Correction reason', key: 'why', width: 36 }],
     pmsRecords.map((p) => ({ date: p.performedOn, by: users.find((u) => u.id === p.performedBy)?.name ?? '', result: p.result.toUpperCase(), corr: p.correctsRecordId ? 'Yes' : '', why: p.correctionReason })));
