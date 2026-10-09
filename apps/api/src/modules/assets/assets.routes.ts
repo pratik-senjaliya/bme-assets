@@ -237,10 +237,21 @@ assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, r
 
 // ---------- Purchase orders & contracts ----------
 
+// Costs are shown only to those who manage expenses, as on the dashboard; nursing sees vendors and dates.
+const seesCosts = (req: Request) => currentUser(req).permissions.includes('expense.manage');
+
+const toOrderRow = (o: Prisma.PurchaseOrderGetPayload<object>, costs: boolean): PurchaseOrderRow => ({
+  id: o.id,
+  poNumber: o.poNumber,
+  poDate: isoDate(o.poDate),
+  vendor: o.vendor,
+  ...(costs && { cost: Number(o.cost) }),
+});
+
 assetsRouter.get('/:id/purchase-orders', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
   const rows = await prisma.purchaseOrder.findMany({ where: { assetId: asset.id }, orderBy: { poDate: 'desc' } });
-  res.json(rows.map((o): PurchaseOrderRow => ({ id: o.id, poNumber: o.poNumber, poDate: isoDate(o.poDate), vendor: o.vendor, cost: Number(o.cost) })));
+  res.json(rows.map((o) => toOrderRow(o, seesCosts(req))));
 });
 
 assetsRouter.post('/:id/purchase-orders', requirePermission('asset.edit'), validate(purchaseOrderSchema), async (req, res) => {
@@ -249,21 +260,21 @@ assetsRouter.post('/:id/purchase-orders', requirePermission('asset.edit'), valid
   const row = await audited(req, { action: 'purchase_order.create', entityType: 'purchase_order' }, (tx) =>
     tx.purchaseOrder.create({ data: { ...input, poDate: parseDate(input.poDate), assetId: asset.id, createdBy: currentUser(req).id } }),
   );
-  res.status(201).json({ id: row.id, poNumber: row.poNumber, poDate: isoDate(row.poDate), vendor: row.vendor, cost: Number(row.cost) } satisfies PurchaseOrderRow);
+  res.status(201).json(toOrderRow(row, seesCosts(req)));
 });
 
-const toContractRow = (c: Prisma.ServiceContractGetPayload<object>): ServiceContractRow => ({
+const toContractRow = (c: Prisma.ServiceContractGetPayload<object>, costs: boolean): ServiceContractRow => ({
   id: c.id,
   type: c.type,
   vendor: c.vendor,
   startDate: isoDate(c.startDate),
   endDate: isoDate(c.endDate),
-  cost: c.cost == null ? null : Number(c.cost),
+  ...(costs && { cost: c.cost == null ? null : Number(c.cost) }),
 });
 
 assetsRouter.get('/:id/contracts', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
-  res.json((await prisma.serviceContract.findMany({ where: { assetId: asset.id }, orderBy: { endDate: 'desc' } })).map(toContractRow));
+  res.json((await prisma.serviceContract.findMany({ where: { assetId: asset.id }, orderBy: { endDate: 'desc' } })).map((c) => toContractRow(c, seesCosts(req))));
 });
 
 assetsRouter.post('/:id/contracts', requirePermission('asset.edit'), validate(serviceContractSchema), async (req, res) => {
@@ -274,7 +285,7 @@ assetsRouter.post('/:id/contracts', requirePermission('asset.edit'), validate(se
       data: { ...input, startDate: parseDate(input.startDate), endDate: parseDate(input.endDate), cost: input.cost ?? null, assetId: asset.id, createdBy: currentUser(req).id },
     }),
   );
-  res.status(201).json(toContractRow(row));
+  res.status(201).json(toContractRow(row, seesCosts(req)));
 });
 
 // ---------- Attachments ----------
@@ -295,15 +306,16 @@ assetsRouter.post('/:id/attachments', requirePermission('asset.edit'), upload.si
 // department checks as the asset itself.
 export const attachmentsRouter = Router();
 
-// Who may read / add documents on each kind of record. Costs and calibration stay with the staff who manage them;
-// nursing can see and add photos on complaints of their own department only (asset scope applies to every file).
+// Who may read / add documents on each kind of record. Costs and calibration stay with the staff who manage them
+// (a PO or contract copy shows the price); nursing can see and add photos on complaints of their own department only
+// (asset scope applies to every file).
 const READ_PERMISSION: Record<AttachmentOwnerType, PermissionCode> = {
   asset: 'asset.view',
   complaint: 'complaint.view',
   service_log: 'asset.view',
   service_expense: 'expense.manage',
-  service_contract: 'asset.view',
-  purchase_order: 'asset.view',
+  service_contract: 'expense.manage',
+  purchase_order: 'expense.manage',
   calibration_record: 'calibration.manage',
 };
 const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {

@@ -1,7 +1,8 @@
 import { Breadcrumb, Typography } from 'antd';
 import Link from 'next/link';
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { COLORS } from '@/theme';
+import { useDocumentTitle } from '@/lib/title';
 
 // Only the first crumb has a list page to go back to; the rest describe where you are.
 const PARENT: Record<string, string> = { Assets: '/assets', Complaints: '/complaints', Approvals: '/approvals' };
@@ -24,9 +25,7 @@ export function PageHeader({
   docTitle?: string;
 }) {
   const name = docTitle ?? (typeof title === 'string' ? title : '');
-  useEffect(() => {
-    document.title = name ? `${name} · BME Assets` : 'BME Assets';
-  }, [name]);
+  useDocumentTitle(name ? `${name} · BME Assets` : 'BME Assets');
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
       <div style={{ minWidth: 0 }}>

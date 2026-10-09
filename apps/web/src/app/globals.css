@@ -360,3 +360,122 @@ a {
     box-shadow: 0 12px 32px rgba(16, 36, 46, 0.18);
   }
 }
+
+/* Forms: one look for labels, help text and errors. Labels are semibold; help text is quiet; an error is red text
+   with a small warning mark and room below, so it never touches the next field's label. */
+.ant-form-item .ant-form-item-label > label {
+  font-weight: 600;
+}
+.ant-form-item .ant-form-item-extra {
+  font-size: 12.5px;
+  color: var(--faint);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+.ant-form-item .ant-form-item-explain {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.ant-form-item.ant-form-item-with-help {
+  margin-bottom: 14px;
+}
+/* Ant Design pulls the next field up by the message's height (a negative-margin spacer) so the form does not grow;
+   that left an error touching the next label. Let the form grow a little instead. */
+.ant-form-item .ant-form-item-margin-offset,
+.ant-form-item + .ant-form-item-margin-offset,
+.ant-form-item-margin-offset {
+  margin-bottom: 0 !important;
+}
+.ant-form-item-explain-error,
+.field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-weight: 600;
+}
+.ant-form-item-explain-error::before,
+.field-error::before {
+  content: '';
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cpath d='M12 7.5v5.5M12 16.5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cpath d='M12 7.5v5.5M12 16.5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* A field in error gets a soft red tint as well as the red border, so it is easy to find on a long form. */
+.ant-form-item-has-error :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-picker, .ant-select-selector) {
+  background-color: #fffaf8 !important;
+}
+/* Modal forms: a little more air between the last field and the buttons. */
+.ant-modal .ant-form {
+  margin-top: 12px;
+}
+.ant-modal .ant-modal-footer {
+  margin-top: 20px;
+}
+
+/* Several "attach" pickers side by side: each is a full-width dashed tile with its file list underneath. */
+.file-tiles {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+.file-tiles .ant-upload-wrapper .ant-upload-select,
+.file-tiles .ant-upload-wrapper .ant-upload-select .ant-btn {
+  width: 100%;
+}
+.file-tiles .ant-upload-wrapper .ant-upload-select .ant-btn {
+  height: 52px;
+  border-style: dashed;
+  background: var(--surface-alt);
+  justify-content: flex-start;
+}
+
+/* An error drawn outside an Ant Design form item (checklists, inline lists). */
+.field-error {
+  color: #b2330e;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+
+/* Full-page answers ("You cannot…", "not found"): the picture shrinks on a phone so the words and the button show. */
+@media (max-width: 760px) {
+  .ant-result {
+    padding: 24px 8px;
+  }
+  .ant-result .ant-result-image {
+    width: 160px;
+    height: 160px;
+    margin-bottom: 16px;
+  }
+  .ant-result .ant-result-image svg {
+    width: 100%;
+    height: 100%;
+  }
+  .ant-result .ant-result-title {
+    font-size: 20px;
+  }
+}
+
+/* A count next to a menu entry (requests waiting for the HOD). */
+.nav-count {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: #fde8e1;
+  color: #b2330e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+}
+.ant-menu-inline-collapsed .nav-count {
+  display: none;
+}

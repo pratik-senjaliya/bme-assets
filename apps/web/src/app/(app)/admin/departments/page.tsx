@@ -97,16 +97,17 @@ function DepartmentsPageScreen() {
                     align: 'right',
                     render: (_: unknown, row) => (
                       <Space>
-                        <Button size="small" onClick={() => open({ kind: 'department', row })}>
+                        <Button size="small" type="text" onClick={() => open({ kind: 'department', row })}>
                           Edit
                         </Button>
                         <Popconfirm
                           title={`Remove ${row.name}?`}
                           description="Not possible if assets, locations or users already use it."
                           okText="Remove"
+                          okButtonProps={{ danger: true }}
                           onConfirm={() => remove(`/departments/${row.id}`, departments.reload)}
                         >
-                          <Button size="small" danger>
+                          <Button size="small" type="text" danger>
                             Remove
                           </Button>
                         </Popconfirm>
@@ -137,16 +138,17 @@ function DepartmentsPageScreen() {
                     align: 'right',
                     render: (_: unknown, row) => (
                       <Space>
-                        <Button size="small" onClick={() => open({ kind: 'location', row })}>
+                        <Button size="small" type="text" onClick={() => open({ kind: 'location', row })}>
                           Edit
                         </Button>
                         <Popconfirm
                           title={`Remove ${row.name}?`}
                           description="Not possible if assets already use it."
                           okText="Remove"
+                          okButtonProps={{ danger: true }}
                           onConfirm={() => remove(`/locations/${row.id}`, locations.reload)}
                         >
-                          <Button size="small" danger>
+                          <Button size="small" type="text" danger>
                             Remove
                           </Button>
                         </Popconfirm>

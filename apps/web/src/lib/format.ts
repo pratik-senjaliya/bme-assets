@@ -23,6 +23,18 @@ export const formatDateTime = (value: string | Date | null | undefined) =>
 
 // ₹ 12,500
 export const formatMoney = (value: number) => `₹ ${new Intl.NumberFormat('en-IN').format(value)}`;
+// Props for a rupee InputNumber: shows 12,34,567.50 while typing (Indian grouping), stores the plain number.
+export const moneyInputProps = {
+  prefix: '₹',
+  formatter: (value: number | string | undefined) => {
+    const s = String(value ?? '');
+    if (!s) return '';
+    const [whole, paise] = s.split('.');
+    const grouped = whole ? new Intl.NumberFormat('en-IN').format(Number(whole)) : '';
+    return paise !== undefined ? `${grouped}.${paise}` : grouped;
+  },
+  parser: (text: string | undefined) => (text ?? '').replace(/[^\d.]/g, ''),
+};
 
 // 2 y 3 m, 5 m, < 1 m
 export const formatAge = (months: number | null | undefined) => {

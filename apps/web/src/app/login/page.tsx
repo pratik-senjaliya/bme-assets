@@ -8,6 +8,7 @@ import { safeNext } from '@/lib/nav';
 import { loginSchema } from '@bme/shared';
 import { useAuth } from '@/lib/auth';
 import { parseForm } from '@/lib/forms';
+import { useDocumentTitle } from '@/lib/title';
 import { COLORS } from '@/theme';
 
 export default function LoginPage() {
@@ -17,11 +18,13 @@ export default function LoginPage() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [expired, setExpired] = useState(false);
+  // Five wrong passwords lock a login, and Caps Lock is the usual cause: say when it is on.
+  const [caps, setCaps] = useState(false);
   // The page the person was on (or asked for) before being sent here, read from the address.
   const nextPage = () => safeNext(new URLSearchParams(window.location.search).get('next'));
 
+  useDocumentTitle('Sign in · BME Assets');
   useEffect(() => {
-    document.title = 'Sign in · BME Assets';
     setExpired(new URLSearchParams(window.location.search).get('expired') === '1');
   }, []);
   useEffect(() => {
@@ -94,8 +97,20 @@ export default function LoginPage() {
             <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
               <Input type="email" autoComplete="username" autoFocus size="large" prefix={<MailOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />
             </Form.Item>
-            <Form.Item label="Password" name="password" rules={[{ required: true, message: 'Enter your password' }]}>
-              <Input.Password autoComplete="current-password" size="large" prefix={<LockOutlined style={{ color: COLORS.faint }} />} placeholder="Your password" />
+            <Form.Item
+              label="Password"
+              name="password"
+              rules={[{ required: true, message: 'Enter your password' }]}
+              extra={caps && <span style={{ color: COLORS.warn.fg, fontWeight: 600 }}>Caps Lock is on</span>}
+            >
+              <Input.Password
+                autoComplete="current-password"
+                size="large"
+                prefix={<LockOutlined style={{ color: COLORS.faint }} />}
+                placeholder="Your password"
+                onKeyUp={(e) => setCaps(e.getModifierState('CapsLock'))}
+                onKeyDown={(e) => setCaps(e.getModifierState('CapsLock'))}
+              />
             </Form.Item>
             <Button type="primary" htmlType="submit" size="large" block loading={submitting} style={{ marginTop: 8, height: 50, fontWeight: 700 }}>
               Sign in

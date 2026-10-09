@@ -320,7 +320,8 @@ export const purchaseOrderSchema = z.object({
   cost: z.number().min(0).max(1_000_000_000),
 });
 export type PurchaseOrderInput = z.infer<typeof purchaseOrderSchema>;
-export type PurchaseOrderRow = { id: string; poNumber: string; poDate: string; vendor: string; cost: number };
+// `cost` is left out for users who may not see costs (expense.manage), like nursing.
+export type PurchaseOrderRow = { id: string; poNumber: string; poDate: string; vendor: string; cost?: number };
 
 export const serviceContractSchema = z
   .object({
@@ -338,7 +339,7 @@ export type ServiceContractRow = {
   vendor: string;
   startDate: string;
   endDate: string;
-  cost: number | null;
+  cost?: number | null; // left out for users who may not see costs, as on PurchaseOrderRow
 };
 
 export const attachmentUploadSchema = z.object({ kind: z.enum(ATTACHMENT_KINDS) });

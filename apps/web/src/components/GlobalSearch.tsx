@@ -36,17 +36,22 @@ export function GlobalSearch() {
       return;
     }
     setSearching(true);
+    // A slow answer for what was typed earlier must not replace the answer for what is typed now.
+    let current = true;
     const t = setTimeout(async () => {
       try {
         const res = await api<Paged<AssetRow>>(`/assets?status=all&pageSize=8&search=${encodeURIComponent(q)}`);
-        setRows(res.items);
+        if (current) setRows(res.items);
       } catch {
-        setRows([]);
+        if (current) setRows([]);
       } finally {
-        setSearching(false);
+        if (current) setSearching(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [text]);
 
   const options = rows.map((a) => ({

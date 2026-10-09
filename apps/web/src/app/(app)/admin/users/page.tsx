@@ -116,6 +116,7 @@ function UsersPageScreen() {
                     title={`Deactivate ${row.name}?`}
                     description="They can no longer sign in. Their history is kept."
                     okText="Deactivate"
+                    okButtonProps={{ danger: true }}
                     onConfirm={() => deactivate(row)}
                   >
                     <Button size="small" type="text" danger>
@@ -139,10 +140,10 @@ function UsersPageScreen() {
       >
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Enter a name' }]}>
-            <Input />
+            <Input placeholder="Full name, e.g. Ravi Patel" />
           </Form.Item>
           <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter an email' }]}>
-            <Input type="email" />
+            <Input type="email" placeholder="name@hospital.in" />
           </Form.Item>
           <Form.Item label="Role" name="role" rules={[{ required: true }]}>
             <Select options={roleOptions} />
