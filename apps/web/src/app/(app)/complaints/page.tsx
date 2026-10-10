@@ -2,13 +2,11 @@
 
 import { CheckCircleOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { App, Button, Card, Col, Form, Input, Modal, Row, Space, Tabs, Typography } from 'antd';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { resolveComplaintSchema, type ComplaintRow, type ComplaintStatus, type Paged } from '@bme/shared';
-import { ComplaintDrawer } from '@/components/ComplaintDrawer';
-import { ComplaintsHistory } from '@/components/ComplaintsHistory';
 import { PageHeader } from '@/components/PageHeader';
-import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { Bar, EmptyState } from '@/components/Skeletons';
 import { CriticalityTag, Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
@@ -16,6 +14,11 @@ import { useAuth } from '@/lib/auth';
 import { formatDateTime, formatDuration } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { parseForm, useSingleFlight } from '@/lib/forms';
+
+// The history tab, the details drawer and the raise dialog load when first opened, so the board shows sooner.
+const ComplaintDrawer = dynamic(() => import('@/components/ComplaintDrawer').then((m) => m.ComplaintDrawer));
+const ComplaintsHistory = dynamic(() => import('@/components/ComplaintsHistory').then((m) => m.ComplaintsHistory));
+const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
 
 const COLUMNS: { status: ComplaintStatus; title: string; empty: string }[] = [
   { status: 'open', title: 'Open', empty: 'Nothing waiting.' },

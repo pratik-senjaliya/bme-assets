@@ -1,8 +1,8 @@
 'use client';
 
-import { SearchOutlined } from '@ant-design/icons';
-import { AutoComplete, Input, type InputRef } from 'antd';
-import { useRouter } from 'next/navigation';
+import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
+import { AutoComplete, Button, Grid, Input, type InputRef } from 'antd';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { AssetRow, Paged } from '@bme/shared';
 import { api } from '@/lib/api';
@@ -10,18 +10,34 @@ import { COLORS } from '@/theme';
 
 // Top-bar search: type an asset ID, name, serial or make, pick a result and go straight to the asset.
 // Press "/" or Ctrl/⌘+K from anywhere to focus it.
+// Phones: a search button; tapping it opens the search across the whole top bar.
 export function GlobalSearch() {
   const router = useRouter();
+  const pathname = usePathname();
   const ref = useRef<InputRef>(null);
   const [text, setText] = useState('');
   const [rows, setRows] = useState<AssetRow[]>([]);
   const [searching, setSearching] = useState(false);
+  const phone = Grid.useBreakpoint().sm === false;
+  const [open, setOpen] = useState(false);
+  const close = () => {
+    setOpen(false);
+    setText('');
+    setRows([]);
+  };
+
+  // Opened on a phone: put the cursor in it. Moving to another page closes it.
+  useEffect(() => {
+    if (open) ref.current?.focus();
+  }, [open]);
+  useEffect(() => setOpen(false), [pathname]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = /input|textarea|select/i.test((e.target as HTMLElement)?.tagName ?? '') || (e.target as HTMLElement)?.isContentEditable;
       if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing)) {
         e.preventDefault();
+        setOpen(true);
         ref.current?.focus();
       }
     };
@@ -69,15 +85,18 @@ export function GlobalSearch() {
     ),
   }));
 
-  return (
+  if (phone && !open) {
+    return <Button className="icon-btn" aria-label="Search equipment" icon={<SearchOutlined />} onClick={() => setOpen(true)} />;
+  }
+
+  const box = (
     <AutoComplete
-      style={{ width: 'min(480px, 100%)' }}
+      style={{ width: phone ? '100%' : 'min(480px, 100%)' }}
       options={options}
       value={text}
       onChange={setText}
       onSelect={(id: string) => {
-        setText('');
-        setRows([]);
+        close();
         router.push(`/assets/${id}`);
       }}
       popupMatchSelectWidth={480}
@@ -88,11 +107,19 @@ export function GlobalSearch() {
         ref={ref}
         allowClear
         prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
-        suffix={text ? null : <kbd style={{ fontSize: 12, fontFamily: 'inherit', color: COLORS.faint, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: '1px 7px' }}>/</kbd>}
+        onKeyDown={(e) => phone && e.key === 'Escape' && close()}
+        suffix={text || phone ? null : <kbd style={{ fontSize: 12, fontFamily: 'inherit', color: COLORS.faint, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: '1px 7px' }}>/</kbd>}
         placeholder="Search equipment by ID, name or serial"
         aria-label="Search equipment"
         style={{ background: COLORS.surfaceAlt, borderColor: COLORS.line, height: 44, borderRadius: 12 }}
       />
     </AutoComplete>
+  );
+  if (!phone) return box;
+  return (
+    <div className="search-overlay">
+      {box}
+      <Button className="icon-btn" aria-label="Close search" icon={<CloseOutlined />} onClick={close} />
+    </div>
   );
 }

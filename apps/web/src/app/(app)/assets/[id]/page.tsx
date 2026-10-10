@@ -3,6 +3,7 @@
 import { FileTextOutlined, InboxOutlined, LockOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload } from 'antd';
 import dayjs from 'dayjs';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -25,17 +26,12 @@ import {
   type TimelineEvent,
 } from '@bme/shared';
 import { AssetApprovalBanners } from '@/components/AssetApprovalBanners';
-import { AssetCalibrationTab } from '@/components/AssetCalibrationTab';
-import { AssetServiceLogTab } from '@/components/AssetServiceLogTab';
-import { AssetPmsTab } from '@/components/AssetPmsTab';
-import { ComplaintsHistory } from '@/components/ComplaintsHistory';
 import { DataTable } from '@/components/DataTable';
 import { DocumentsButton } from '@/components/DocumentList';
 import { FilePicker } from '@/components/FilePicker';
 import { PageHeader } from '@/components/PageHeader';
-import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { DetailPageSkeleton, EmptyState } from '@/components/Skeletons';
-import { RequestCondemnModal, RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
+import type { DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
@@ -44,6 +40,15 @@ import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, form
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 import { StatusResult } from '@/components/StatusResult';
+
+// Tab contents and dialogs load when first opened, so the asset's own page shows sooner.
+const AssetCalibrationTab = dynamic(() => import('@/components/AssetCalibrationTab').then((m) => m.AssetCalibrationTab));
+const AssetServiceLogTab = dynamic(() => import('@/components/AssetServiceLogTab').then((m) => m.AssetServiceLogTab));
+const AssetPmsTab = dynamic(() => import('@/components/AssetPmsTab').then((m) => m.AssetPmsTab));
+const ComplaintsHistory = dynamic(() => import('@/components/ComplaintsHistory').then((m) => m.ComplaintsHistory));
+const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
+const RequestCondemnModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestCondemnModal));
+const RequestDeleteModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestDeleteModal));
 
 // Dot colours from the one status mapping: work done is green, a breakdown is red, registration is blue, paperwork is grey.
 const TIMELINE_COLOR: Record<TimelineEvent['kind'], string> = {

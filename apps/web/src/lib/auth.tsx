@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LoginInput, PermissionCode, SessionUser } from '@bme/shared';
-import { api, ApiError } from './api';
+import { api, ApiError, clearFetchCache } from './api';
 import { SIGNED_OUT_EVENT } from './nav';
 
 type AuthState = {
@@ -20,6 +20,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   const expiredRef = useRef(false); // true once a signed-in person lost the session (so the login page can say why)
+  const userRef = useRef<SessionUser | null>(null);
+  userRef.current = user;
 
   useEffect(() => {
     api<SessionUser>('/auth/me')
@@ -33,6 +35,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Another call found the session gone: drop the user, and the shell sends them to sign in.
   useEffect(() => {
     const gone = () => {
+      clearFetchCache();
+      // Only someone who was signed in can have lost a session; a page that asked before the first
+      // "who am I" answer is not news (the shell sends a signed-out visitor to sign in anyway).
+      if (!userRef.current) return;
       expiredRef.current = true;
       setUser(null);
     };
@@ -42,12 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (input: LoginInput) => {
     expiredRef.current = false;
+    clearFetchCache();
     setUser(await api<SessionUser>('/auth/login', { body: input }));
   }, []);
 
   const logout = useCallback(async () => {
     expiredRef.current = false;
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    clearFetchCache();
     setUser(null);
   }, []);
 

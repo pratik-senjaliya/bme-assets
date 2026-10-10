@@ -3,7 +3,7 @@
 import { InboxOutlined } from '@ant-design/icons';
 import { Card, Table, Tabs } from 'antd';
 import type { ReportData, ReportSheetData } from '@bme/shared';
-import { ChartGrid } from '@/components/charts/ChartCard';
+import { ChartGrid } from '@/components/charts/LazyCharts';
 import { KpiGrid } from '@/components/KpiTile';
 import { EmptyState } from '@/components/Skeletons';
 import { formatDate, formatDateTime, formatValue } from '@/lib/format';

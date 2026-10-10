@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { ComplaintRow, Paged } from '@bme/shared';
 import { ComplaintDrawer } from '@/components/ComplaintDrawer';
 import { DataTable } from '@/components/DataTable';
+import { PhoneFilters } from '@/components/PhoneFilters';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Pill, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
@@ -67,22 +68,24 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search number, equipment or problem"
           aria-label="Search complaints"
-          style={{ width: 300, maxWidth: '100%' }}
+          style={{ flex: '1 1 200px', maxWidth: 300 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {departments.data && (
-          <Select allowClear placeholder="Department" aria-label="Department" style={{ minWidth: 190 }} value={departmentId} options={departments.data.map((d) => ({ value: d.id, label: d.name }))} onChange={(v) => (setDepartmentId(v), setPage(1))} />
-        )}
-        <DatePicker.RangePicker
-          allowEmpty={[true, true]}
-          format="DD MMM YYYY"
-          aria-label="Raised between"
-          placeholder={['Raised from', 'to']}
-          value={range}
-          onChange={(v) => (setRange(v), setPage(1))}
-          disabledDate={(d) => d.isAfter(dayjs())}
-        />
+        <PhoneFilters active={[departmentId, range?.[0] || range?.[1]].filter(Boolean).length}>
+          {departments.data && (
+            <Select allowClear placeholder="Department" aria-label="Department" style={{ minWidth: 190 }} value={departmentId} options={departments.data.map((d) => ({ value: d.id, label: d.name }))} onChange={(v) => (setDepartmentId(v), setPage(1))} />
+          )}
+          <DatePicker.RangePicker
+            allowEmpty={[true, true]}
+            format="DD MMM YYYY"
+            aria-label="Raised between"
+            placeholder={['Raised from', 'to']}
+            value={range}
+            onChange={(v) => (setRange(v), setPage(1))}
+            disabledDate={(d) => d.isAfter(dayjs())}
+          />
+        </PhoneFilters>
         {filtered && (
           <Button
             type="link"

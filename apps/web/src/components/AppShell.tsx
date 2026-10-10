@@ -23,7 +23,7 @@ import {
 import { Button, Dropdown, Grid, Layout, Menu, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ApprovalRow, PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
@@ -80,7 +80,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   // How many requests wait for the HOD, next to Approvals; checked again on every page change.
   const waiting = useFetch<ApprovalRow[]>(user && can('approval.decide') ? '/approvals?status=pending' : null);
   const reloadWaiting = waiting.reload;
+  const firstPath = useRef(pathname);
   useEffect(() => {
+    // The first page already loaded it; ask again when the person moves to another page.
+    if (pathname === firstPath.current) return;
+    firstPath.current = '';
     void reloadWaiting();
   }, [pathname, reloadWaiting]);
   const counts: Record<string, number> = { '/approvals': waiting.data?.length ?? 0 };
@@ -91,7 +95,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!loading && !user) router.replace(loginHref(sessionExpired()));
   }, [loading, user, router, sessionExpired]);
 
-  if (loading || !user) return <ShellSkeleton />;
+  if (loading || !user) {
+    return (
+      <>
+        <ShellSkeleton />
+        {/* While "who am I" is answered, the page is already mounted out of sight so its own data loads at the same
+            time instead of after it. Its answers are kept (see useFetch), so the real page shows them at once. */}
+        {loading && (
+          <div hidden aria-hidden>
+            {children}
+          </div>
+        )}
+      </>
+    );
+  }
 
   const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can));
   const toItem = (i: Item) => ({
