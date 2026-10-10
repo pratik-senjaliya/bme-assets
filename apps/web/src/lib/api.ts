@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { notifySignedOut } from '@/lib/nav';
 
 export class ApiError extends Error {
@@ -29,27 +29,73 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   return json as T;
 }
 
-export function useFetch<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(path !== null);
+// The last answer for each path, so a page visited again shows at once and then refreshes quietly. Requests for
+// the same path at the same moment (the shell and a page, or a page mounted twice) share one call.
+// Cleared on sign in and sign out, so one person never sees another's data.
+const cache = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
+const CACHE_LIMIT = 100;
 
-  const load = useCallback(async () => {
-    if (path === null) return;
-    setLoading(true);
-    try {
-      setData(await api<T>(path));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
+export function clearFetchCache() {
+  cache.clear();
+  inflight.clear();
+}
+
+// `fresh` starts a new call even if one is under way (a reload after a save must not get an older answer).
+function fetchShared<T>(path: string, fresh: boolean): Promise<T> {
+  const running = fresh ? undefined : inflight.get(path);
+  if (running) return running as Promise<T>;
+  const call = api<T>(path).then((value) => {
+    if (inflight.get(path) === call) {
+      cache.delete(path);
+      cache.set(path, value);
+      if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
     }
-  }, [path]);
+    return value;
+  });
+  inflight.set(path, call);
+  const done = () => void (inflight.get(path) === call && inflight.delete(path));
+  call.then(done, done);
+  return call;
+}
+
+// `fresh`: never show a remembered answer, only one asked for now. For screens that copy the data into a form to be
+// edited and saved (an older copy, or a newer one arriving after typing has started, must never end up in the form).
+export function useFetch<T>(path: string | null, { fresh = false }: { fresh?: boolean } = {}) {
+  const useCache = !fresh;
+  const [data, setData] = useState<T | null>(() => (useCache && path !== null && cache.has(path) ? (cache.get(path) as T) : null));
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(path !== null && !(useCache && cache.has(path)));
+  const current = useRef(path);
+  current.current = path;
+
+  const run = useCallback(
+    async (reload: boolean) => {
+      if (path === null) return;
+      const cached = useCache && cache.has(path);
+      if (cached) setData(cache.get(path) as T);
+      // With something to show, the first refresh is quiet; a reload (after a save) shows that it is working.
+      if (reload || !cached) setLoading(true);
+      try {
+        const value = await fetchShared<T>(path, reload);
+        if (current.current !== path) return; // the page moved on (new filter); a late answer must not replace it
+        // The same answer again keeps the same object, so nothing on screen redraws or resets.
+        setData((prev) => (prev !== null && JSON.stringify(prev) === JSON.stringify(value) ? prev : value));
+        setError(null);
+      } catch (e) {
+        if (current.current !== path) return;
+        setError(e instanceof Error ? e.message : 'Something went wrong');
+      } finally {
+        if (current.current === path) setLoading(false);
+      }
+    },
+    [path, useCache],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void run(false);
+  }, [run]);
 
-  return { data, error, loading, reload: load };
+  const reload = useCallback(() => run(true), [run]);
+  return { data, error, loading, reload };
 }

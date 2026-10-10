@@ -481,7 +481,7 @@ a {
 }
 
 /* Phones: a list table becomes a stack of cards, one per row, each value named by its column (data-label, set in
-   DataTable). Sort buttons stay: the header row is kept as a wrapped line of the sortable columns only. */
+   DataTable). Sort buttons stay: the header row is kept as one sideways-scrolling line of the sortable columns only. */
 @media (max-width: 767px) {
   .ant-table-wrapper .ant-table-container {
     border: 0;
@@ -521,8 +521,13 @@ a {
   }
   .ant-table-wrapper .ant-table-thead > tr {
     display: flex;
-    flex-wrap: wrap;
     gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ant-table-wrapper .ant-table-thead > tr > th.ant-table-column-has-sorters {
+    flex: none;
+    white-space: nowrap;
   }
   .ant-table-wrapper .ant-table-thead > tr > th {
     display: none;
@@ -676,4 +681,29 @@ a {
   inset: 0;
   z-index: 90;
   background: rgba(16, 36, 46, 0.35);
+}
+
+/* Phones: the open search covers the top bar (see GlobalSearch). */
+.search-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: #fff;
+}
+
+/* Phones: opened list filters stack full width under the search (see PhoneFilters). */
+.phone-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.phone-filters > * {
+  width: 100% !important;
+  max-width: none !important;
+  flex: none !important;
 }

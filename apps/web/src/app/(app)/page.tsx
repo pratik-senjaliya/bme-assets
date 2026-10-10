@@ -1,11 +1,11 @@
 'use client';
 
 import { ArrowRightOutlined, BarcodeOutlined, CalendarOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SafetyCertificateOutlined, ToolOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Row } from 'antd';
+import { Alert, Button, Card, Col, Grid, Row } from 'antd';
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { DashboardResponse } from '@bme/shared';
-import { ChartGrid } from '@/components/charts/ChartCard';
+import { ChartGrid } from '@/components/charts/LazyCharts';
 import { ComplaintsMiniList } from '@/components/ComplaintsMiniList';
 import { KpiGrid } from '@/components/KpiTile';
 import { PageHeader } from '@/components/PageHeader';
@@ -81,6 +81,101 @@ export default function Home() {
   const { user, can } = useAuth();
   const dash = useFetch<DashboardResponse>('/dashboard');
   const d = dash.data;
+  const phone = Grid.useBreakpoint().md === false;
+  const [showCharts, setShowCharts] = useState(false);
+
+  const figures = d && (
+    <>
+      {d.kpis.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <KpiGrid kpis={d.kpis} />
+        </div>
+      )}
+      {d.charts.length > 0 && (!phone || showCharts) && (
+        <div style={{ marginBottom: 16 }}>
+          <ChartGrid charts={d.charts} />
+        </div>
+      )}
+      {phone && d.charts.length > 0 && !showCharts && (
+        <Button block style={{ marginBottom: 16 }} onClick={() => setShowCharts(true)}>
+          Show charts ({d.charts.length})
+        </Button>
+      )}
+    </>
+  );
+
+  const lists = d && (
+    <div style={{ marginBottom: phone ? 16 : 0 }}>
+      <Row gutter={[16, 16]}>
+        {d.dueSoon && (
+          <Col xs={24} xl={12}>
+            <Section title="Due soon" link={<ViewAll href="/due">All due items</ViewAll>}>
+              {d.dueSoon.length === 0 ? (
+                <Quiet>Nothing is due or overdue this month.</Quiet>
+              ) : (
+                d.dueSoon.map((i) => (
+                  <Row2 key={`${i.kind}-${i.assetId}`} right={<DueText daysLeft={i.daysLeft} />}>
+                    <Link href={`/assets/${i.assetId}?tab=${i.kind}`} className="code">
+                      {i.assetCode}
+                    </Link>
+                    <Sub>
+                      {i.kind === 'pms' ? 'PMS' : 'Calibration'} · {i.assetName} · {formatDate(i.dueDate)}
+                    </Sub>
+                  </Row2>
+                ))
+              )}
+            </Section>
+          </Col>
+        )}
+        <Col xs={24} xl={d.dueSoon ? 12 : 24}>
+          <Section title="Open complaints" link={<ViewAll href="/complaints">All complaints</ViewAll>}>
+            <ComplaintsMiniList rows={d.openList} />
+          </Section>
+        </Col>
+        {d.topBreakdowns && (
+          <Col xs={24} xl={12}>
+            <Section title="Most breakdown-prone equipment" link={<ViewAll href="/complaints">Complaint history</ViewAll>}>
+              {d.topBreakdowns.length === 0 ? (
+                <Quiet>No breakdowns in the last 12 months.</Quiet>
+              ) : (
+                d.topBreakdowns.map((t) => (
+                  <Row2 key={t.assetId} right={<span className="num" style={{ fontWeight: 600 }}>{t.breakdowns} {t.breakdowns === 1 ? 'breakdown' : 'breakdowns'}</span>}>
+                    <Link href={`/assets/${t.assetId}?tab=complaints`} className="code">
+                      {t.assetCode}
+                    </Link>
+                    <Sub>
+                      {t.assetName} · {t.downtimeHours} h downtime
+                    </Sub>
+                  </Row2>
+                ))
+              )}
+              <div style={{ color: COLORS.muted, fontSize: 12, padding: '8px 0 4px' }}>Last 12 months</div>
+            </Section>
+          </Col>
+        )}
+        {d.expiring && (
+          <Col xs={24} xl={12}>
+            <Section title="Warranty and contracts ending soon" link={<ViewAll href="/reports/warranty-contracts">Cover report</ViewAll>}>
+              {d.expiring.length === 0 ? (
+                <Quiet icon={<SafetyCertificateOutlined />}>Nothing ends in the next 60 days.</Quiet>
+              ) : (
+                d.expiring.map((x) => (
+                  <Row2 key={`${x.kind}-${x.assetId}-${x.date}-${x.label}`} right={<Pill tone={x.daysLeft <= 30 ? 'warn' : 'neutral'}>In {x.daysLeft} {x.daysLeft === 1 ? 'day' : 'days'}</Pill>}>
+                    <Link href={`/assets/${x.assetId}?tab=purchase`} className="code">
+                      {x.assetCode}
+                    </Link>
+                    <Sub>
+                      {x.label} · {x.assetName} · {formatDate(x.date)}
+                    </Sub>
+                  </Row2>
+                ))
+              )}
+            </Section>
+          </Col>
+        )}
+      </Row>
+    </div>
+  );
 
   return (
     <>
@@ -110,85 +205,18 @@ export default function Home() {
             <Stat label="Overdue" value={d.overdue} href="/due?range=overdue" icon={<ExclamationCircleOutlined />} tone="bad" hint={d.overdue ? 'Needs action now' : 'Nothing overdue'} />
           </Row>
 
-          {d.kpis.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <KpiGrid kpis={d.kpis} />
-            </div>
+          {/* Phones: what needs doing (due items, open complaints) comes before the figures and charts. */}
+          {phone ? (
+            <>
+              {lists}
+              {figures}
+            </>
+          ) : (
+            <>
+              {figures}
+              {lists}
+            </>
           )}
-          {d.charts.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <ChartGrid charts={d.charts} />
-            </div>
-          )}
-
-          <Row gutter={[16, 16]}>
-            {d.dueSoon && (
-              <Col xs={24} xl={12}>
-                <Section title="Due soon" link={<ViewAll href="/due">All due items</ViewAll>}>
-                  {d.dueSoon.length === 0 ? (
-                    <Quiet>Nothing is due or overdue this month.</Quiet>
-                  ) : (
-                    d.dueSoon.map((i) => (
-                      <Row2 key={`${i.kind}-${i.assetId}`} right={<DueText daysLeft={i.daysLeft} />}>
-                        <Link href={`/assets/${i.assetId}?tab=${i.kind}`} className="code">
-                          {i.assetCode}
-                        </Link>
-                        <Sub>
-                          {i.kind === 'pms' ? 'PMS' : 'Calibration'} · {i.assetName} · {formatDate(i.dueDate)}
-                        </Sub>
-                      </Row2>
-                    ))
-                  )}
-                </Section>
-              </Col>
-            )}
-            <Col xs={24} xl={d.dueSoon ? 12 : 24}>
-              <Section title="Open complaints" link={<ViewAll href="/complaints">All complaints</ViewAll>}>
-                <ComplaintsMiniList rows={d.openList} />
-              </Section>
-            </Col>
-            {d.topBreakdowns && (
-              <Col xs={24} xl={12}>
-                <Section title="Most breakdown-prone equipment" link={<ViewAll href="/complaints">Complaint history</ViewAll>}>
-                  {d.topBreakdowns.length === 0 ? (
-                    <Quiet>No breakdowns in the last 12 months.</Quiet>
-                  ) : (
-                    d.topBreakdowns.map((t) => (
-                      <Row2 key={t.assetId} right={<span className="num" style={{ fontWeight: 600 }}>{t.breakdowns} {t.breakdowns === 1 ? 'breakdown' : 'breakdowns'}</span>}>
-                        <Link href={`/assets/${t.assetId}?tab=complaints`} className="code">
-                          {t.assetCode}
-                        </Link>
-                        <Sub>
-                          {t.assetName} · {t.downtimeHours} h downtime
-                        </Sub>
-                      </Row2>
-                    ))
-                  )}
-                  <div style={{ color: COLORS.muted, fontSize: 12, padding: '8px 0 4px' }}>Last 12 months</div>
-                </Section>
-              </Col>
-            )}
-            {d.expiring && (
-              <Col xs={24} xl={12}>
-                <Section title="Warranty and contracts ending soon" link={<ViewAll href="/reports/warranty-contracts">Cover report</ViewAll>}>
-                  {d.expiring.length === 0 ? (
-                    <Quiet icon={<SafetyCertificateOutlined />}>Nothing ends in the next 60 days.</Quiet>
-                  ) : (
-                    d.expiring.map((x) => (
-                      <Row2 key={`${x.kind}-${x.assetId}-${x.date}-${x.label}`} right={<Pill tone={x.daysLeft <= 30 ? 'warn' : 'neutral'}>In {x.daysLeft} {x.daysLeft === 1 ? 'day' : 'days'}</Pill>}>
-                        <Link href={`/assets/${x.assetId}?tab=purchase`} className="code">
-                          {x.assetCode}
-                        </Link>
-                        <Sub>
-                          {x.label} · {x.assetName} · {formatDate(x.date)}
-                        </Sub>
-                      </Row2>
-                    ))
-                  )}
-                </Section>
-              </Col>
-            )}
-          </Row>
         </>
       )}
     </>

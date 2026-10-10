@@ -27,9 +27,9 @@ export default function PerformPmsPage() {
   const { message, modal } = App.useApp();
 
   const allowed = can('pms.perform'); // ask only if the answer will be used
-  const asset = useFetch<AssetDetail>(allowed ? `/assets/${id}` : null);
-  const template = useFetch<PmsTemplateRow>(allowed ? `/assets/${id}/pms-template` : null);
-  const original = useFetch<PmsRecordRow>(allowed && corrects ? `/pms/${corrects}` : null);
+  const asset = useFetch<AssetDetail>(allowed ? `/assets/${id}` : null, { fresh: true });
+  const template = useFetch<PmsTemplateRow>(allowed ? `/assets/${id}/pms-template` : null, { fresh: true });
+  const original = useFetch<PmsRecordRow>(allowed && corrects ? `/pms/${corrects}` : null, { fresh: true });
 
   const [answers, setAnswers] = useState<Record<string, PmsAnswer>>({});
   const [reason, setReason] = useState('');

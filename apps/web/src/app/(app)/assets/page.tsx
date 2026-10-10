@@ -1,7 +1,7 @@
 'use client';
 
 import { InboxOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Dropdown, Input, Segmented, Select, Space } from 'antd';
+import { Button, Dropdown, Grid, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import { CRITICALITIES, type AssetRow, type Paged } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { ExportMenu } from '@/components/ExportMenu';
 import { PageHeader } from '@/components/PageHeader';
+import { PhoneFilters } from '@/components/PhoneFilters';
 import { CriticalityTag, DueCell, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { EmptyState } from '@/components/Skeletons';
@@ -29,6 +30,7 @@ const STATUS_OPTIONS = [
 // Filters live in the URL so a filtered list can be shared as a link.
 function AssetList() {
   const { can, user } = useAuth();
+  const phone = Grid.useBreakpoint().md === false;
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -88,7 +90,7 @@ function AssetList() {
               {canAdd && (
                 <>
                   <Link href="/assets/import">
-                    <Button>Import from Excel</Button>
+                    <Button>{phone ? 'Import' : 'Import from Excel'}</Button>
                   </Link>
                   <Link href="/assets/new">
                     <Button type="primary">Add asset</Button>
@@ -113,13 +115,15 @@ function AssetList() {
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search ID, name, serial, make"
           aria-label="Search assets"
-          style={{ flex: '2 1 260px', maxWidth: 360 }}
+          style={{ flex: '2 1 200px', maxWidth: 360 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
-        {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
-        {select('criticality', 'Criticality', CRITICALITIES.map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) })))}
+        <PhoneFilters active={[q.departmentId, q.equipmentTypeId, q.criticality].filter(Boolean).length}>
+          {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
+          {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
+          {select('criticality', 'Criticality', CRITICALITIES.map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) })))}
+        </PhoneFilters>
         {filtered && (
           <Button
             type="link"
