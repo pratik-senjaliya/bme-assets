@@ -38,7 +38,7 @@ function PmsTemplatesPageScreen() {
   const { message } = App.useApp();
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const [typeId, setTypeId] = useState<string>();
-  const versions = useFetch<PmsTemplateRow[]>(typeId ? `/pms-templates?equipmentTypeId=${typeId}` : null);
+  const versions = useFetch<PmsTemplateRow[]>(typeId ? `/pms-templates?equipmentTypeId=${typeId}` : null, { fresh: true });
   const [draft, setDraft] = useState<PmsItem[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

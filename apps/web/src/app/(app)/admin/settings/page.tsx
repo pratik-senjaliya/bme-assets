@@ -14,7 +14,7 @@ import { FormPageSkeleton } from '@/components/Skeletons';
 function SettingsPageScreen() {
   const { message } = App.useApp();
   const { can } = useAuth();
-  const settings = useFetch<SettingsResponse>('/settings');
+  const settings = useFetch<SettingsResponse>('/settings', { fresh: true });
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [testTo, setTestTo] = useState('');

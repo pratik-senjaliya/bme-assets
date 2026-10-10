@@ -13,7 +13,7 @@ import { FormPageSkeleton } from '@/components/Skeletons';
 export default function EditAssetPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
-  const asset = useFetch<AssetDetail>(can('asset.edit') ? `/assets/${id}` : null); // ask only if the answer will be used
+  const asset = useFetch<AssetDetail>(can('asset.edit') ? `/assets/${id}` : null, { fresh: true }); // ask only if the answer will be used
 
   if (!can('asset.edit')) return <StatusResult status="403" title="You cannot edit assets" />;
   return (

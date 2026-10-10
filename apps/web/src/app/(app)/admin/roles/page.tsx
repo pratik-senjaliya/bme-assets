@@ -29,7 +29,7 @@ const GROUPS: Record<string, string> = {
 
 function RolesPageScreen() {
   const { message } = App.useApp();
-  const roles = useFetch<RoleRow[]>('/roles');
+  const roles = useFetch<RoleRow[]>('/roles', { fresh: true });
   const [roleId, setRoleId] = useState<string>();
   const [selected, setSelected] = useState<PermissionCode[]>([]);
   const [saving, setSaving] = useState(false);

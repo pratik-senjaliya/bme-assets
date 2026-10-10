@@ -59,24 +59,28 @@ function fetchShared<T>(path: string, fresh: boolean): Promise<T> {
   return call;
 }
 
-export function useFetch<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(() => (path !== null && cache.has(path) ? (cache.get(path) as T) : null));
+// `fresh`: never show a remembered answer, only one asked for now. For screens that copy the data into a form to be
+// edited and saved (an older copy, or a newer one arriving after typing has started, must never end up in the form).
+export function useFetch<T>(path: string | null, { fresh = false }: { fresh?: boolean } = {}) {
+  const useCache = !fresh;
+  const [data, setData] = useState<T | null>(() => (useCache && path !== null && cache.has(path) ? (cache.get(path) as T) : null));
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(path !== null && !cache.has(path));
+  const [loading, setLoading] = useState(path !== null && !(useCache && cache.has(path)));
   const current = useRef(path);
   current.current = path;
 
   const run = useCallback(
-    async (fresh: boolean) => {
+    async (reload: boolean) => {
       if (path === null) return;
-      const cached = cache.has(path);
+      const cached = useCache && cache.has(path);
       if (cached) setData(cache.get(path) as T);
       // With something to show, the first refresh is quiet; a reload (after a save) shows that it is working.
-      if (fresh || !cached) setLoading(true);
+      if (reload || !cached) setLoading(true);
       try {
-        const value = await fetchShared<T>(path, fresh);
+        const value = await fetchShared<T>(path, reload);
         if (current.current !== path) return; // the page moved on (new filter); a late answer must not replace it
-        setData(value);
+        // The same answer again keeps the same object, so nothing on screen redraws or resets.
+        setData((prev) => (prev !== null && JSON.stringify(prev) === JSON.stringify(value) ? prev : value));
         setError(null);
       } catch (e) {
         if (current.current !== path) return;
@@ -85,7 +89,7 @@ export function useFetch<T>(path: string | null) {
         if (current.current === path) setLoading(false);
       }
     },
-    [path],
+    [path, useCache],
   );
 
   useEffect(() => {
