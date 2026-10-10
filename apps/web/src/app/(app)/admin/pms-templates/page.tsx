@@ -96,7 +96,7 @@ function PmsTemplatesPageScreen() {
           )
         }
       />
-      <Space style={{ marginBottom: 16 }}>
+      <Space wrap style={{ marginBottom: 16 }}>
         <Typography.Text>Equipment type</Typography.Text>
         <Select
           aria-label="Equipment type"

@@ -46,7 +46,7 @@ export function NotificationBell() {
   }
 
   const content = (
-    <div style={{ width: 380, maxWidth: '80vw' }}>
+    <div style={{ width: 380, maxWidth: 'calc(100vw - 64px)' }}>
       {data.items.length === 0 ? (
         <EmptyState compact icon={<BellOutlined />} title="No reminders" />
       ) : (
@@ -78,6 +78,7 @@ export function NotificationBell() {
     <Popover
       trigger="click"
       placement="bottomRight"
+      overlayClassName="bell-popover"
       title="Reminders"
       content={content}
       open={open}

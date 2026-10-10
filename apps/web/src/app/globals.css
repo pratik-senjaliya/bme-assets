@@ -293,7 +293,7 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 520px) {
+@media (max-width: 359px) {
   .kpi-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -478,4 +478,202 @@ a {
 }
 .ant-menu-inline-collapsed .nav-count {
   display: none;
+}
+
+/* Phones: a list table becomes a stack of cards, one per row, each value named by its column (data-label, set in
+   DataTable). Sort buttons stay: the header row is kept as a wrapped line of the sortable columns only. */
+@media (max-width: 767px) {
+  .ant-table-wrapper .ant-table-container {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .ant-table-wrapper .ant-table-content {
+    overflow: visible !important;
+  }
+  .ant-table-wrapper table,
+  .ant-table-wrapper tbody {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .ant-table-wrapper colgroup,
+  .ant-table-wrapper .ant-table-measure-row {
+    display: none;
+  }
+  .ant-table-wrapper .ant-table {
+    background: transparent;
+  }
+  .ant-table-wrapper .ant-table-thead {
+    display: block;
+    margin-bottom: 10px;
+  }
+  .ant-table-wrapper .ant-table-thead:has(.ant-table-column-has-sorters)::before {
+    content: 'Sort by';
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ant-table-wrapper .ant-table-thead > tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ant-table-wrapper .ant-table-thead > tr > th {
+    display: none;
+  }
+  .ant-table-wrapper .ant-table-thead > tr > th.ant-table-column-has-sorters {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    min-height: 36px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .ant-table-wrapper .ant-table-thead > tr > th::before {
+    display: none;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder):not(.ant-table-measure-row) {
+    display: block;
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 6px 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow-card);
+  }
+  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    padding: 9px 0 !important;
+    border-bottom: 1px solid var(--line-soft) !important;
+    text-align: right;
+    background: transparent !important;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td:last-child {
+    border-bottom: 0 !important;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    max-width: 40%;
+    text-align: left;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  /* A cell with no title (the row's actions) sits on the right, on its own line. */
+  .ant-table-wrapper .ant-table-tbody > tr > td:not([data-label]) {
+    justify-content: flex-end;
+  }
+  /* A card holds everything in view, so a column pinned to the right edge is no longer pinned. */
+  .ant-table-wrapper .ant-table-cell-fix-right,
+  .ant-table-wrapper .ant-table-cell-fix-left {
+    position: static !important;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-placeholder {
+    display: block;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-placeholder > td {
+    display: block;
+    border: 0;
+  }
+  /* An expanded audit entry opens under its card. */
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-expanded-row {
+    display: block;
+    margin: -6px 0 10px;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-expanded-row > td {
+    display: block;
+    text-align: left;
+    padding: 12px 14px !important;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td.ant-table-row-expand-icon-cell {
+    justify-content: flex-start;
+  }
+}
+
+/* Segmented switches (status filters) scroll within themselves rather than widening the page. */
+.ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* A control given a fixed width never grows past the screen it is on. */
+.ant-select,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-picker {
+  max-width: 100%;
+}
+
+/* Card headers on a phone: a long title and its buttons wrap instead of cutting the title short. */
+@media (max-width: 575px) {
+  .ant-card .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+  .ant-card .ant-card-head-title {
+    flex: 1 1 160px;
+    white-space: normal;
+  }
+  .ant-card .ant-card-extra {
+    margin-inline-start: 0;
+  }
+}
+
+/* Loading placeholders shrink to the screen like the content they stand in for. */
+.ant-skeleton.ant-skeleton-element,
+.ant-skeleton.ant-skeleton-element .ant-skeleton-image {
+  max-width: 100%;
+}
+
+/* A row of buttons or tags wraps onto a second line on a phone rather than running off the screen. */
+@media (max-width: 575px) {
+  .ant-space-horizontal {
+    flex-wrap: wrap;
+  }
+}
+
+/* Phones: pop-ups from the top bar span the screen's width instead of hanging off an edge. */
+@media (max-width: 575px) {
+  .search-popup.ant-select-dropdown,
+  .bell-popover.ant-popover {
+    left: 16px !important;
+    width: calc(100vw - 32px) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+  .bell-popover .ant-popover-arrow {
+    display: none;
+  }
+  .bell-popover .ant-popover-inner > div,
+  .bell-popover .ant-popover-inner-content > div {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}
+
+/* The dimmed page behind the open phone menu. */
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(16, 36, 46, 0.35);
 }

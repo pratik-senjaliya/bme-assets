@@ -83,7 +83,7 @@ function RolesPageScreen() {
           />
           {locked && <Alert type="info" showIcon message="Super admin permissions are fixed and cannot be changed." />}
           <Checkbox.Group value={selected} onChange={(v) => setSelected(v as PermissionCode[])} disabled={locked} style={{ display: 'block', width: '100%' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: 16 }}>
               {Object.entries(GROUPS).map(([prefix, label]) => (
                 <Card key={prefix} size="small" title={label}>
                   <Space direction="vertical" size={12}>
