@@ -143,6 +143,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <Menu theme="light" mode="inline" items={items} selectedKeys={selected} onClick={() => phone && setCollapsed(true)} style={{ borderInlineEnd: 0, padding: '4px 14px 20px', background: 'transparent' }} />
       </Layout.Sider>
+      {/* Phones: the open menu sits over the page; tapping the page behind it closes it. */}
+      {phone && !collapsed && <div className="no-print menu-scrim" aria-hidden onClick={() => setCollapsed(true)} />}
       <Layout style={{ minWidth: 0 }}>
         <Layout.Header className="no-print app-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Button

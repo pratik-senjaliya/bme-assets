@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Segmented, Table } from 'antd';
+import { Card, Grid, Segmented, Table } from 'antd';
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ChartSpec } from '@bme/shared';
@@ -15,11 +15,12 @@ type TipProps = { active?: boolean; payload?: ReadonlyArray<{ name?: string | nu
 // chart has a Table view so nothing depends on colour or hover.
 export function ChartCard({ spec }: { spec: ChartSpec }) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const phone = Grid.useBreakpoint().sm === false;
   const multi = spec.series.length > 1;
   const empty = spec.data.length === 0 || spec.data.every((d) => spec.series.every((s) => !Number(d[s.key])));
   const colour = (i: number) => SERIES[i % SERIES.length];
   const horizontal = spec.kind === 'bar';
-  const height = horizontal ? Math.max(130, spec.data.length * 30 + 20) : 230;
+  const height = horizontal ? Math.max(130, spec.data.length * 30 + 20) : phone ? 260 : 230;
   const longest = Math.max(...spec.data.map((d) => d.label.length), 6);
   // About 7.2px per character at 12px in the app font (asset codes are mostly capitals and digits).
   const labelWidth = Math.min(272, Math.round(Math.min(longest, 36) * 7.2) + 12);
@@ -48,12 +49,14 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
     ) : null;
 
   const axis = { tick: { fill: AXIS, fontSize: 12 }, axisLine: false, tickLine: false } as const;
+  // A phone has no room for several category names side by side: slant them (a long series just thins out).
+  const slant = phone && spec.data.length <= 8 ? ({ angle: -35, textAnchor: 'end', height: 56 } as const) : {};
   const chart = (() => {
     if (spec.kind === 'line') {
       return (
         <LineChart data={spec.data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid vertical={false} stroke={GRID} />
-          <XAxis dataKey="label" {...axis} />
+          <XAxis dataKey="label" {...axis} {...slant} />
           <YAxis {...axis} width={44} tickFormatter={(v: number) => formatAxis(v, spec.fmt)} />
           <Tooltip content={<Tip />} cursor={{ stroke: GRID }} />
           {spec.series.map((s, i) => (
@@ -80,7 +83,7 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
     return (
       <BarChart data={spec.data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid vertical={false} stroke={GRID} />
-        <XAxis dataKey="label" {...axis} interval={spec.data.length > 8 ? 'preserveStartEnd' : 0} />
+        <XAxis dataKey="label" {...axis} {...slant} interval={spec.data.length > 8 ? 'preserveStartEnd' : 0} />
         <YAxis {...axis} width={44} allowDecimals={false} tickFormatter={(v: number) => formatAxis(v, spec.fmt)} />
         <Tooltip content={<Tip />} cursor={{ fill: COLORS.lineSoft }} />
         {spec.series.map((s, i) => (

@@ -67,7 +67,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search number, equipment or problem"
           aria-label="Search complaints"
-          style={{ width: 300 }}
+          style={{ width: 300, maxWidth: '100%' }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -98,7 +98,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
             Clear filters
           </Button>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', maxWidth: '100%' }}>
           {can('report.view') && !assetId && <ExportMenu path={`/reports/breakdowns?${exportQuery}`} name="bme-complaints" />}
           <span style={{ color: COLORS.muted }}>{complaints.data ? `${complaints.data.total.toLocaleString('en-IN')} ${complaints.data.total === 1 ? 'complaint' : 'complaints'}` : ' '}</span>
           <Segmented

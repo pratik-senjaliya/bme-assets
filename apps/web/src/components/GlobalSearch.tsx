@@ -81,6 +81,7 @@ export function GlobalSearch() {
         router.push(`/assets/${id}`);
       }}
       popupMatchSelectWidth={480}
+      popupClassName="search-popup"
       notFoundContent={text.trim().length < 2 ? null : searching ? 'Searching…' : 'No equipment found'}
     >
       <Input

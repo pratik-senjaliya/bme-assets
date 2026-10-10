@@ -142,7 +142,7 @@ export function DetailPageSkeleton({ kpis = 4 }: { kpis?: number }) {
           <Bar key={i} w={w} h={14} />
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 16 }}>
         <FactsSkeleton />
         <FactsSkeleton items={4} />
       </div>
@@ -178,7 +178,7 @@ export function DashboardSkeleton({ kpis = 4, header = true }: { kpis?: number; 
     <Loading>
       {header && <HeaderSkeleton />}
       <KpiSkeleton count={kpis} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))', gap: 16 }}>
         <ChartSkeleton />
         <ChartSkeleton />
       </div>
