@@ -58,12 +58,15 @@ describe('Changing your own password', () => {
     resetLoginThrottle();
     const email = 'biomed@demo.local';
     const NEW = 'Changed@12345';
-    const cookie = (await signIn(email, PASSWORD).then((r) => r.headers.get('set-cookie')))!.split(';')[0];
+    let cookie = (await signIn(email, PASSWORD).then((r) => r.headers.get('set-cookie')))!.split(';')[0];
     try {
       assert.equal((await call(base, cookie, 'POST', '/auth/password', { currentPassword: 'not-it', newPassword: NEW })).status, 400);
       assert.equal((await call(base, cookie, 'POST', '/auth/password', { currentPassword: PASSWORD, newPassword: 'short' })).status, 400, 'too short');
       assert.equal((await call(base, cookie, 'POST', '/auth/password', { currentPassword: PASSWORD, newPassword: PASSWORD })).status, 400, 'same as before');
-      assert.equal((await call(base, cookie, 'POST', '/auth/password', { currentPassword: PASSWORD, newPassword: NEW })).status, 204);
+      const changed = await call(base, cookie, 'POST', '/auth/password', { currentPassword: PASSWORD, newPassword: NEW });
+      assert.equal(changed.status, 204);
+      // A password change ends other sessions; this one carries on with the fresh cookie it was given (as a browser does).
+      cookie = changed.headers.get('set-cookie')!.split(';')[0];
       assert.equal((await signIn(email, PASSWORD)).status, 401);
       assert.equal((await signIn(email, NEW)).status, 200);
       assert.ok(await prisma.auditLog.findFirst({ where: { action: 'auth.password_change' } }), 'not audited');
@@ -73,6 +76,8 @@ describe('Changing your own password', () => {
       resetLoginThrottle();
     }
     assert.equal((await signIn(email, PASSWORD)).status, 200, 'the demo password is back');
+    // Changing the password ended biomed's other sessions, including the one the later tests use: sign in again.
+    biomed = await login(base, email);
   });
 });
 

@@ -60,6 +60,7 @@ async function cleanUp() {
   await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
   await prisma.location.deleteMany({ where: { name: { startsWith: PREFIX } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: 'ftest-' } } });
+  await prisma.department.deleteMany({ where: { name: { startsWith: PREFIX } } });
   await prisma.pmsTemplate.deleteMany({ where: { equipmentType: { code: 'FTT' } } });
   await prisma.equipmentType.deleteMany({ where: { code: 'FTT' } });
 }
@@ -295,23 +296,32 @@ describe('16. Taking back an approval request', () => {
 });
 
 describe('17. Asset ID codes', () => {
+  // A department and location of the tests' own, so a failing run can never rename the hospital's real ones.
+  const own = async (tag: string) => {
+    const dept = await (await call(base, admin, 'POST', '/departments', { name: `${PREFIX}Dept ${tag}`, code: `FTD${tag}` })).json();
+    const loc = await (await call(base, admin, 'POST', '/locations', { departmentId: dept.id, name: `${PREFIX}Bay`, code: 'FTB1' })).json();
+    return { dept, loc };
+  };
+
   it('a code in use by asset IDs is locked; names can still change', async () => {
-    await makeAsset();
-    const icu = await prisma.department.findUniqueOrThrow({ where: { code: 'ICU' } });
-    assert.equal((await call(base, admin, 'PATCH', `/departments/${icu.id}`, { code: 'ICUX' })).status, 409);
-    assert.equal((await call(base, admin, 'PATCH', `/departments/${icu.id}`, { name: icu.name })).status, 200);
+    const { dept, loc } = await own('A');
+    await makeAsset({ departmentId: dept.id, locationId: loc.id });
+    assert.equal((await call(base, admin, 'PATCH', `/departments/${dept.id}`, { code: 'FTDX' })).status, 409);
+    assert.equal((await call(base, admin, 'PATCH', `/departments/${dept.id}`, { name: `${PREFIX}Dept renamed` })).status, 200);
+    assert.equal((await call(base, admin, 'PATCH', `/locations/${loc.id}`, { code: 'FTBX' })).status, 409);
     assert.equal((await call(base, admin, 'PATCH', `/equipment-types/${ids.type}`, { code: 'FTX' })).status, 409);
     const settings = await prisma.hospitalSettings.findFirstOrThrow();
-    assert.equal((await call(base, admin, 'PUT', '/settings', { shortCode: 'ZZZ' })).status, 409);
-    assert.equal((await prisma.hospitalSettings.findFirstOrThrow()).shortCode, settings.shortCode);
+    const res = await call(base, admin, 'PUT', '/settings', { shortCode: settings.shortCode === 'ZZZ' ? 'ZZY' : 'ZZZ' });
+    if (res.status !== 409) await prisma.hospitalSettings.update({ where: { id: settings.id }, data: { shortCode: settings.shortCode } }); // never leave it changed
+    assert.equal(res.status, 409);
   });
 
   it('location codes are unique within a department, and a location with equipment cannot move department', async () => {
-    assert.equal((await call(base, admin, 'POST', '/locations', { departmentId: ids.icu, name: `${PREFIX}Dup`, code: 'icu1' })).status, 409);
-    const fresh = await call(base, admin, 'POST', '/locations', { departmentId: ids.icu, name: `${PREFIX}Store`, code: 'FTS1' });
-    assert.equal(fresh.status, 201, await fresh.clone().text());
-    assert.equal((await call(base, admin, 'PATCH', `/locations/${ids.icu1}`, { departmentId: ids.rad })).status, 409);
-    const empty = await fresh.json();
+    const { dept, loc } = await own('B');
+    assert.equal((await call(base, admin, 'POST', '/locations', { departmentId: dept.id, name: `${PREFIX}Dup`, code: 'ftb1' })).status, 409);
+    await makeAsset({ departmentId: dept.id, locationId: loc.id });
+    assert.equal((await call(base, admin, 'PATCH', `/locations/${loc.id}`, { departmentId: ids.rad })).status, 409);
+    const empty = await (await call(base, admin, 'POST', '/locations', { departmentId: dept.id, name: `${PREFIX}Store`, code: 'FTS1' })).json();
     assert.equal((await call(base, admin, 'PATCH', `/locations/${empty.id}`, { departmentId: ids.rad })).status, 200, 'an empty location can move');
   });
 });

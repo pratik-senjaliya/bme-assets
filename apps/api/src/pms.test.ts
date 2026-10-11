@@ -8,7 +8,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { addMonths, isoDate, parseDate, todayISO } from './lib/dates';
 import { prisma } from './lib/prisma';
-import { generateReminders } from './modules/reminders/reminders.service';
+import { generateReminders, OVERDUE_THRESHOLD } from './modules/reminders/reminders.service';
 import { call, login, startServer } from './testUtils';
 
 const PREFIX = 'PTEST-';
@@ -274,10 +274,14 @@ describe('reminders', () => {
 
     await generateReminders(dayOffset(due, -5));
     assert.equal(await count(), people * 3);
-    for (const offset of [-4, -1, 0, 3]) await generateReminders(dayOffset(due, offset)); // incl. overdue
+    for (const offset of [-4, -1, 0]) await generateReminders(dayOffset(due, offset));
+    assert.equal(await count(), people * 3, 'nothing new until it is overdue');
+    // Once overdue: one "overdue" reminder, however many days it stays overdue.
+    for (const offset of [1, 3, 10]) await generateReminders(dayOffset(due, offset));
     const all = await mine(a.id);
-    assert.equal(all.length, people * 3, 'exactly one reminder per threshold per person');
-    assert.deepEqual([...new Set(all.map((x) => x.thresholdDays))].sort((x, y) => (x ?? 0) - (y ?? 0)), [5, 15, 30]);
+    assert.equal(all.length, people * 4, 'exactly one reminder per threshold per person, plus one when overdue');
+    assert.deepEqual([...new Set(all.map((x) => x.thresholdDays))].sort((x, y) => (x ?? 0) - (y ?? 0)), [OVERDUE_THRESHOLD, 5, 15, 30]);
+    assert.ok(all.some((x) => /overdue by 1 day/.test(x.message)));
     assert.ok(all.every((x) => x.user!.role.name !== 'nursing'), 'nursing is not reminded');
     assert.ok(all.some((x) => /due in 30 days/.test(x.message)) && all.some((x) => /due in 5 days/.test(x.message)));
   });
