@@ -4,6 +4,7 @@ import { REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, 
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
+import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { assetInclude, toAssetRow } from '../assets/assets.service';
 import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
@@ -43,6 +44,23 @@ const monthKeys = (from: string, to: string) => {
   for (let d = parseDate(`${from.slice(0, 7)}-01`); isoDate(d).slice(0, 7) <= to.slice(0, 7); d = addMonths(d, 1)) keys.push(isoDate(d).slice(0, 7));
   return keys;
 };
+// Periods for "by month / by year / by financial year" summaries. Every period in the range is listed, so a quiet
+// one shows as zero instead of vanishing. A financial year runs 1 April to 31 March: FY2025 = Apr 2025 – Mar 2026.
+type Group = ReportQuery['group'];
+const periodOfMonth = (monthKey: string, group: Group) => {
+  if (group === 'month') return monthKey;
+  const [y, m] = monthKey.split('-').map(Number);
+  return group === 'year' ? String(y) : `FY${m >= 4 ? y : y - 1}`;
+};
+const periodKeys = (from: string, to: string, group: Group) => [...new Set(monthKeys(from, to).map((m) => periodOfMonth(m, group)))];
+const periodName = (p: string, group: Group, full = false) => {
+  if (group === 'month') return full ? monthFull(p) : monthLabel(p);
+  if (group === 'year') return p;
+  const y = Number(p.slice(2));
+  return `FY ${y}-${String((y + 1) % 100).padStart(2, '0')}`;
+};
+const PER: Record<Group, string> = { month: 'per month', year: 'per year', fy: 'per financial year' };
+
 const top = <T,>(items: T[], n: number) => items.slice(0, n);
 const span = (c: { from: string; to: string }) => `${prettyDate(parseDate(c.from))} to ${prettyDate(parseDate(c.to))}`;
 // Count items by a label, biggest first.
@@ -218,23 +236,23 @@ async function breakdowns(wb: Collector, c: Ctx) {
   kpi(wb, 'Average response', avg(resps) == null ? null : avg(resps)! / 3600, 'hours', 'Raised to started');
   kpi(wb, 'Average downtime', avg(downs) == null ? null : avg(downs)! / 3600, 'hours', 'Raised to resolved');
   kpi(wb, 'Total downtime', downs.reduce((a, b) => a + b, 0) / 3600, 'hours', 'Resolved breakdowns');
-  // Summary by month or by year (hospital calendar).
-  const key = (d: Date) => (c.q.group === 'year' ? monthInTz(d).slice(0, 4) : monthInTz(d));
-  const groups = new Map<string, typeof rows>();
-  for (const r of rows) groups.set(key(r.x.raisedAt), [...(groups.get(key(r.x.raisedAt)) ?? []), r]);
-  const periods = [...groups].sort(([a], [b]) => a.localeCompare(b));
-  const plabel = (p: string) => (c.q.group === 'year' ? p : monthLabel(p));
-  wb.charts.push(oneSeries('breakdowns-per-period', c.q.group === 'year' ? 'Breakdowns per year' : 'Breakdowns per month', 'column', 'Breakdowns', periods.map(([p, g]) => [plabel(p), g.length] as [string, number]), 'int'));
-  wb.charts.push(oneSeries('downtime-per-period', c.q.group === 'year' ? 'Downtime per year' : 'Downtime per month', 'column', 'Downtime (h)', periods.map(([p, g]) => [plabel(p), Math.round((g.reduce((s, r) => s + (r.m.downtimeSeconds ?? 0), 0) / 3600) * 10) / 10] as [string, number]), 'hours', 'Resolved breakdowns'));
+  // Summary by month, by year or by financial year (hospital calendar), every period in the range.
+  const group = c.q.group;
+  const groups = new Map<string, typeof rows>(periodKeys(c.from, c.to, group).map((p) => [p, []]));
+  for (const r of rows) groups.get(periodOfMonth(monthInTz(r.x.raisedAt), group))?.push(r);
+  const periods = [...groups];
+  const plabel = (p: string) => periodName(p, group);
+  wb.charts.push(oneSeries('breakdowns-per-period', `Breakdowns ${PER[group]}`, 'column', 'Breakdowns', periods.map(([p, g]) => [plabel(p), g.length] as [string, number]), 'int'));
+  wb.charts.push(oneSeries('downtime-per-period', `Downtime ${PER[group]}`, 'column', 'Downtime (h)', periods.map(([p, g]) => [plabel(p), Math.round((g.reduce((s, r) => s + (r.m.downtimeSeconds ?? 0), 0) / 3600) * 10) / 10] as [string, number]), 'hours', 'Resolved breakdowns'));
   wb.charts.push(oneSeries('top-breakdowns', 'Equipment with the most breakdowns', 'bar', 'Breakdowns', top(tally(rows, (r) => `${r.x.asset.assetCode} ${r.x.asset.name}`), 10), 'int'));
   wb.charts.push(oneSeries('breakdowns-by-department', 'Breakdowns by department', 'bar', 'Breakdowns', tally(rows, (r) => r.x.department.name), 'int'));
-  addSheet(wb, c.q.group === 'year' ? 'By year' : 'By month', [
-    { header: c.q.group === 'year' ? 'Year' : 'Month', key: 'period' }, { header: 'Breakdowns', key: 'count', fmt: 'int' }, { header: 'Resolved', key: 'resolved', fmt: 'int' },
+  addSheet(wb, group === 'month' ? 'By month' : group === 'year' ? 'By year' : 'By financial year', [
+    { header: group === 'month' ? 'Month' : group === 'year' ? 'Year' : 'Financial year', key: 'period' }, { header: 'Breakdowns', key: 'count', fmt: 'int' }, { header: 'Resolved', key: 'resolved', fmt: 'int' },
     { header: 'Average response (h)', key: 'resp', fmt: 'hours', width: 20 }, { header: 'Total downtime (h)', key: 'down', fmt: 'hours', width: 18 }, { header: 'Average downtime (h)', key: 'avgDown', fmt: 'hours', width: 20 },
-  ], [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([period, g]) => {
+  ], periods.map(([period, g]) => {
     const down = g.map((r) => r.m.downtimeSeconds).filter((v): v is number => v != null);
     const resp = g.map((r) => r.m.responseSeconds).filter((v): v is number => v != null);
-    return { period: c.q.group === 'year' ? period : monthFull(period), count: g.length, resolved: down.length, resp: avg(resp) == null ? null : avg(resp)! / 3600, down: down.reduce((a, b) => a + b, 0) / 3600, avgDown: avg(down) == null ? null : avg(down)! / 3600 };
+    return { period: periodName(period, group, true), count: g.length, resolved: down.length, resp: avg(resp) == null ? null : avg(resp)! / 3600, down: down.reduce((a, b) => a + b, 0) / 3600, avgDown: avg(down) == null ? null : avg(down)! / 3600 };
   }), ['count', 'resolved', 'down']);
 }
 
@@ -258,11 +276,19 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
     orderBy: { raisedAt: 'asc' },
   });
 
+  // Condemned equipment is measured up to the day it was condemned, not counted as running after it.
+  const condemnations = await prisma.approvalRequest.findMany({
+    where: { type: 'condemn', status: 'approved', targetId: { in: assets.filter((a) => a.status === 'condemned').map((a) => a.id) } },
+    select: { targetId: true, decidedAt: true },
+  });
+  const condemnedAt = new Map(condemnations.map((r) => [r.targetId, r.decidedAt]));
+
   const rows = assets.map((a) => {
     const start = new Date(Math.max(c.fromAt.getTime(), a.createdAt.getTime())); // an asset has no uptime before it was registered
-    const periodMs = Math.max(0, periodEnd.getTime() - start.getTime());
+    const end = new Date(Math.min(periodEnd.getTime(), condemnedAt.get(a.id)?.getTime() ?? Infinity));
+    const periodMs = Math.max(0, end.getTime() - start.getTime());
     const mine = complaints.filter((x) => x.assetId === a.id);
-    const downMs = machineDownMs(mine, start, periodEnd);
+    const downMs = machineDownMs(mine, start, end);
     return { a, mine, periodMs, downMs };
   }).filter((r) => r.periodMs > 0);
 
@@ -374,7 +400,7 @@ async function expenses(wb: Collector, c: Ctx) {
     { header: 'Spare parts', key: 'spare', fmt: 'money', width: 16 }, { header: 'Total', key: 'total', fmt: 'money', width: 16 },
   ], [...byAsset].map(([code, t]) => ({ code, name: t.name, count: t.count, repair: t.repair, spare: t.spare, total: t.repair + t.spare })).sort((a, b) => b.total - a.total), ['count', 'repair', 'spare', 'total']);
 
-  const byMonth = new Map<string, number>();
+  const byMonth = new Map<string, number>(monthKeys(c.from, c.to).map((m) => [m, 0]));
   for (const e of rows) byMonth.set(isoDate(e.date).slice(0, 7), (byMonth.get(isoDate(e.date).slice(0, 7)) ?? 0) + Number(e.amount));
   addSheet(wb, 'By month', [{ header: 'Month', key: 'month' }, { header: 'Total', key: 'total', fmt: 'money', width: 16 }],
     [...byMonth].sort(([a], [b]) => a.localeCompare(b)).map(([month, total]) => ({ month: monthFull(month), total })), ['total']);
@@ -437,6 +463,7 @@ export async function buildReport(type: ReportType, req: Request, q: ReportQuery
   const today = todayISO();
   const to = q.to ?? today;
   const from = q.from ?? isoDate(addMonths(parseDate(to), -12));
+  if (from > to) throw new HttpError(400, 'The start date is after the end date. Choose an end date on or after it.', { fieldErrors: { to: ['Before the start date'] } });
   const ctx: Ctx = { req, q, from, to, fromAt: zonedDayStart(from), toAt: zonedDayStart(addDaysISO(to, 1)), scope: departmentScope(currentUser(req)) };
 
   const out: Collector = { sheets: [], kpis: [], charts: [] };

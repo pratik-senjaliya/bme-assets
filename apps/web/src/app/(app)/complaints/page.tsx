@@ -174,6 +174,27 @@ function BoardColumn({
   actions: (c: ComplaintRow) => ReactNode;
 }) {
   const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=${status === 'resolved' ? 10 : 50}&k=${version}`);
+  // Open and in-progress columns show 50 at a time; "Show more" loads the next 50, so every complaint can be worked on.
+  const [more, setMore] = useState<ComplaintRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    setMore([]);
+    setPage(1);
+  }, [version]);
+  const first = list.data?.items ?? [];
+  const shown = [...first, ...more.filter((m) => !first.some((f) => f.id === m.id))];
+  const total = list.data?.total ?? 0;
+  async function showMore() {
+    setLoadingMore(true);
+    try {
+      const next = await api<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=50&page=${page + 1}&k=${version}`);
+      setMore((m) => [...m, ...next.items]);
+      setPage((p) => p + 1);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   return (
     <Card
       size="small"
@@ -181,7 +202,8 @@ function BoardColumn({
         <Space size={10}>
           <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
           <span style={{ fontWeight: 800, fontSize: 15 }}>{title}</span>
-          <span className="num" style={{ color: COLORS.muted, fontWeight: 700, fontSize: 13, background: '#fff', borderRadius: 10, padding: '1px 10px' }}>{list.data?.total ?? 0}</span>
+          {/* Resolved shows the latest few, so its badge says so instead of an all-time total. */}
+          <span className="num" style={{ color: COLORS.muted, fontWeight: 700, fontSize: 13, background: '#fff', borderRadius: 10, padding: '1px 10px' }}>{status === 'resolved' ? `Latest ${first.length}` : total}</span>
         </Space>
       }
       style={{ marginBottom: 16, background: '#EAEFF1', borderColor: 'transparent', boxShadow: 'none', borderRadius: 18 }}
@@ -194,9 +216,14 @@ function BoardColumn({
       )}
       {list.loading && !list.data && <CardSkeleton />}
       {list.data?.items.length === 0 && <EmptyState compact icon={<CheckCircleOutlined />} title={empty} />}
-      {list.data?.items.map((c) => (
+      {shown.map((c) => (
         <ComplaintCard key={c.id} c={c} actions={actions(c)} onOpen={() => onOpen(c.id)} />
       ))}
+      {status !== 'resolved' && list.data && shown.length < total && (
+        <Button block loading={loadingMore} onClick={() => void showMore()}>
+          Show more ({total - shown.length} more)
+        </Button>
+      )}
     </Card>
   );
 }
