@@ -214,7 +214,8 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
       id: r.id,
       type: r.type as ApprovalType,
       status: r.status as ApprovalStatus,
-      assetId,
+      // Only a link to an asset that still exists (a deleted one shows as "Deleted", not as an empty link).
+      assetId: asset ? assetId! : null,
       assetCode: asset?.assetCode ?? null,
       assetName: asset?.name ?? null,
       summary,

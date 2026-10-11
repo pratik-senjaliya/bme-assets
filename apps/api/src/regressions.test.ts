@@ -172,7 +172,7 @@ describe('Deleting a department that people still use', () => {
     assert.equal(user.status, 201, await user.clone().text());
     const refused = await call(base, admin, 'DELETE', `/departments/${dept.id}`);
     assert.equal(refused.status, 409);
-    assert.match((await refused.json()).error.message, /1 user belongs to this department/);
+    assert.match((await refused.json()).error.message, /in use: 1 login belongs to it/);
     assert.ok((await prisma.user.findUniqueOrThrow({ where: { email: 'rtest-nurse@demo.local' } })).departmentId, 'the login keeps its department');
     await prisma.user.deleteMany({ where: { email: 'rtest-nurse@demo.local' } });
     assert.equal((await call(base, admin, 'DELETE', `/departments/${dept.id}`)).status, 204);

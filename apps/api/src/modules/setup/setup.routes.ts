@@ -47,7 +47,7 @@ setupRouter.delete('/departments/:id', requirePermission('setup.manage'), async 
   await audited(req, { action: 'department.delete', entityType: 'department' }, async (tx) => {
     // Nursing logins belong to a department; removing it would leave them signed in to nothing.
     const users = await tx.user.count({ where: { departmentId: idOf(req) } });
-    if (users) throw new HttpError(409, `${users} ${users === 1 ? 'user belongs' : 'users belong'} to this department. Move or remove ${users === 1 ? 'that login' : 'those logins'} first.`);
+    if (users) throw new HttpError(409, `This department is in use: ${users} ${users === 1 ? 'login belongs' : 'logins belong'} to it. Move or remove ${users === 1 ? 'that login' : 'those logins'} first.`);
     return tx.department.delete({ where: { id: idOf(req) } });
   });
   res.status(204).end();
