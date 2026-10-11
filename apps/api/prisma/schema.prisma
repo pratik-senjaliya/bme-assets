@@ -73,6 +73,7 @@ enum ApprovalStatus {
   pending
   approved
   rejected
+  withdrawn // taken back by the person who asked
 }
 
 // ---------- Setup ----------
@@ -197,6 +198,8 @@ model User {
   roleId       String
   departmentId String? // required for nursing users
   active       Boolean  @default(true)
+  // Raised when the password changes; sessions signed with an older value stop working.
+  sessionVersion Int    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdBy    String?

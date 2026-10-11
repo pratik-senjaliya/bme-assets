@@ -19,7 +19,7 @@ import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
 import { assetIdOfOwner, storeAttachment, upload } from '../assets/attachments.service';
-import { applyApproval, approvers, notify, removeFiles, toApprovalRows } from './approvals.service';
+import { NOT_DELETABLE_COMPLAINT, applyApproval, approvers, notify, removeFiles, toApprovalRows } from './approvals.service';
 
 export const approvalsRouter = Router();
 
@@ -62,6 +62,9 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
   const assetId = await assetIdOfOwner(input.targetType, input.targetId);
   if (!assetId) throw new HttpError(404, 'Entry not found');
   const asset = await findScopedAsset(req, assetId);
+  if (input.targetType === 'complaint' && (await prisma.complaint.findUniqueOrThrow({ where: { id: input.targetId } })).status !== 'open') {
+    throw new HttpError(409, NOT_DELETABLE_COMPLAINT);
+  }
   if (input.targetType === 'asset' && asset.status === 'condemned') {
     throw new HttpError(409, 'This asset has been condemned. Its record and certificate are kept, so it cannot be deleted.');
   }
@@ -152,6 +155,23 @@ async function decide(req: Parameters<typeof currentUser>[0], status: 'approved'
 
 approvalsRouter.post('/approvals/:id/approve', requirePermission('approval.decide'), validate(approveApprovalSchema), async (req, res) => {
   res.json(await decide(req, 'approved', (req.body as ApproveApprovalInput).note ?? null));
+});
+
+// The person who asked can take a pending request back (asked by mistake, or to ask for something else instead).
+approvalsRouter.post('/approvals/:id/withdraw', requirePermission(REQUEST), async (req, res) => {
+  const me = currentUser(req);
+  const before = await prisma.approvalRequest.findUnique({ where: { id: idOf(req) } });
+  if (!before || before.requestedBy !== me.id) throw new HttpError(404, 'Request not found');
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.approvalRequest.updateMany({
+      where: { id: before.id, status: 'pending' },
+      data: { status: 'withdrawn', decidedBy: me.id, decidedAt: new Date(), reason: 'Withdrawn by the person who asked' },
+    });
+    if (count === 0) throw new HttpError(409, `This request has already been ${before.status}`);
+    const after = await tx.approvalRequest.findUniqueOrThrow({ where: { id: before.id } });
+    await audit(tx, req, { action: 'approval.withdraw', entityType: 'approval_request', entityId: before.id, before, after });
+  });
+  res.json((await toApprovalRows([await prisma.approvalRequest.findUniqueOrThrow({ where: { id: before.id } })]))[0]);
 });
 
 approvalsRouter.post('/approvals/:id/reject', requirePermission('approval.decide'), validate(rejectApprovalSchema), async (req, res) => {

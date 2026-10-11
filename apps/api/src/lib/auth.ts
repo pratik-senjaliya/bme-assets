@@ -23,8 +23,9 @@ const cookieOptions = {
   path: '/',
 } as const;
 
-export function setSessionCookie(res: Response, userId: string) {
-  const token = jwt.sign({ sub: userId }, config.jwtSecret, { expiresIn: `${config.sessionHours}h` });
+// The token carries the user's session version; changing the password raises it, which ends every other session.
+export function setSessionCookie(res: Response, userId: string, sessionVersion: number) {
+  const token = jwt.sign({ sub: userId, v: sessionVersion }, config.jwtSecret, { expiresIn: `${config.sessionHours}h` });
   res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: config.sessionHours * 3600_000 });
 }
 
@@ -34,12 +35,14 @@ export function clearSessionCookie(res: Response) {
 
 // Permissions are read from the DB on every request, so a role change takes effect immediately
 // and a deactivated user is locked out at once.
-export async function loadSessionUser(id: string): Promise<SessionUser | null> {
+// `sessionVersion` is the one the token was signed with (tokens from before this existed count as 0).
+export async function loadSessionUser(id: string, sessionVersion?: number): Promise<SessionUser | null> {
   const user = await prisma.user.findUnique({
     where: { id },
     include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
   });
   if (!user || !user.active) return null;
+  if (sessionVersion !== undefined && sessionVersion !== user.sessionVersion) return null;
   const role = user.role.name as RoleName;
   return {
     id: user.id,
@@ -55,12 +58,17 @@ export async function loadSessionUser(id: string): Promise<SessionUser | null> {
 export const authenticate: RequestHandler = async (req, res, next) => {
   const token = req.cookies?.[COOKIE_NAME];
   let userId: string | undefined;
+  let version = 0;
   try {
-    if (token) userId = (jwt.verify(token, config.jwtSecret) as { sub: string }).sub;
+    if (token) {
+      const claims = jwt.verify(token, config.jwtSecret) as { sub: string; v?: number };
+      userId = claims.sub;
+      version = claims.v ?? 0;
+    }
   } catch {
     // fall through to 401
   }
-  const user = userId ? await loadSessionUser(userId) : null;
+  const user = userId ? await loadSessionUser(userId, version) : null;
   if (!user) {
     clearSessionCookie(res);
     throw new HttpError(401, 'Please sign in');

@@ -6,7 +6,7 @@ import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { assetInclude, toAssetRow } from '../assets/assets.service';
-import { complaintMetrics } from '../complaints/complaints.service';
+import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
 
 // ---------- What a builder produces ----------
 
@@ -105,6 +105,26 @@ async function assetMaster(wb: Collector, c: Ctx) {
   }));
 }
 
+// Each PMS counts once. A correction is a new record (rule 1) but not another PMS: it replaces the result of the PMS
+// it corrects, whenever it was made. Returns the PMS that were done (originals, on their own date) with the result of
+// their latest correction.
+async function pmsDone<T extends { id: string; correctsRecordId: string | null; result: string }>(records: T[]): Promise<T[]> {
+  const originals = records.filter((r) => !r.correctsRecordId);
+  const rootOf = new Map(originals.map((r) => [r.id, r.id]));
+  const latest = new Map<string, { result: string; submittedAt: Date }>();
+  for (let frontier = originals.map((r) => r.id); frontier.length; ) {
+    const corrections = await prisma.pmsRecord.findMany({ where: { correctsRecordId: { in: frontier } }, select: { id: true, correctsRecordId: true, result: true, submittedAt: true } });
+    for (const x of corrections) {
+      const root = rootOf.get(x.correctsRecordId!)!;
+      rootOf.set(x.id, root);
+      const seen = latest.get(root);
+      if (!seen || x.submittedAt > seen.submittedAt) latest.set(root, x);
+    }
+    frontier = corrections.map((x) => x.id);
+  }
+  return originals.map((r) => ({ ...r, result: latest.get(r.id)?.result ?? r.result }));
+}
+
 async function pms(wb: Collector, c: Ctx) {
   const records = await prisma.pmsRecord.findMany({
     where: { performedOn: { gte: parseDate(c.from), lte: parseDate(c.to) }, asset: { ...c.scope } },
@@ -120,18 +140,19 @@ async function pms(wb: Collector, c: Ctx) {
     date: r.performedOn, code: r.asset.assetCode, name: r.asset.name, type: r.asset.equipmentType.name, dept: r.asset.department.name, status: STATUS_LABEL[r.asset.status],
     result: r.result.toUpperCase(), by: users.find((u) => u.id === r.performedBy)?.name ?? '', version: r.template.version, correction: r.correctsRecordId ? 'Yes' : 'No', reason: r.correctionReason,
   })));
+  const done = await pmsDone(records);
   const byType = new Map<string, { count: number; pass: number }>();
-  for (const r of records) {
+  for (const r of done) {
     const t = byType.get(r.asset.equipmentType.name) ?? { count: 0, pass: 0 };
     byType.set(r.asset.equipmentType.name, { count: t.count + 1, pass: t.pass + (r.result === 'pass' ? 1 : 0) });
   }
-  const passed = records.filter((r) => r.result === 'pass').length;
-  kpi(wb, 'PMS done', records.length, 'int', span(c));
-  kpi(wb, 'Pass rate', records.length ? passed / records.length : null, 'pct', records.length ? undefined : 'No PMS in this period', records.length && passed / records.length < 0.9 ? 'warn' : 'good');
-  kpi(wb, 'Failed', records.length - passed, 'int', records.length - passed ? 'Check these assets' : 'None', records.length - passed ? 'bad' : 'good');
+  const passed = done.filter((r) => r.result === 'pass').length;
+  kpi(wb, 'PMS done', done.length, 'int', span(c));
+  kpi(wb, 'Pass rate', done.length ? passed / done.length : null, 'pct', done.length ? undefined : 'No PMS in this period', done.length && passed / done.length < 0.9 ? 'warn' : 'good');
+  kpi(wb, 'Failed', done.length - passed, 'int', done.length - passed ? 'Check these assets' : 'None', done.length - passed ? 'bad' : 'good');
   kpi(wb, 'Corrections', records.filter((r) => r.correctsRecordId).length, 'int', 'Records that correct an earlier one');
   const months = monthKeys(c.from, c.to);
-  wb.charts.push(oneSeries('pms-per-month', 'PMS done per month', 'column', 'PMS done', months.map((m) => [monthLabel(m), records.filter((r) => isoDate(r.performedOn).slice(0, 7) === m).length] as [string, number]), 'int'));
+  wb.charts.push(oneSeries('pms-per-month', 'PMS done per month', 'column', 'PMS done', months.map((m) => [monthLabel(m), done.filter((r) => isoDate(r.performedOn).slice(0, 7) === m).length] as [string, number]), 'int'));
   wb.charts.push(oneSeries('pms-by-type', 'PMS done by equipment type', 'bar', 'PMS done', [...byType].map(([t, v]) => [t, v.count] as [string, number]).sort((a, b) => b[1] - a[1]), 'int'));
   addSheet(wb, 'Summary', [
     { header: 'Equipment type', key: 'type', width: 22 }, { header: 'PMS done', key: 'count', fmt: 'int' }, { header: 'Passed', key: 'pass', fmt: 'int' }, { header: 'Failed', key: 'fail', fmt: 'int' },
@@ -241,7 +262,7 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
     const start = new Date(Math.max(c.fromAt.getTime(), a.createdAt.getTime())); // an asset has no uptime before it was registered
     const periodMs = Math.max(0, periodEnd.getTime() - start.getTime());
     const mine = complaints.filter((x) => x.assetId === a.id);
-    const downMs = Math.min(periodMs, mine.reduce((s, x) => s + overlapMs(x.raisedAt, x.resolvedAt, start, periodEnd), 0));
+    const downMs = machineDownMs(mine, start, periodEnd);
     return { a, mine, periodMs, downMs };
   }).filter((r) => r.periodMs > 0);
 
@@ -488,7 +509,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
   const downtimeS = complaints.reduce((s, c) => s + (complaintMetrics(c).downtimeSeconds ?? 0), 0);
 
   const wb: Collector = { sheets: [], kpis: [], charts: [] };
-  kpi(wb, 'PMS done', pmsRecords.length, 'int', 'In this system');
+  kpi(wb, 'PMS done', pmsRecords.filter((p) => !p.correctsRecordId).length, 'int', 'In this system');
   kpi(wb, 'Calibrations', calibrations.length, 'int');
   kpi(wb, 'Breakdowns', complaints.length, 'int');
   kpi(wb, 'Total downtime', hoursOf(downtimeS), 'hours');
@@ -505,7 +526,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     { k: 'PMS every (months)', v: asset.pmsFrequencyMonths }, { k: 'Last PMS before this system', v: asset.openingPmsOn ? isoDate(asset.openingPmsOn) : '' },
     { k: 'Last calibration before this system', v: asset.openingCalibrationOn ? isoDate(asset.openingCalibrationOn) : '' },
     { k: 'Next PMS due', v: asset.nextPmsDue ? isoDate(asset.nextPmsDue) : '' }, { k: 'Next calibration due', v: asset.nextCalibrationDue ? isoDate(asset.nextCalibrationDue) : '' },
-    { k: 'PMS done (this system)', v: pmsRecords.length }, { k: 'Calibrations recorded', v: calibrations.length }, { k: 'Breakdowns', v: complaints.length },
+    { k: 'PMS done (this system)', v: pmsRecords.filter((p) => !p.correctsRecordId).length }, { k: 'Calibrations recorded', v: calibrations.length }, { k: 'Breakdowns', v: complaints.length },
     { k: 'Total downtime (hours)', v: hoursOf(downtimeS) }, { k: 'Service entries', v: logs.length },
     ...(canSeeCosts ? [{ k: 'Total expenses (₹)', v: expenses.reduce((s, e) => s + Number(e.amount), 0) }] : []),
     { k: 'Documents on file', v: files.length },

@@ -10,6 +10,7 @@ import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
 import { storeAttachment, toAttachmentRow, upload } from '../assets/attachments.service';
 import { dueList } from '../pms/pms.service';
+import { clearReminders } from '../reminders/reminders.service';
 
 export const calibrationRouter = Router();
 
@@ -60,6 +61,7 @@ calibrationRouter.post('/assets/:id/calibrations', requirePermission('calibratio
     });
     const latest = await tx.calibrationRecord.findFirstOrThrow({ where: { assetId: asset.id }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] });
     await tx.asset.update({ where: { id: asset.id }, data: { nextCalibrationDue: latest.dueOn } });
+    await clearReminders(tx, asset.id, ['calibration']);
     await audit(tx, req, { action: 'calibration.create', entityType: 'calibration_record', entityId: record.id, after: record });
     return record;
   });

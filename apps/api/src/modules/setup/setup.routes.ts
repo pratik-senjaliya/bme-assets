@@ -27,6 +27,23 @@ setupRouter.get('/departments', requirePermission('asset.view'), async (req, res
   res.json(await prisma.department.findMany({ where: departmentId ? { id: departmentId } : {}, orderBy: { name: 'asc' } }));
 });
 
+// Department, type and location codes are part of asset IDs (rule 2, when the pattern uses them). Once an asset's ID
+// carries a code it can no longer change, or new IDs would disagree with the old ones. Names can always change.
+async function assertCodeFree(token: '{DEPT}' | '{TYPE}' | '{LOC}', changing: boolean, inUse: () => Promise<number>, what: string) {
+  if (!changing) return;
+  const settings = await prisma.hospitalSettings.findFirst();
+  if (settings?.assetIdPattern.includes(token) && (await inUse())) {
+    throw new HttpError(409, `This ${what} code is part of asset IDs already given out, so it can no longer be changed. The name can still be changed.`, { fieldErrors: { code: ['Locked: asset IDs already use it'] } });
+  }
+}
+
+// Two locations in one department with the same code would make the location part of an asset ID ambiguous.
+async function assertLocationCodeFree(departmentId: string, code: string | null | undefined, exceptId?: string) {
+  if (!code) return;
+  const clash = await prisma.location.findFirst({ where: { departmentId, code: { equals: code, mode: 'insensitive' }, ...(exceptId ? { id: { not: exceptId } } : {}) } });
+  if (clash) throw new HttpError(409, `${clash.name} already uses the code ${clash.code} in this department`, { fieldErrors: { code: ['Already used in this department'] } });
+}
+
 setupRouter.post('/departments', requirePermission('setup.manage'), validate(departmentSchema), async (req, res) => {
   const data = req.body as DepartmentInput;
   const row = await audited(req, { action: 'department.create', entityType: 'department' }, (tx) =>
@@ -37,6 +54,8 @@ setupRouter.post('/departments', requirePermission('setup.manage'), validate(dep
 
 setupRouter.patch('/departments/:id', requirePermission('setup.manage'), validate(departmentSchema.partial()), async (req, res) => {
   const before = await prisma.department.findUniqueOrThrow({ where: { id: idOf(req) } });
+  const body = req.body as Partial<DepartmentInput>;
+  await assertCodeFree('{DEPT}', body.code !== undefined && body.code !== before.code, () => prisma.asset.count({ where: { departmentId: before.id } }), 'department');
   const row = await audited(req, { action: 'department.update', entityType: 'department', before }, (tx) =>
     tx.department.update({ where: { id: before.id }, data: req.body }),
   );
@@ -62,6 +81,7 @@ setupRouter.get('/locations', requirePermission('asset.view'), async (req, res) 
 
 setupRouter.post('/locations', requirePermission('setup.manage'), validate(locationSchema), async (req, res) => {
   const data = req.body as LocationInput;
+  await assertLocationCodeFree(data.departmentId, data.code);
   const row = await audited(req, { action: 'location.create', entityType: 'location' }, (tx) =>
     tx.location.create({ data: { ...data, ...actor(req) } }),
   );
@@ -70,6 +90,18 @@ setupRouter.post('/locations', requirePermission('setup.manage'), validate(locat
 
 setupRouter.patch('/locations/:id', requirePermission('setup.manage'), validate(locationSchema.partial()), async (req, res) => {
   const before = await prisma.location.findUniqueOrThrow({ where: { id: idOf(req) } });
+  const body = req.body as Partial<LocationInput>;
+  const assets = () => prisma.asset.count({ where: { locationId: before.id } });
+  // Its equipment belongs to its department; moving the location alone would split them (and bypass HOD approval).
+  if (body.departmentId !== undefined && body.departmentId !== before.departmentId && (await assets())) {
+    throw new HttpError(409, 'Equipment is registered at this location, so it cannot move to another department. Move the equipment first (with HOD approval), or add a new location.', { fieldErrors: { departmentId: ['Equipment is registered here'] } });
+  }
+  await assertCodeFree('{LOC}', body.code !== undefined && body.code !== before.code, assets, 'location');
+  // Checked only when the code or the department changes, so a name can always be fixed even where old data
+  // already has two locations sharing a code.
+  if ((body.code !== undefined && body.code !== before.code) || (body.departmentId !== undefined && body.departmentId !== before.departmentId)) {
+    await assertLocationCodeFree(body.departmentId ?? before.departmentId, body.code ?? before.code, before.id);
+  }
   const row = await audited(req, { action: 'location.update', entityType: 'location', before }, (tx) =>
     tx.location.update({ where: { id: before.id }, data: req.body }),
   );
@@ -99,6 +131,8 @@ setupRouter.post('/equipment-types', requirePermission('setup.manage'), validate
 
 setupRouter.patch('/equipment-types/:id', requirePermission('setup.manage'), validate(equipmentTypeSchema.partial()), async (req, res) => {
   const before = await prisma.equipmentType.findUniqueOrThrow({ where: { id: idOf(req) } });
+  const body = req.body as Partial<EquipmentTypeInput>;
+  await assertCodeFree('{TYPE}', body.code !== undefined && body.code !== before.code, () => prisma.asset.count({ where: { equipmentTypeId: before.id } }), 'equipment type');
   const row = await audited(req, { action: 'equipment_type.update', entityType: 'equipment_type', before }, (tx) =>
     tx.equipmentType.update({ where: { id: before.id }, data: req.body }),
   );

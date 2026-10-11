@@ -357,6 +357,8 @@ export type AttachmentRow = {
   mime: string;
   size: number;
   createdAt: string;
+  // The viewer may remove it (a photo added by mistake to a complaint that is still open).
+  canRemove?: boolean;
 };
 
 export type TimelineEvent = {
@@ -599,7 +601,7 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval'] as const;
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -621,11 +623,11 @@ export type RunRemindersResult = { created: number; emailed: number };
 
 export const APPROVAL_TYPES = ['condemn', 'delete', 'edit_key_field'] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
-export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 // What a wrong entry can be: an asset created by mistake, or a record on one.
-export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense', 'service_log'] as const;
+export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense', 'service_log', 'complaint'] as const;
 export type DeletableTarget = (typeof DELETABLE_TARGETS)[number];
 
 export const condemnRequestSchema = z.object({ reason: z.string().trim().min(5, 'Say why it should be condemned').max(1000) });

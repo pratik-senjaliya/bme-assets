@@ -3,6 +3,8 @@ import type { ComplaintDetail, ComplaintEvent, ComplaintRow, Criticality } from 
 import { prisma } from '../../lib/prisma';
 import { toAttachmentRow } from '../assets/attachments.service';
 
+type Db = Prisma.TransactionClient;
+
 export const complaintInclude = { asset: true, department: true, raisedBy: true } satisfies Prisma.ComplaintInclude;
 export type ComplaintWithRefs = Prisma.ComplaintGetPayload<{ include: typeof complaintInclude }>;
 
@@ -89,4 +91,37 @@ function durationText(seconds: number | null) {
   const h = Math.floor((m % 1440) / 60);
   if (d) return h ? `${d} d ${h} h` : `${d} d`;
   return h ? (m % 60 ? `${h} h ${m % 60} m` : `${h} h`) : `${m} m`;
+}
+
+// Equipment moved to another department: its open complaints go with it, so the nurses who now have it see them.
+// Resolved ones stay with the department that raised them (history).
+export async function moveOpenComplaints(db: Db, assetId: string, departmentId: string) {
+  await db.complaint.updateMany({ where: { assetId, status: { in: ['open', 'in_progress'] } }, data: { departmentId } });
+}
+
+// Condemned equipment will not be repaired: its open complaints are closed with a note. No start time is invented,
+// so response-time figures are not distorted; downtime runs until condemnation.
+export async function closeComplaintsOnCondemnation(db: Db, assetId: string, decidedBy: string) {
+  await db.complaint.updateMany({
+    where: { assetId, status: { in: ['open', 'in_progress'] } },
+    data: { status: 'resolved', resolvedAt: new Date(), resolvedBy: decidedBy, resolutionNotes: 'Closed: the equipment was condemned.' },
+  });
+}
+
+// How long one machine was down between `from` and `to`. Complaints about the same machine that overlap (two
+// shifts reporting the same fault) count once, so its downtime can never exceed the time that passed.
+// An unresolved complaint counts until `to`.
+export function machineDownMs(complaints: { raisedAt: Date; resolvedAt: Date | null }[], from: Date, to: Date) {
+  const spans = complaints
+    .map((c) => [Math.max(c.raisedAt.getTime(), from.getTime()), Math.min((c.resolvedAt ?? to).getTime(), to.getTime())])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let end = -Infinity;
+  for (const [a, b] of spans) {
+    if (b <= end) continue;
+    total += b - Math.max(a, end);
+    end = b;
+  }
+  return total;
 }

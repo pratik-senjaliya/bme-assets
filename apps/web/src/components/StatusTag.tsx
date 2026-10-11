@@ -25,6 +25,7 @@ const STATUS = {
   pending: { tone: 'info', label: 'Pending approval' },
   approved: { tone: 'good', label: 'Approved' },
   rejected: { tone: 'neutral', label: 'Rejected' },
+  withdrawn: { tone: 'neutral', label: 'Withdrawn' },
   pass: { tone: 'good', label: 'Pass' },
   fail: { tone: 'bad', label: 'Fail' },
   warranty_active: { tone: 'good', label: 'In warranty' },

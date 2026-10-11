@@ -3,7 +3,9 @@
 import { Alert, Button, Drawer, Timeline, Typography } from 'antd';
 import Link from 'next/link';
 import type { ComplaintDetail, ComplaintEvent } from '@bme/shared';
+import { useState } from 'react';
 import { DocumentList } from '@/components/DocumentList';
+import { RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -24,6 +26,7 @@ const Fact = ({ label, children }: { label: string; children: React.ReactNode })
 // and (for those allowed to see costs) the expenses. Documents can be added until the complaint is resolved.
 export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null; onClose: () => void; onChanged?: () => void }) {
   const { can } = useAuth();
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const complaint = useFetch<ComplaintDetail>(id ? `/complaints/${id}` : null);
   const c = complaint.data && complaint.data.id === id ? complaint.data : null;
   const canAttach = !!c && c.status !== 'resolved' && (can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
@@ -135,8 +138,17 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
               ))}
             </div>
           )}
+          {/* Raised by mistake (wrong equipment, a duplicate) and not started yet: the HOD can remove it. */}
+          {c.status === 'open' && can('asset.request_change') && (
+            <div>
+              <Button danger onClick={() => setDeleting({ type: 'complaint', id: c.id, label: `complaint ${c.complaintNo}` })}>
+                Request deletion (raised by mistake)
+              </Button>
+            </div>
+          )}
         </div>
       )}
+      <RequestDeleteModal target={deleting} onClose={() => setDeleting(null)} onRequested={() => setDeleting(null)} />
     </Drawer>
   );
 }

@@ -116,8 +116,12 @@ describe('Approvals against a changed or deleted asset', () => {
   it('an older request cannot undo a newer approved change; it can still be rejected', async () => {
     const a = await makeAsset({ serialNo: `${PREFIX}SN0` });
     await patch(a.id, { serialNo: `${PREFIX}SN-A` }, biomed);
-    await patch(a.id, { serialNo: `${PREFIX}SN-B` }, biomed);
-    const [first, second] = await pendingFor(a.id);
+    // A second request for the same asset is refused now, but an install upgraded from an older version may
+    // already hold two; make the second one the way such data looks.
+    const [first] = await pendingFor(a.id);
+    const second = await prisma.approvalRequest.create({
+      data: { ...first, id: undefined, payload: { changes: { serialNo: `${PREFIX}SN-B` }, previous: { serialNo: `${PREFIX}SN0` } }, createdAt: new Date() },
+    });
     assert.equal((await call(base, admin, 'POST', `/approvals/${first.id}/approve`, {})).status, 200);
     const stale = await call(base, admin, 'POST', `/approvals/${second.id}/approve`, {});
     assert.equal(stale.status, 409);

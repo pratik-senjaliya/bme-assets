@@ -15,6 +15,8 @@ import { HttpError } from '../../lib/errors';
 import { addDaysISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
+import { usersWithPermissions } from '../../lib/people';
+import { notify } from '../approvals/approvals.service';
 import { findScopedAsset } from '../assets/assets.service';
 import { complaintInclude, complaintNo, toComplaintDetail, toComplaintRows } from './complaints.service';
 
@@ -73,6 +75,8 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
   const input = req.body as CreateComplaintInput;
   const asset = await findScopedAsset(req, input.assetId);
   if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so complaints can no longer be raised for it');
+  // The people who can start work on it hear about it at once, not only when the board happens to be open.
+  const staff = (await usersWithPermissions('complaint.start', 'notification.view')).filter((id) => id !== me.id);
 
   const created = await prisma.$transaction(async (tx) => {
     // Atomic counter on the settings row: concurrent complaints get distinct numbers.
@@ -89,6 +93,7 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
       },
     });
     await audit(tx, req, { action: 'complaint.create', entityType: 'complaint', entityId: row.id, after: row });
+    await notify(tx, staff, `New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint');
     return row;
   });
   res.status(201).json(await one(created.id));
@@ -128,5 +133,11 @@ complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), va
     'complaint.resolve',
     'Start the complaint before resolving it (or it is already resolved)',
   );
+  // Whoever raised it hears that it is fixed (if their role has the reminders bell).
+  const me = currentUser(req);
+  if (row.raisedById !== me.id && (await usersWithPermissions('notification.view')).includes(row.raisedById)) {
+    const asset = await prisma.asset.findUniqueOrThrow({ where: { id: row.assetId } });
+    await notify(prisma, [row.raisedById], `Complaint ${row.complaintNo} resolved: ${asset.assetCode} ${asset.name}`, asset.id, 'complaint');
+  }
   res.json(await one(row.id));
 });

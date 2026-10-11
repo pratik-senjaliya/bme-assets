@@ -4,7 +4,7 @@ import type { ChartSpec, DashboardDueItem, DashboardExpiry, DashboardMonth, Dash
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
-import { complaintInclude, toComplaintRows } from '../complaints/complaints.service';
+import { complaintInclude, machineDownMs, toComplaintRows } from '../complaints/complaints.service';
 
 export const dashboardRouter = Router();
 
@@ -12,7 +12,6 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const DAY = 86_400_000;
 const monthName = (key: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(parseDate(`${key}-01`));
 const monthsFrom = (first: string, n: number) => Array.from({ length: n }, (_, i) => isoDate(addMonths(parseDate(`${first}-01`), i)).slice(0, 7));
-const overlap = (raised: Date, resolved: Date | null, from: Date, to: Date) => Math.max(0, Math.min((resolved ?? to).getTime(), to.getTime()) - Math.max(raised.getTime(), from.getTime()));
 const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 
 // One endpoint for the home screen. Every number is scoped like the rest of the API (nursing: own department
@@ -76,11 +75,13 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     showCover ? prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(today), lte: parseDate(isoDate(new Date(parseDate(today).getTime() + 60 * DAY))) }, asset: { status: 'active', ...scope } }, select: { type: true, vendor: true, endDate: true, asset: { select: { id: true, assetCode: true, name: true } } } }) : [],
   ]);
 
+  const historyByAsset = new Map<string, { raisedAt: Date; resolvedAt: Date | null }[]>();
+  for (const c of history) historyByAsset.get(c.assetId)?.push(c) ?? historyByAsset.set(c.assetId, [c]);
   // Uptime over the last 30 days: hours the equipment was working out of the hours it was there (24 a day).
   const uptime = (pool: typeof liveAssets) => {
     const ids = new Set(pool.map((a) => a.id));
     const window = pool.reduce((t, a) => t + Math.max(0, now.getTime() - Math.max(win30.getTime(), a.createdAt.getTime())), 0);
-    const down = history.filter((c) => ids.has(c.assetId)).reduce((t, c) => t + overlap(c.raisedAt, c.resolvedAt, win30, now), 0);
+    const down = [...ids].reduce((t, id) => t + machineDownMs(historyByAsset.get(id) ?? [], win30, now), 0);
     return window ? Math.max(0, 1 - down / window) : null;
   };
   const recent = history.filter((c) => c.raisedAt >= win30);

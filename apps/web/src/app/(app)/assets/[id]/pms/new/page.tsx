@@ -46,9 +46,11 @@ export default function PerformPmsPage() {
 
   if (!can('pms.perform')) return <StatusResult status="403" title="You cannot record PMS" />;
   if (asset.error) return <StatusResult status="404" title="Asset not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
-  if (!asset.data || (template.loading && !template.data)) return <FormPageSkeleton sections={2} fields={4} />;
+  if (!asset.data || (template.loading && !template.data) || (corrects && original.loading && !original.data)) return <FormPageSkeleton sections={2} fields={4} />;
   const a = asset.data;
-  const items = template.data?.items ?? [];
+  // A correction is made on the checklist the original was done with, even if the HOD has changed it since.
+  const items = corrects && original.data ? original.data.items : (template.data?.items ?? []);
+  const version = corrects && original.data ? original.data.templateVersion : template.data?.version;
 
   const answered = items.filter((i) => answers[i.id] !== undefined).length;
   const willFail = items.some((i) => (i.type === 'check' && answers[i.id] === 'fail') || outOfRange(i, answers[i.id]));
@@ -117,7 +119,7 @@ export default function PerformPmsPage() {
         subtitle={`${a.name} · ${a.equipmentTypeName}`}
         crumbs={['Assets', a.assetCode, corrects ? 'Correction' : 'PMS']}
       />
-      {template.error ? (
+      {template.error && !corrects ? (
         <Alert type="warning" showIcon message="No checklist yet" description={template.error + '. Ask the Biomedical HOD to set one up under Admin > PMS checklists.'} />
       ) : (
         <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 840 }}>
@@ -148,7 +150,7 @@ export default function PerformPmsPage() {
             />
           )}
           <Card
-            title={`Checklist · version ${template.data?.version ?? ''}`}
+            title={`Checklist · version ${version ?? ''}`}
             extra={
               <span className="num" style={{ color: answered === items.length ? COLORS.good.fg : COLORS.muted, fontWeight: 700, fontSize: 13 }}>
                 {answered} of {items.length} answered

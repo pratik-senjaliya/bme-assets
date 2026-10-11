@@ -1,6 +1,6 @@
 'use client';
 
-import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
+import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Tag, Typography } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { ApprovalRow, ApprovalType } from '@bme/shared';
@@ -19,6 +19,7 @@ const STATUSES = [
   { value: 'pending', label: 'Waiting for decision' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'withdrawn', label: 'Withdrawn' },
   { value: 'all', label: 'All' },
 ];
 
@@ -57,6 +58,17 @@ export default function ApprovalsPage() {
       message.error(e instanceof Error ? e.message : 'Could not save the decision');
     } finally {
       setSaving(false);
+      list.reload();
+    }
+  }
+
+  async function withdraw(row: ApprovalRow) {
+    try {
+      await api(`/approvals/${row.id}/withdraw`, { method: 'POST' });
+      message.success('Request withdrawn');
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not withdraw the request');
+    } finally {
       list.reload();
     }
   }
@@ -160,6 +172,11 @@ export default function ApprovalsPage() {
                     Reject
                   </Button>
                 </Space>
+              ) : !decider && r.status === 'pending' ? (
+                // Staff see only their own requests, and can take one back.
+                <Popconfirm title="Withdraw this request?" description="The HOD will no longer see it." okText="Withdraw" onConfirm={() => withdraw(r)}>
+                  <Button size="small">Withdraw</Button>
+                </Popconfirm>
               ) : null,
           },
         ]}

@@ -1,11 +1,12 @@
 'use client';
 
-import { App, Form, Input, Modal, Select } from 'antd';
+import { Alert, App, Form, Input, Modal, Select } from 'antd';
 import { useEffect, useState } from 'react';
 import { createComplaintSchema, type AssetRow, type ComplaintRow, type Paged } from '@bme/shared';
 import { FilePicker } from '@/components/FilePicker';
 import { api } from '@/lib/api';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
+import { formatDateTime } from '@/lib/format';
 import { uploadAll } from '@/lib/uploads';
 
 type AssetOption = { id: string; assetCode: string; name: string };
@@ -29,6 +30,20 @@ export function RaiseComplaintModal({
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  // A complaint already open on the chosen equipment, so the same fault is not reported twice (a warning only).
+  const chosen = Form.useWatch('assetId', form);
+  const [already, setAlready] = useState<ComplaintRow | null>(null);
+  useEffect(() => {
+    setAlready(null);
+    if (!open || !chosen) return;
+    let current = true;
+    void Promise.all(['open', 'in_progress'].map((s) => api<Paged<ComplaintRow>>(`/complaints?assetId=${chosen}&status=${s}&pageSize=1`).catch(() => null))).then((lists) => {
+      if (current) setAlready(lists.flatMap((l) => l?.items ?? [])[0] ?? null);
+    });
+    return () => {
+      current = false;
+    };
+  }, [open, chosen]);
 
   async function search(text: string) {
     setSearching(true);
@@ -87,6 +102,15 @@ export function RaiseComplaintModal({
             />
           )}
         </Form.Item>
+        {already && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={`This equipment already has a complaint ${already.status === 'open' ? 'waiting' : 'being worked on'}: ${already.complaintNo}`}
+            description={`Raised ${formatDateTime(already.raisedAt)}: "${already.description.slice(0, 120)}". If it is the same fault, there is no need to raise another; raise this only for a different problem.`}
+          />
+        )}
         <Form.Item
           label="What is wrong?"
           name="description"
