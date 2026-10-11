@@ -1,10 +1,10 @@
 'use client';
 
 import { FileImageOutlined, FilePdfOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
-import { App, Badge, Button, List, Modal, Select, Skeleton, Space, Upload } from 'antd';
+import { App, Badge, Button, List, Modal, Popconfirm, Select, Skeleton, Space, Upload } from 'antd';
 import { useState } from 'react';
 import type { AttachmentOwnerType, AttachmentRow } from '@bme/shared';
-import { useFetch } from '@/lib/api';
+import { api, useFetch } from '@/lib/api';
 import { formatDateTime, formatSize } from '@/lib/format';
 import { ACCEPT, KIND_LABEL, fileProblem, uploadFile } from '@/lib/uploads';
 import { COLORS } from '@/theme';
@@ -48,6 +48,17 @@ export function DocumentList({
     }
   }
 
+  async function remove(f: AttachmentRow) {
+    try {
+      await api(`/attachments/${f.id}`, { method: 'DELETE' });
+      message.success(`${f.fileName || 'File'} removed`);
+      files.reload();
+      onChanged?.();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not remove the file');
+    }
+  }
+
   return (
     <div>
       {canUpload && (
@@ -74,7 +85,19 @@ export function DocumentList({
           size="small"
           dataSource={files.data}
           renderItem={(f) => (
-            <List.Item>
+            <List.Item
+              actions={
+                f.canRemove
+                  ? [
+                      <Popconfirm key="remove" title="Remove this file?" okText="Remove" okButtonProps={{ danger: true }} onConfirm={() => remove(f)}>
+                        <Button size="small" type="text" danger aria-label={`Remove ${f.fileName || 'file'}`}>
+                          Remove
+                        </Button>
+                      </Popconfirm>,
+                    ]
+                  : undefined
+              }
+            >
               <List.Item.Meta
                 avatar={f.mime === 'application/pdf' ? <FilePdfOutlined style={{ fontSize: 20, color: COLORS.bad.fg }} /> : <FileImageOutlined style={{ fontSize: 20, color: COLORS.primary }} />}
                 title={

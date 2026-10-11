@@ -31,6 +31,8 @@ import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
 import { approvers, notify } from '../approvals/approvals.service';
+import { moveOpenComplaints } from '../complaints/complaints.service';
+import { clearReminders } from '../reminders/reminders.service';
 import { assetIdOfOwner, storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
@@ -181,6 +183,9 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   }
 
   const requestKeyChange = hasKeyChanges && !canEditKey;
+  if (requestKeyChange && (await prisma.approvalRequest.findFirst({ where: { type: 'edit_key_field', targetId: before.id, status: 'pending' } }))) {
+    throw new HttpError(409, 'A change to the key details of this asset is already waiting for the HOD. Wait for the decision, or withdraw that request (Approvals) and ask again.');
+  }
   const touched = Object.keys(data).length > 0;
   if (!touched && !requestKeyChange) {
     res.json({ asset: toAssetDetail(before), pendingApproval: false } satisfies UpdateAssetResponse);
@@ -191,6 +196,8 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
     if (touched) {
       const after = await tx.asset.update({ where: { id: before.id }, data });
       await audit(tx, req, { action: 'asset.update', entityType: 'asset', entityId: before.id, before, after });
+      if (after.status === 'not_in_use' && before.status !== 'not_in_use') await clearReminders(tx, before.id, ['pms', 'calibration', 'warranty', 'contract']);
+      if (after.departmentId !== before.departmentId) await moveOpenComplaints(tx, before.id, after.departmentId);
     }
     if (requestKeyChange) {
       const previous = Object.fromEntries(Object.keys(keyChanges).map((k) => [k, (before as Record<string, unknown>)[k]]));
@@ -273,6 +280,7 @@ assetsRouter.get('/:id/purchase-orders', requirePermission('asset.view'), async 
 
 assetsRouter.post('/:id/purchase-orders', requirePermission('asset.edit'), validate(purchaseOrderSchema), async (req, res) => {
   const asset = await findScoped(req);
+  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so purchase orders can no longer be added');
   const input = req.body as PurchaseOrderInput;
   const row = await audited(req, { action: 'purchase_order.create', entityType: 'purchase_order' }, (tx) =>
     tx.purchaseOrder.create({ data: { ...input, poDate: parseDate(input.poDate), assetId: asset.id, createdBy: currentUser(req).id } }),
@@ -296,6 +304,7 @@ assetsRouter.get('/:id/contracts', requirePermission('asset.view'), async (req, 
 
 assetsRouter.post('/:id/contracts', requirePermission('asset.edit'), validate(serviceContractSchema), async (req, res) => {
   const asset = await findScoped(req);
+  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so service contracts can no longer be added');
   const input = req.body as ServiceContractInput;
   const row = await audited(req, { action: 'service_contract.create', entityType: 'service_contract' }, (tx) =>
     tx.serviceContract.create({
@@ -358,7 +367,30 @@ attachmentsRouter.get('/', async (req, res) => {
   if (!currentUser(req).permissions.includes(READ_PERMISSION[ownerType])) throw new HttpError(403, 'You do not have permission to see these documents');
   await scopedOwnerAsset(req, ownerType, ownerId);
   const rows = await prisma.attachment.findMany({ where: { ownerType, ownerId }, orderBy: { createdAt: 'desc' } });
-  res.json(rows.map(toAttachmentRow));
+  const open = ownerType === 'complaint' && (await prisma.complaint.findUnique({ where: { id: ownerId } }))?.status !== 'resolved';
+  res.json(rows.map((f) => ({ ...toAttachmentRow(f), canRemove: open && mayRemoveComplaintFile(req, f) })));
+});
+
+// A complaint photo added by mistake can be taken off while the complaint is open: by whoever added it, or by the
+// biomedical staff working on it. Other documents are records, removed only with the record (HOD approval).
+const mayRemoveComplaintFile = (req: Request, f: { ownerType: string; createdBy: string | null }) => {
+  const me = currentUser(req);
+  return f.ownerType === 'complaint' && (f.createdBy === me.id || me.permissions.includes('complaint.start'));
+};
+
+attachmentsRouter.delete('/:id', requirePermission('asset.view'), async (req, res) => {
+  const file = await prisma.attachment.findUnique({ where: { id: idOf(req) } });
+  if (!file || file.ownerType !== 'complaint') throw new HttpError(404, 'File not found');
+  await scopedOwnerAsset(req, 'complaint', file.ownerId);
+  if (!mayRemoveComplaintFile(req, file)) throw new HttpError(403, 'Only the person who added this file, or the biomedical team, can remove it');
+  const complaint = await prisma.complaint.findUniqueOrThrow({ where: { id: file.ownerId } });
+  if (complaint.status === 'resolved') throw new HttpError(409, 'This complaint is resolved and closed, so its documents are kept');
+  await prisma.$transaction(async (tx) => {
+    await tx.attachment.delete({ where: { id: file.id } });
+    await audit(tx, req, { action: 'attachment.delete', entityType: 'attachment', entityId: file.id, before: file });
+  });
+  await getStorage().remove(file.filePath).catch((e) => console.error('Could not remove file', file.filePath, e));
+  res.status(204).end();
 });
 
 attachmentsRouter.post('/', upload.single('file'), async (req, res) => {

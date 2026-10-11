@@ -28,7 +28,7 @@ authRouter.post('/login', validate(loginSchema), async (req, res) => {
   }
   recordSuccess(email);
   await audit(prisma, req, { action: 'auth.login', entityType: 'user', entityId: user.id, actorId: user.id });
-  setSessionCookie(res, user.id);
+  setSessionCookie(res, user.id, user.sessionVersion);
   res.json(await loadSessionUser(user.id));
 });
 
@@ -49,7 +49,9 @@ authRouter.post('/password', authenticate, validate(changePasswordSchema), async
     recordFailure(me.email);
     throw new HttpError(400, 'Your current password is not right', { fieldErrors: { currentPassword: ['Not right'] } });
   }
-  await prisma.user.update({ where: { id: me.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10) } });
+  // Every other session (another computer, a copied cookie) ends; this one gets a fresh cookie and carries on.
+  const updated = await prisma.user.update({ where: { id: me.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10), sessionVersion: { increment: 1 } } });
+  setSessionCookie(res, me.id, updated.sessionVersion);
   recordSuccess(me.email);
   await audit(prisma, req, { action: 'auth.password_change', entityType: 'user', entityId: me.id });
   res.status(204).end();

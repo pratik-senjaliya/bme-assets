@@ -16,6 +16,7 @@ import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
+import { clearReminders } from '../reminders/reminders.service';
 import { dueList, evaluateAnswers, latestTemplate, pmsRecordInclude, templateItems, toPmsRows } from './pms.service';
 
 export const pmsRouter = Router();
@@ -84,14 +85,12 @@ pmsRouter.post('/assets/:id/pms', requirePermission('pms.perform'), validate(sub
   const asset = await findScopedAsset(req);
   if (asset.status !== 'active') throw new HttpError(409, 'PMS can only be recorded for equipment in active use');
 
-  const template = await latestTemplate(asset.equipmentTypeId);
+  // A correction is checked against the checklist version the original was done with (it may have changed since).
+  const original = input.correctsRecordId ? await prisma.pmsRecord.findUnique({ where: { id: input.correctsRecordId }, include: { template: true } }) : null;
+  if (input.correctsRecordId && (!original || original.assetId !== asset.id)) throw new HttpError(400, 'That record is not for this asset');
+  const template = original ? original.template : await latestTemplate(asset.equipmentTypeId);
   if (!template) throw new HttpError(409, `No PMS checklist is set up for ${asset.equipmentType.name} yet`);
   const { clean, result } = evaluateAnswers(templateItems(template.schema), input.answers);
-
-  if (input.correctsRecordId) {
-    const original = await prisma.pmsRecord.findUnique({ where: { id: input.correctsRecordId } });
-    if (!original || original.assetId !== asset.id) throw new HttpError(400, 'That record is not for this asset');
-  }
 
   const performedOn = parseDate(todayISO());
   const created = await prisma.$transaction(async (tx) => {
@@ -113,6 +112,7 @@ pmsRouter.post('/assets/:id/pms', requirePermission('pms.perform'), validate(sub
     // With no interval there is no next date: an earlier one must not stay behind as overdue for ever.
     if (!input.correctsRecordId) {
       await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
+      await clearReminders(tx, asset.id, ['pms']);
     }
     await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit', entityType: 'pms_record', entityId: record.id, after: record });
     return record;

@@ -17,6 +17,9 @@ const recipients = (type: NotificationType) => usersWithPermissions(RECIPIENT_PE
 
 type Candidate = { type: NotificationType; assetId: string; dueDate: Date; message: (daysLeft: number) => string };
 
+// thresholdDays of the one reminder sent once an item is overdue (after "due in 5 days", nothing else would come).
+export const OVERDUE_THRESHOLD = -1;
+
 const inDays = (n: number) => (n === 1 ? '1 day' : `${n} days`);
 const when = (daysLeft: number) => (daysLeft < 0 ? `overdue by ${inDays(-daysLeft)}` : daysLeft === 0 ? 'due today' : `due in ${inDays(daysLeft)}`);
 const ends = (daysLeft: number) => (daysLeft === 0 ? 'ends today' : `ends in ${inDays(daysLeft)}`);
@@ -58,7 +61,7 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
 
   const data = candidates.flatMap((c) => {
     const daysLeft = daysBetween(todayDate, c.dueDate);
-    const threshold = thresholds.find((t) => daysLeft <= t);
+    const threshold = daysLeft < 0 && (c.type === 'pms' || c.type === 'calibration') ? OVERDUE_THRESHOLD : thresholds.find((t) => daysLeft <= t);
     if (threshold === undefined) return [];
     return (people.get(c.type) ?? []).map((userId) => ({
       userId,
@@ -73,6 +76,12 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
   const created = data.length ? await prisma.notification.createManyAndReturn({ data, skipDuplicates: true, select: { id: true } }) : [];
   const emailed = await sendPendingEmails();
   return { created: created.length, emailed };
+}
+
+// A reminder is about something still to do. Once it is done (PMS, calibration) or no longer applies (equipment
+// condemned or not in use), its reminders are marked read so the bell only counts what still needs attention.
+export async function clearReminders(db: Pick<typeof prisma, 'notification'>, assetId: string, types: NotificationType[]) {
+  await db.notification.updateMany({ where: { assetId, type: { in: types }, readAt: null }, data: { readAt: new Date() } });
 }
 
 // One digest email per person for reminders not yet emailed. Only when SMTP is set up; a failed send

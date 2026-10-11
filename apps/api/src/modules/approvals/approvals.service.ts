@@ -7,6 +7,8 @@ import { HttpError } from '../../lib/errors';
 import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { scheduleFor } from '../assets/assets.service';
+import { closeComplaintsOnCondemnation, moveOpenComplaints } from '../complaints/complaints.service';
+import { clearReminders } from '../reminders/reminders.service';
 import { getStorage } from '../../lib/storage';
 
 type Db = Prisma.TransactionClient;
@@ -21,9 +23,9 @@ export const money = (n: unknown) => `₹ ${new Intl.NumberFormat('en-IN').forma
 
 // ---------- Telling people ----------
 
-export async function notify(db: Db, userIds: string[], message: string, assetId: string | null) {
+export async function notify(db: Db, userIds: string[], message: string, assetId: string | null, type: 'approval' | 'complaint' = 'approval') {
   if (userIds.length === 0) return;
-  await db.notification.createMany({ data: userIds.map((userId) => ({ userId, type: 'approval', assetId, message })) });
+  await db.notification.createMany({ data: userIds.map((userId) => ({ userId, type, assetId, message })) });
 }
 
 export const approvers = () => usersWithPermissions('approval.decide', 'notification.view');
@@ -60,17 +62,22 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
     const schedule = changes.equipmentTypeId ? await scheduleFor(tx, { ...before, equipmentTypeId: changes.equipmentTypeId }) : {};
     const after = await tx.asset.update({ where: { id: before.id }, data: { ...changes, ...schedule } });
     await audit(tx, req, { action: 'asset.update', entityType: 'asset', entityId: before.id, before, after });
+    if (after.departmentId !== before.departmentId) await moveOpenComplaints(tx, before.id, after.departmentId);
   } else if (request.type === 'condemn') {
     const before = await tx.asset.findUnique({ where: { id: request.targetId } });
     if (!before) throw new HttpError(409, 'The asset no longer exists. Reject this request.');
     if (before.status === 'condemned') throw new HttpError(409, 'The asset is already condemned');
     const after = await tx.asset.update({ where: { id: before.id }, data: { status: 'condemned' } });
     await audit(tx, req, { action: 'asset.condemn', entityType: 'asset', entityId: before.id, before, after });
+    await closeComplaintsOnCondemnation(tx, before.id, request.decidedBy!);
+    await clearReminders(tx, before.id, ['pms', 'calibration', 'warranty', 'contract']);
   } else {
     filesToRemove.push(...(await applyDelete(tx, req, request.targetType, request.targetId)));
   }
   return filesToRemove;
 }
+
+export const NOT_DELETABLE_COMPLAINT = 'Work has started on this complaint, so it is part of the equipment record and cannot be deleted. Resolve it with a note instead.';
 
 async function applyDelete(tx: Db, req: Request, targetType: string, targetId: string): Promise<string[]> {
   const gone = () => new HttpError(409, 'That entry no longer exists. Reject this request.');
@@ -107,6 +114,16 @@ async function applyDelete(tx: Db, req: Request, targetType: string, targetId: s
     const files = await takeFiles('service_log');
     await tx.serviceLog.delete({ where: { id: targetId } });
     await audit(tx, req, { action: 'service_log.delete', entityType: 'service_log', entityId: targetId, before: row });
+    return files;
+  } else if (targetType === 'complaint') {
+    // Only a complaint raised by mistake (wrong equipment, a duplicate) that nobody has started on: once work has
+    // started it is part of the equipment's record and its response and downtime figures.
+    const row = await tx.complaint.findUnique({ where: { id: targetId } });
+    if (!row) throw gone();
+    if (row.status !== 'open' || (await tx.serviceExpense.count({ where: { complaintId: targetId } }))) throw new HttpError(409, NOT_DELETABLE_COMPLAINT);
+    const files = await takeFiles('complaint');
+    await tx.complaint.delete({ where: { id: targetId } });
+    await audit(tx, req, { action: 'complaint.delete', entityType: 'complaint', entityId: targetId, before: row });
     return files;
   } else if (targetType === 'asset') {
     const asset = await tx.asset.findUnique({ where: { id: targetId } });
@@ -159,11 +176,12 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
   const payloads = rows.map((r) => ({ r, p: r.payload as Payload }));
   const changeIds = (key: string) => payloads.map(({ p }) => p.changes?.[key]).filter((v): v is string => typeof v === 'string');
 
-  const [pos, contracts, expenses, serviceLogs, users, locations, departments, types] = await Promise.all([
+  const [pos, contracts, expenses, serviceLogs, complaints, users, locations, departments, types] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { id: { in: ids('purchase_order') } } }),
     prisma.serviceContract.findMany({ where: { id: { in: ids('service_contract') } } }),
     prisma.serviceExpense.findMany({ where: { id: { in: ids('service_expense') } } }),
     prisma.serviceLog.findMany({ where: { id: { in: ids('service_log') } } }),
+    prisma.complaint.findMany({ where: { id: { in: ids('complaint') } } }),
     prisma.user.findMany({ where: { id: { in: rows.flatMap((r) => [r.requestedBy, r.decidedBy].filter((x): x is string => !!x)) } }, select: { id: true, name: true } }),
     prisma.location.findMany({ where: { id: { in: [...changeIds('locationId'), ...payloads.map(({ p }) => p.previous?.locationId).filter((v): v is string => typeof v === 'string')] } } }),
     prisma.department.findMany({ where: { id: { in: [...changeIds('departmentId'), ...payloads.map(({ p }) => p.previous?.departmentId).filter((v): v is string => typeof v === 'string')] } } }),
@@ -175,6 +193,7 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
     : r.targetType === 'service_contract' ? contracts.find((x) => x.id === r.targetId)?.assetId
     : r.targetType === 'service_expense' ? expenses.find((x) => x.id === r.targetId)?.assetId
     : r.targetType === 'service_log' ? serviceLogs.find((x) => x.id === r.targetId)?.assetId
+    : r.targetType === 'complaint' ? complaints.find((x) => x.id === r.targetId)?.assetId
     : undefined;
   const assetIds = [...new Set(rows.map(assetIdOf).filter((x): x is string => !!x))];
   const assets = await prisma.asset.findMany({ where: { id: { in: assetIds } } });
@@ -203,10 +222,12 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
       const c = contracts.find((x) => x.id === r.targetId);
       const e = expenses.find((x) => x.id === r.targetId);
       const sl = serviceLogs.find((x) => x.id === r.targetId);
+      const cm = complaints.find((x) => x.id === r.targetId);
       summary =
         r.targetType === 'asset' ? 'Delete this asset (entered by mistake). Its ID is not reused.'
         : r.targetType === 'purchase_order' ? `Delete purchase order ${po?.poNumber ?? '(already removed)'}${po ? ` (${po.vendor}, ${money(po.cost)})` : ''}`
         : r.targetType === 'service_contract' ? `Delete ${c ? `${c.type.toUpperCase().replace('_', '-')} contract with ${c.vendor}` : 'contract (already removed)'}`
+        : r.targetType === 'complaint' ? `Delete complaint ${cm ? `${cm.complaintNo} "${cm.description.slice(0, 60)}" (raised by mistake)` : '(already removed)'}`
         : r.targetType === 'service_log' ? `Delete service entry ${sl ? `"${sl.description.slice(0, 60)}" (${prettyDate(sl.serviceDate)})` : '(already removed)'}`
         : `Delete expense ${e ? `"${e.description}" (${money(e.amount)})` : '(already removed)'}`;
     }

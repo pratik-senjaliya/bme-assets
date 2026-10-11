@@ -47,6 +47,11 @@ settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
     }
   }
 
+  // The hospital code is part of every asset ID (rule 2): once IDs carry it, a new code would make new IDs disagree.
+  if (input.shortCode !== undefined && input.shortCode !== before.shortCode && before.assetIdPattern.includes('{HOSP}') && (await prisma.asset.count()) > 0) {
+    throw new HttpError(409, 'The hospital code is part of the asset IDs already given out, so it can no longer be changed', { fieldErrors: { shortCode: ['Locked: asset IDs already use it'] } });
+  }
+
   const row = await audited(req, { action: 'settings.update', entityType: 'hospital_settings', before }, (tx) =>
     tx.hospitalSettings.update({ where: { id: before.id }, data: { ...rest, ...(smtpPassword ? { smtpPassword } : {}) } }),
   );

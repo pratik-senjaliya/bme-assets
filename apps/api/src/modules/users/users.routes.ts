@@ -13,6 +13,7 @@ import {
 import { audited } from '../../lib/audit';
 import { currentUser, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
+import { recordSuccess } from '../../lib/loginThrottle';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 
@@ -77,11 +78,14 @@ usersRouter.patch('/:id', validate(updateUserSchema), async (req, res) => {
     ...rest,
     roleId: await roleId(role),
     departmentId: role === 'nursing' ? departmentId : null,
-    ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+    // A reset ends the person's sessions everywhere (the audit entry shows the version going up).
+    ...(password ? { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } : {}),
   };
   const user = await audited(req, { action: 'user.update', entityType: 'user', before }, (tx) =>
     tx.user.update({ where: { id: before.id }, data }),
   );
+  // The locked-out message says to ask the HOD for a reset; the reset must then let them in.
+  if (password) recordSuccess(before.email);
   res.json(toRow(await prisma.user.findUniqueOrThrow({ where: { id: user.id }, include })));
 });
 

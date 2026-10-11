@@ -27,7 +27,7 @@ async function main() {
     console.error(`No user with the email ${email}.`);
     process.exit(1);
   }
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(password, 10), active: true } });
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(password, 10), active: true, sessionVersion: { increment: 1 } } });
   // Recorded like everything else: an action done on the server itself, so no signed-in actor and no client address.
   await prisma.auditLog.create({ data: { actorId: null, action: 'user.password_reset_on_server', entityType: 'user', entityId: user.id } });
   console.log(`Password for ${user.name} <${email}> is now: ${password}`);

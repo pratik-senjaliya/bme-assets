@@ -10,9 +10,9 @@ import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { EmptyState } from '@/components/Skeletons';
 
-const TAB: Record<Exclude<NotificationRow['type'], 'approval'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase' };
+const TAB: Record<Exclude<NotificationRow['type'], 'approval'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase', complaint: 'complaints' };
 
-// In-app reminders (PMS, calibration, warranty, contracts). Checked every minute while the app is open.
+// In-app reminders (PMS, calibration, warranty, contracts) and notices (approvals, complaints). Checked every minute while the app is open.
 export function NotificationBell() {
   const router = useRouter();
   const [data, setData] = useState<NotificationList>({ items: [], unread: 0 });
