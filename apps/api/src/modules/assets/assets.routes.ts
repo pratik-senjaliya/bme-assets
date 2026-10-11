@@ -35,6 +35,8 @@ import { assetIdOfOwner, storeAttachment, toAttachmentRow, upload } from './atta
 import { idOf, validate } from '../../lib/validate';
 import {
   CREATE_TX_OPTIONS,
+  SCHEDULE_FIELDS,
+  scheduleFor,
   assertLocationInDepartment,
   assertOpeningDate,
   assertSerialFree,
@@ -161,6 +163,21 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
     data.installationDate = installationDate;
     data.warrantyMonths = months;
     data.warrantyEnd = warrantyEndFor(installationDate, months);
+  }
+
+  if (SCHEDULE_FIELDS.some((f) => f in data)) {
+    const pick = <K extends (typeof SCHEDULE_FIELDS)[number]>(k: K) => (k in data ? data[k] : before[k]) as (typeof before)[K];
+    Object.assign(
+      data,
+      await scheduleFor(prisma, {
+        id: before.id,
+        equipmentTypeId: pick('equipmentTypeId'),
+        installationDate: pick('installationDate'),
+        openingPmsOn: pick('openingPmsOn'),
+        openingCalibrationOn: pick('openingCalibrationOn'),
+        pmsFrequencyMonths: pick('pmsFrequencyMonths'),
+      }),
+    );
   }
 
   const requestKeyChange = hasKeyChanges && !canEditKey;
