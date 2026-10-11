@@ -30,7 +30,7 @@ function ReportPage() {
   const today = dayjs();
   const from = params.get('from') ?? fmt(today.subtract(12, 'month'));
   const to = params.get('to') ?? fmt(today);
-  const group = params.get('group') === 'year' ? 'year' : 'month';
+  const group = params.get('group') === 'year' ? 'year' : params.get('group') === 'fy' ? 'fy' : 'month';
   const range = meta?.range ?? false;
   const query = new URLSearchParams({ ...(range ? { from, to } : {}), ...(meta && 'group' in meta ? { group } : {}) });
   const path = `/reports/${type}${query.size ? `?${query}` : ''}`;
@@ -63,7 +63,7 @@ function ReportPage() {
               onChange={(v) => v?.[0] && v?.[1] && set({ from: fmt(v[0]), to: fmt(v[1]) })}
             />
           )}
-          {'group' in meta && <Segmented aria-label="Group by" value={group} options={[{ value: 'month', label: 'By month' }, { value: 'year', label: 'By year' }]} onChange={(v) => set({ group: String(v) })} />}
+          {'group' in meta && <Segmented aria-label="Group by" value={group} options={[{ value: 'month', label: 'By month' }, { value: 'year', label: 'By year' }, { value: 'fy', label: 'By financial year' }]} onChange={(v) => set({ group: String(v) })} />}
         </Space>
       )}
       {report.error ? (

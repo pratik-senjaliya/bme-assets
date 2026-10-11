@@ -102,15 +102,19 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   }
   if (showCosts) {
     const month = expenses.filter((e) => isoDate(e.date).slice(0, 7) === today.slice(0, 7)).reduce((t, e) => t + Number(e.amount), 0);
-    const year = expenses.filter((e) => isoDate(e.date).slice(0, 4) === today.slice(0, 4)).reduce((t, e) => t + Number(e.amount), 0);
-    kpis.push({ label: 'Service spend this month', value: month, fmt: 'money', hint: `This year ₹ ${new Intl.NumberFormat('en-IN').format(year)}` });
+    // The financial year (1 April – 31 March), as hospital budgets and the reports' "This financial year" use.
+    const [ty, tm] = today.split('-').map(Number);
+    const fyStart = `${tm >= 4 ? ty : ty - 1}-04-01`;
+    const year = expenses.filter((e) => isoDate(e.date) >= fyStart).reduce((t, e) => t + Number(e.amount), 0);
+    kpis.push({ label: 'Service spend this month', value: month, fmt: 'money', hint: `This financial year ₹ ${new Intl.NumberFormat('en-IN').format(year)}` });
   }
   const expiring: DashboardExpiry[] | null = showCover
     ? [
         ...liveAssets.filter((a) => a.warrantyEnd && daysFromToday(a.warrantyEnd) >= 0 && daysFromToday(a.warrantyEnd) <= 60).map((a): DashboardExpiry => ({ kind: 'warranty', label: 'Warranty ends', assetId: a.id, assetCode: a.assetCode, assetName: a.name, date: isoDate(a.warrantyEnd!), daysLeft: daysFromToday(a.warrantyEnd!) })),
         ...contracts.map((k): DashboardExpiry => ({ kind: 'contract', label: `${k.type.toUpperCase().replace('_', '-')} contract ends`, assetId: k.asset.id, assetCode: k.asset.assetCode, assetName: k.asset.name, date: isoDate(k.endDate), daysLeft: daysFromToday(k.endDate) })),
-      ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8)
+      ].sort((a, b) => a.date.localeCompare(b.date))
     : null;
+  // The figure counts all of them; the list below shows the first 8.
   if (expiring) kpis.push({ label: 'Cover ending in 60 days', value: expiring.length, fmt: 'int', hint: expiring.length ? 'Warranties and contracts' : 'Nothing ending soon', tone: expiring.length ? 'warn' : 'good' });
 
   const charts: ChartSpec[] = [];
@@ -179,7 +183,7 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     kpis,
     charts,
     topBreakdowns,
-    expiring,
+    expiring: expiring && expiring.slice(0, 8),
   };
   res.json(body);
 });

@@ -707,7 +707,7 @@ export type ReportData = {
   hospital: string;
   from: string | null;
   to: string | null;
-  group: 'month' | 'year' | null;
+  group: 'month' | 'year' | 'fy' | null;
   generatedAt: string;
   generatedBy: string;
   note: string | null;
@@ -763,11 +763,15 @@ export const REPORTS = [
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];
 
+// Report ranges: real dates in a sensible span (a mistyped year 0001 or 9999 is refused, not crunched).
+const reportDateSchema = isoDateSchema.refine((s) => s >= '1900-01-01' && s <= '2100-12-31', 'Use a date between 1900 and 2100');
+
 export const reportQuerySchema = z
   .object({
-    from: isoDateSchema.optional(),
-    to: isoDateSchema.optional(),
-    group: z.enum(['month', 'year']).default('month'),
+    from: reportDateSchema.optional(),
+    to: reportDateSchema.optional(),
+    // fy = Indian financial year, 1 April to 31 March.
+    group: z.enum(['month', 'year', 'fy']).default('month'),
     // The same filters the lists use, so "Export" on a list gives what is on screen (asset master and breakdowns).
     search: z.string().trim().max(100).optional(),
     departmentId: z.string().uuid().optional(),

@@ -113,7 +113,8 @@ export function toPdf(data: ReportData): Promise<Buffer> {
     };
     const text = (s: string, x: number, y: number, o: { w?: number; h?: number; size?: number; bold?: boolean; color?: string; align?: 'left' | 'right' | 'center' } = {}) => {
       // One line, cut with an ellipsis when it does not fit (a fixed height is what makes PDFKit truncate, not wrap).
-      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size ?? 8).fillColor(o.color ?? INK).text(s, x, y, { width: o.w, height: o.h ?? (o.size ?? 8) + 2, align: o.align, ellipsis: true });
+      // The built-in font has no rupee sign: any ₹ in a label or hint reads "Rs." like the money values.
+      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size ?? 8).fillColor(o.color ?? INK).text(s.replace(/₹\s?/g, 'Rs. '), x, y, { width: o.w, height: o.h ?? (o.size ?? 8) + 2, align: o.align, ellipsis: true });
     };
 
     // Title block
@@ -141,10 +142,13 @@ export function toPdf(data: ReportData): Promise<Buffer> {
 
     // Charts as plain bars: label, bar, value. Enough to read the shape; the tables carry the detail.
     const bars = (c: ChartSpec) => {
-      const rows = c.data.slice(0, c.kind === 'bar' ? 10 : 24);
+      // A ranking shows its top 10; a time series its most recent 24 periods (the Excel file has every one).
+      const series = c.kind !== 'bar';
+      const rows = series ? c.data.slice(-24) : c.data.slice(0, 10);
+      const note = series && c.data.length > rows.length ? `Last ${rows.length} of ${c.data.length} shown; the Excel file has all` : c.subtitle;
       need(30 + rows.length * 12);
       text(c.title, PAGE.m, y, { size: 10, bold: true });
-      if (c.subtitle) text(c.subtitle, PAGE.m + 260, y + 1.5, { size: 7.5, color: MUTED });
+      if (note) text(note, PAGE.m + 260, y + 1.5, { w: PAGE.w - PAGE.m * 2 - 260, size: 7.5, color: MUTED });
       y += 18;
       if (c.series.length > 1) {
         c.series.forEach((s, i) => {
