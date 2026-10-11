@@ -97,7 +97,11 @@ setupRouter.patch('/locations/:id', requirePermission('setup.manage'), validate(
     throw new HttpError(409, 'Equipment is registered at this location, so it cannot move to another department. Move the equipment first (with HOD approval), or add a new location.', { fieldErrors: { departmentId: ['Equipment is registered here'] } });
   }
   await assertCodeFree('{LOC}', body.code !== undefined && body.code !== before.code, assets, 'location');
-  await assertLocationCodeFree(body.departmentId ?? before.departmentId, body.code ?? before.code, before.id);
+  // Checked only when the code or the department changes, so a name can always be fixed even where old data
+  // already has two locations sharing a code.
+  if ((body.code !== undefined && body.code !== before.code) || (body.departmentId !== undefined && body.departmentId !== before.departmentId)) {
+    await assertLocationCodeFree(body.departmentId ?? before.departmentId, body.code ?? before.code, before.id);
+  }
   const row = await audited(req, { action: 'location.update', entityType: 'location', before }, (tx) =>
     tx.location.update({ where: { id: before.id }, data: req.body }),
   );

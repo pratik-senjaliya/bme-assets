@@ -75,11 +75,13 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     showCover ? prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(today), lte: parseDate(isoDate(new Date(parseDate(today).getTime() + 60 * DAY))) }, asset: { status: 'active', ...scope } }, select: { type: true, vendor: true, endDate: true, asset: { select: { id: true, assetCode: true, name: true } } } }) : [],
   ]);
 
+  const historyByAsset = new Map<string, { raisedAt: Date; resolvedAt: Date | null }[]>();
+  for (const c of history) historyByAsset.get(c.assetId)?.push(c) ?? historyByAsset.set(c.assetId, [c]);
   // Uptime over the last 30 days: hours the equipment was working out of the hours it was there (24 a day).
   const uptime = (pool: typeof liveAssets) => {
     const ids = new Set(pool.map((a) => a.id));
     const window = pool.reduce((t, a) => t + Math.max(0, now.getTime() - Math.max(win30.getTime(), a.createdAt.getTime())), 0);
-    const down = [...ids].reduce((t, id) => t + machineDownMs(history.filter((c) => c.assetId === id), win30, now), 0);
+    const down = [...ids].reduce((t, id) => t + machineDownMs(historyByAsset.get(id) ?? [], win30, now), 0);
     return window ? Math.max(0, 1 - down / window) : null;
   };
   const recent = history.filter((c) => c.raisedAt >= win30);
