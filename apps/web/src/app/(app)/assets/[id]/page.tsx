@@ -102,8 +102,13 @@ export default function AssetDetailPage() {
                     ...(can('report.view') ? [{ key: 'history', icon: <FileTextOutlined />, label: 'Full history report' }] : []),
                     ...(can('asset.request_change')
                       ? [
-                          ...(a.status !== 'condemned' ? [{ key: 'condemn', label: 'Request condemnation' }] : []),
-                          { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
+                          // Condemned equipment keeps its record and certificate: no condemn or delete any more.
+                          ...(a.status !== 'condemned'
+                            ? [
+                                { key: 'condemn', label: 'Request condemnation' },
+                                { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
+                              ]
+                            : []),
                         ]
                       : []),
                   ],

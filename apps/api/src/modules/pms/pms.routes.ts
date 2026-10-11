@@ -110,8 +110,9 @@ pmsRouter.post('/assets/:id/pms', requirePermission('pms.perform'), validate(sub
       },
     });
     // A normal PMS moves the next due date on. A correction fixes a record, it does not reset the schedule.
-    if (!input.correctsRecordId && asset.pmsFrequencyMonths) {
-      await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: addMonths(performedOn, asset.pmsFrequencyMonths) } });
+    // With no interval there is no next date: an earlier one must not stay behind as overdue for ever.
+    if (!input.correctsRecordId) {
+      await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
     }
     await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit', entityType: 'pms_record', entityId: record.id, after: record });
     return record;

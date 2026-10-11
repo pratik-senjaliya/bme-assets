@@ -6,6 +6,7 @@ import { prettyDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
+import { scheduleFor } from '../assets/assets.service';
 import { getStorage } from '../../lib/storage';
 
 type Db = Prisma.TransactionClient;
@@ -41,6 +42,10 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
     if (!before) throw new HttpError(409, 'The asset no longer exists, so this request cannot be applied. Reject it.');
     if (before.status === 'condemned') throw new HttpError(409, 'The asset has been condemned and can no longer be edited');
     const changes = (payload.changes ?? {}) as { serialNo?: string | null; equipmentTypeId?: string; departmentId?: string; locationId?: string };
+    // The request was made against the values it shows as "from". If someone has changed them since (another
+    // approved request, or a direct edit by the HOD), applying it now would quietly undo that newer change.
+    const stale = Object.keys(changes).filter((k) => payload.previous && k in payload.previous && (payload.previous[k] ?? null) !== ((before as Record<string, unknown>)[k] ?? null));
+    if (stale.length) throw new HttpError(409, 'The asset has changed since this request was made, so approving it would undo a newer change. Reject this request; a new one can be made if it is still needed.');
 
     const departmentId = changes.departmentId ?? before.departmentId;
     const locationId = changes.locationId ?? before.locationId;
@@ -51,7 +56,9 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
       if (clash) throw new HttpError(409, `The serial number is now used by ${clash.assetCode}`);
     }
     // The asset ID never changes, whatever the edit.
-    const after = await tx.asset.update({ where: { id: before.id }, data: changes });
+    // A new equipment type brings its own calibration interval, so the due dates are worked out again.
+    const schedule = changes.equipmentTypeId ? await scheduleFor(tx, { ...before, equipmentTypeId: changes.equipmentTypeId }) : {};
+    const after = await tx.asset.update({ where: { id: before.id }, data: { ...changes, ...schedule } });
     await audit(tx, req, { action: 'asset.update', entityType: 'asset', entityId: before.id, before, after });
   } else if (request.type === 'condemn') {
     const before = await tx.asset.findUnique({ where: { id: request.targetId } });
@@ -104,6 +111,8 @@ async function applyDelete(tx: Db, req: Request, targetType: string, targetId: s
   } else if (targetType === 'asset') {
     const asset = await tx.asset.findUnique({ where: { id: targetId } });
     if (!asset) throw gone();
+    // Condemned equipment is history, not a wrong entry: its certificate and end-of-life letter must stay.
+    if (asset.status === 'condemned') throw new HttpError(409, 'This asset has been condemned. Its record and certificate are kept, so it cannot be deleted. Reject this request.');
     // An asset with history is not a wrong entry: its PMS and calibration records are permanent and a complaint
     // is evidence. Those go through condemnation instead.
     const [pms, calibrations, complaints, expenses, serviceLogs] = await Promise.all([

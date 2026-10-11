@@ -9,6 +9,7 @@ import {
 } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
+import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 
@@ -43,9 +44,12 @@ setupRouter.patch('/departments/:id', requirePermission('setup.manage'), validat
 });
 
 setupRouter.delete('/departments/:id', requirePermission('setup.manage'), async (req, res) => {
-  await audited(req, { action: 'department.delete', entityType: 'department' }, (tx) =>
-    tx.department.delete({ where: { id: idOf(req) } }),
-  );
+  await audited(req, { action: 'department.delete', entityType: 'department' }, async (tx) => {
+    // Nursing logins belong to a department; removing it would leave them signed in to nothing.
+    const users = await tx.user.count({ where: { departmentId: idOf(req) } });
+    if (users) throw new HttpError(409, `${users} ${users === 1 ? 'user belongs' : 'users belong'} to this department. Move or remove ${users === 1 ? 'that login' : 'those logins'} first.`);
+    return tx.department.delete({ where: { id: idOf(req) } });
+  });
   res.status(204).end();
 });
 

@@ -187,6 +187,29 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
 
 export const firstDue = (from: Date | null, months: number | null | undefined) => (from && months ? addMonths(from, months) : null);
 
+// The next PMS and calibration due dates always follow from what is known now: the last real record if there is one
+// (a correction fixes a record, it does not move the schedule), otherwise the opening "last done" date or the
+// installation date, plus the interval. No interval means no PMS schedule. Called whenever one of those changes, so
+// equipment never drops off the due lists because a date or interval was filled in or changed after registration.
+export async function scheduleFor(
+  db: Db,
+  a: { id: string; equipmentTypeId: string; installationDate: Date | null; openingPmsOn: Date | null; openingCalibrationOn: Date | null; pmsFrequencyMonths: number | null },
+) {
+  const [lastPms, lastCalibration, type] = await Promise.all([
+    db.pmsRecord.findFirst({ where: { assetId: a.id, correctsRecordId: null }, orderBy: [{ performedOn: 'desc' }, { createdAt: 'desc' }] }),
+    db.calibrationRecord.findFirst({ where: { assetId: a.id }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] }),
+    db.equipmentType.findUniqueOrThrow({ where: { id: a.equipmentTypeId } }),
+  ]);
+  return {
+    nextPmsDue: lastPms ? firstDue(lastPms.performedOn, a.pmsFrequencyMonths) : firstDue(a.openingPmsOn ?? a.installationDate, a.pmsFrequencyMonths),
+    // A calibration record carries its own due date (the certificate's, or done date + the type's interval).
+    nextCalibrationDue: lastCalibration ? lastCalibration.dueOn : firstDue(a.openingCalibrationOn ?? a.installationDate, type.defaultCalibrationMonths),
+  };
+}
+
+// Asset fields the schedule depends on.
+export const SCHEDULE_FIELDS = ['installationDate', 'pmsFrequencyMonths', 'openingPmsOn', 'openingCalibrationOn', 'equipmentTypeId'] as const;
+
 // Long enough for large imports while other creates wait on the counter row.
 export const CREATE_TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
 

@@ -62,6 +62,9 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
   const assetId = await assetIdOfOwner(input.targetType, input.targetId);
   if (!assetId) throw new HttpError(404, 'Entry not found');
   const asset = await findScopedAsset(req, assetId);
+  if (input.targetType === 'asset' && asset.status === 'condemned') {
+    throw new HttpError(409, 'This asset has been condemned. Its record and certificate are kept, so it cannot be deleted.');
+  }
   await assertNoPending('delete', input.targetType, input.targetId);
 
   const request = await prisma.$transaction(async (tx) => {
@@ -115,11 +118,17 @@ approvalsRouter.get('/assets/:id/condemnation', requirePermission('asset.view'),
 
 // The status check is part of the UPDATE, so two approvers cannot both decide, and the change itself is applied in
 // the same transaction: it is all done or none of it is.
+// Applying a request can touch several records; give it room on a busy server or a remote database.
+const DECIDE_TX_OPTIONS = { maxWait: 15_000, timeout: 30_000 } as const;
+
 async function decide(req: Parameters<typeof currentUser>[0], status: 'approved' | 'rejected', note: string | null) {
   const me = currentUser(req);
   const before = await prisma.approvalRequest.findUnique({ where: { id: idOf(req) } });
   if (!before) throw new HttpError(404, 'Request not found');
   if (before.status !== 'pending') throw new HttpError(409, `This request has already been ${before.status}`);
+
+  // The summary describes the request itself, so it is read before the transaction, which stays short.
+  const [summaryRow] = await toApprovalRows([before]);
 
   const files = await prisma.$transaction(async (tx) => {
     const { count } = await tx.approvalRequest.updateMany({
@@ -131,12 +140,12 @@ async function decide(req: Parameters<typeof currentUser>[0], status: 'approved'
     const toRemove = status === 'approved' ? await applyApproval(tx, req, after) : [];
     await audit(tx, req, { action: status === 'approved' ? 'approval.approve' : 'approval.reject', entityType: 'approval_request', entityId: before.id, before, after });
 
-    const [row] = await toApprovalRows([after]);
-    // A deleted asset has nothing left to link the notification to.
-    const assetGone = status === 'approved' && before.type === 'delete' && before.targetType === 'asset';
-    await notify(tx, [before.requestedBy], `Your request was ${status}: ${row.summary}${note ? ` (${note})` : ''}`, assetGone ? null : row.assetId);
+    // The notice links to the asset only if it still exists (this request, or an earlier one, may have deleted it);
+    // otherwise a request about a deleted asset could never be approved or rejected.
+    const assetId = summaryRow.assetId && (await tx.asset.findUnique({ where: { id: summaryRow.assetId }, select: { id: true } })) ? summaryRow.assetId : null;
+    await notify(tx, [before.requestedBy], `Your request was ${status}: ${summaryRow.summary}${note ? ` (${note})` : ''}`, assetId);
     return toRemove;
-  });
+  }, DECIDE_TX_OPTIONS);
   await removeFiles(files);
   return (await toApprovalRows([await prisma.approvalRequest.findUniqueOrThrow({ where: { id: before.id } })]))[0];
 }
