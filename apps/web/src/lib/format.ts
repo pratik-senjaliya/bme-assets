@@ -76,10 +76,9 @@ export const endOfMonthISO = (iso: string) => {
 
 export const daysFromToday = (iso: string) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - new Date(`${todayIST()}T00:00:00Z`).getTime()) / 86_400_000);
 
-// "Dr. Meera Shah (HOD)" → "Dr. Meera Shah"; first name "Meera"; initials "MS". Titles are not names.
+// "Dr. Meera Shah (HOD)" → "Dr. Meera Shah"; initials "MS". Titles are not names.
 const TITLE = /^(dr|mr|mrs|ms|sister|sr|nurse)\.?\s+/i;
 export const shortName = (name: string) => name.replace(/\s*\(.*\)\s*$/, '').trim();
-export const firstName = (name: string) => shortName(name).replace(TITLE, '').split(/\s+/)[0] ?? '';
 export const initials = (name: string) =>
   shortName(name)
     .replace(TITLE, '')

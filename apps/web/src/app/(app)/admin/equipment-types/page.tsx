@@ -84,7 +84,7 @@ function EquipmentTypesPageScreen() {
         onRetry={types.reload}
         emptyText="No equipment types yet. Add the first one."
         columns={[
-          { title: 'Name', dataIndex: 'name' },
+          { title: 'Name', dataIndex: 'name', className: 'm-title' },
           { title: 'Code', dataIndex: 'code' },
           { title: 'Default PMS', dataIndex: 'defaultPmsMonths', align: 'right', render: months },
           { title: 'Default calibration', dataIndex: 'defaultCalibrationMonths', align: 'right', render: months },

@@ -1,6 +1,6 @@
 'use client';
 
-import { InboxOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { InboxOutlined, MoreOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Grid, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -86,11 +86,11 @@ function AssetList() {
         action={
           (canAdd || can('report.view')) && (
             <Space wrap>
-              {can('report.view') && <ExportMenu path={`/reports/asset-master?${exportQuery}`} name="bme-assets" />}
+              {can('report.view') && <ExportMenu path={`/reports/asset-master?${exportQuery}`} name="bme-assets" compact={phone} />}
               {canAdd && (
                 <>
                   <Link href="/assets/import">
-                    <Button>{phone ? 'Import' : 'Import from Excel'}</Button>
+                    {phone ? <Button aria-label="Import" icon={<UploadOutlined />} /> : <Button>Import from Excel</Button>}
                   </Link>
                   <Link href="/assets/new">
                     <Button type="primary">Add asset</Button>
@@ -105,17 +105,17 @@ function AssetList() {
         <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
           <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
         </div>
-        <span style={{ color: COLORS.muted, fontWeight: 600 }} className="num">
+        <span style={{ color: COLORS.muted, fontWeight: 600 }} className="num phone-hide">
           {assets.data ? `${assets.data.total.toLocaleString('en-IN')} ${assets.data.total === 1 ? 'asset' : 'assets'}` : ' '}
         </span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: phone ? 12 : 20 }}>
         <Input
           allowClear
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search ID, name, serial, make"
           aria-label="Search assets"
-          style={{ flex: '2 1 200px', maxWidth: 360 }}
+          style={{ flex: phone ? '1 1 140px' : '2 1 200px', maxWidth: 360 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -172,6 +172,7 @@ function AssetList() {
           {
             title: 'Asset ID',
             key: 'assetCode',
+            className: 'm-plain',
             dataIndex: 'assetCode',
             sorter: true,
             sortOrder: sortOf('assetCode'),
@@ -184,6 +185,7 @@ function AssetList() {
           {
             title: 'Equipment',
             key: 'name',
+            className: 'm-title',
             dataIndex: 'name',
             sorter: true,
             sortOrder: sortOf('name'),
@@ -206,7 +208,7 @@ function AssetList() {
               </div>
             ),
           },
-          { title: 'Criticality', key: 'criticality', dataIndex: 'criticality', sorter: true, sortOrder: sortOf('criticality'), render: (v: string) => <CriticalityTag value={v} /> },
+          { title: 'Criticality', key: 'criticality', dataIndex: 'criticality', className: 'm-hide', sorter: true, sortOrder: sortOf('criticality'), render: (v: string) => <CriticalityTag value={v} /> },
           {
             title: 'Next PMS',
             key: 'nextPmsDue',
@@ -215,8 +217,8 @@ function AssetList() {
             sortOrder: sortOf('nextPmsDue'),
             render: (d: string | null) => <DueCell date={d} daysLeft={d ? daysFromToday(d) : null} />,
           },
-          { title: 'Warranty', dataIndex: 'warrantyStatus', render: (v: AssetRow['warrantyStatus']) => <WarrantyTag status={v} /> },
-          { title: 'Status', key: 'status', dataIndex: 'status', sorter: true, sortOrder: sortOf('status'), render: (v: AssetRow['status']) => <StatusTag status={v} /> },
+          { title: 'Warranty', dataIndex: 'warrantyStatus', className: 'm-hide', render: (v: AssetRow['warrantyStatus']) => <WarrantyTag status={v} /> },
+          { title: 'Status', key: 'status', dataIndex: 'status', className: 'm-end', sorter: true, sortOrder: sortOf('status'), render: (v: AssetRow['status']) => <StatusTag status={v} /> },
           {
             title: <span className="sr-only">Actions</span>,
             key: 'actions',

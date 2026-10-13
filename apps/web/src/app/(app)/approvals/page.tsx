@@ -91,10 +91,11 @@ export default function ApprovalsPage() {
         onRetry={list.reload}
         emptyText={status === 'pending' ? 'Nothing is waiting for a decision.' : 'No requests here.'}
         columns={[
-          { title: 'Request', dataIndex: 'type', render: (t: ApprovalType) => <Tag>{TYPE_LABEL[t]}</Tag> },
+          { title: 'Request', dataIndex: 'type', className: 'm-end', render: (t: ApprovalType) => <Tag>{TYPE_LABEL[t]}</Tag> },
           {
             title: 'Asset',
             key: 'asset',
+            className: 'm-title',
             render: (_: unknown, r) =>
               r.assetId ? (
                 <Link href={`/assets/${r.assetId}`}>
@@ -108,6 +109,7 @@ export default function ApprovalsPage() {
           {
             title: 'What changes',
             key: 'summary',
+            className: 'm-plain',
             render: (_: unknown, r) => (
               <div style={{ maxWidth: 380 }}>
                 {r.summary}
@@ -147,6 +149,7 @@ export default function ApprovalsPage() {
             align: 'right',
             // Always in view, however narrow the window: this is what the page is for.
             fixed: 'right',
+            className: 'm-plain',
             width: 190,
             render: (_: unknown, r) =>
               decider && r.status === 'pending' ? (

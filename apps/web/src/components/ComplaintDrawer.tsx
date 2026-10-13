@@ -16,8 +16,8 @@ import { FactsSkeleton } from '@/components/Skeletons';
 const DOT: Record<ComplaintEvent['kind'], string> = { raised: COLORS.bad.dot, started: COLORS.warn.dot, resolved: COLORS.good.dot, document: COLORS.neutral.dot, expense: COLORS.neutral.dot };
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div style={{ background: COLORS.surfaceAlt, borderRadius: 12, padding: '12px 14px' }}>
-    <div style={{ color: COLORS.faint, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+  <div style={{ background: COLORS.surfaceAlt, borderRadius: 8, padding: '12px 14px' }}>
+    <div style={{ color: COLORS.muted, fontSize: 12.5, fontWeight: 500, marginBottom: 6 }}>{label}</div>
     <div style={{ fontWeight: 700, color: COLORS.ink, fontSize: 15 }} className="num">{children}</div>
   </div>
 );

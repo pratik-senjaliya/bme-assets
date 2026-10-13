@@ -51,6 +51,7 @@ function DueList() {
           {
             title: 'Asset',
             key: 'asset',
+            className: 'm-title',
             render: (_: unknown, r) => (
               <Link href={`/assets/${r.assetId}?tab=${kind}`}>
                 <span className="code">{r.assetCode}</span>
@@ -58,11 +59,11 @@ function DueList() {
               </Link>
             ),
           },
-          { title: 'Type', dataIndex: 'equipmentTypeName' },
+          { title: 'Type', dataIndex: 'equipmentTypeName', className: 'm-hide' },
           { title: 'Location', key: 'loc', render: (_: unknown, r) => `${r.departmentName} · ${r.locationName}` },
-          { title: 'Criticality', dataIndex: 'criticality', render: (v: string) => <CriticalityTag value={v} /> },
+          { title: 'Criticality', dataIndex: 'criticality', className: 'm-hide', render: (v: string) => <CriticalityTag value={v} /> },
           { title: 'Due', dataIndex: 'dueDate', render: formatDate },
-          { title: 'Status', dataIndex: 'daysLeft', render: (d: number) => <DueText daysLeft={d} /> },
+          { title: 'Status', dataIndex: 'daysLeft', className: 'm-end', render: (d: number) => <DueText daysLeft={d} /> },
           {
             title: <span className="sr-only">Actions</span>,
             key: 'action',

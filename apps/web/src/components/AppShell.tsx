@@ -6,6 +6,7 @@ import {
   BarChartOutlined,
   BarcodeOutlined,
   CalendarOutlined,
+  CheckOutlined,
   DashboardOutlined,
   DownOutlined,
   HistoryOutlined,
@@ -13,6 +14,7 @@ import {
   LogoutOutlined,
   MedicineBoxOutlined,
   MenuFoldOutlined,
+  MenuOutlined,
   MenuUnfoldOutlined,
   SafetyOutlined,
   ScheduleOutlined,
@@ -32,20 +34,21 @@ import { ShellSkeleton } from '@/components/Skeletons';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { initials, shortName } from '@/lib/format';
+import { useThemeMode, type ModeChoice } from '@/lib/themeMode';
 import { loginHref } from '@/lib/nav';
 import { COLORS } from '@/theme';
 
-type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[] };
+type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[]; short?: string };
 type Group = { title?: string; items: Item[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
 const GROUPS: Group[] = [
-  { items: [{ href: '/', label: 'Dashboard', icon: <DashboardOutlined /> }] },
+  { items: [{ href: '/', label: 'Dashboard', short: 'Today', icon: <DashboardOutlined /> }] },
   {
     title: 'Equipment',
     items: [
       { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
-      { href: '/due', label: 'Due & overdue', icon: <CalendarOutlined />, permission: 'pms.perform' },
+      { href: '/due', label: 'Due & overdue', short: 'Due', icon: <CalendarOutlined />, permission: 'pms.perform' },
     ],
   },
   {
@@ -70,6 +73,13 @@ const GROUPS: Group[] = [
   },
 ];
 
+// Light, dark, or whatever the phone or computer is set to (see lib/themeMode.tsx).
+const THEMES: { key: ModeChoice; label: string }[] = [
+  { key: 'light', label: 'Light' },
+  { key: 'dark', label: 'Dark' },
+  { key: 'system', label: 'Same as this device' },
+];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, logout, can, sessionExpired } = useAuth();
   const router = useRouter();
@@ -89,6 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname, reloadWaiting]);
   const counts: Record<string, number> = { '/approvals': waiting.data?.length ?? 0 };
   const [changingPassword, setChangingPassword] = useState(false);
+  const theme = useThemeMode();
 
   useEffect(() => {
     // Not signed in (or the session ended): go to sign in, and come back to this page afterwards.
@@ -131,6 +142,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     .flat();
   const all = GROUPS.flatMap((g) => g.items);
   const selected = all.filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);
+  // Phones: the everyday pages sit in a bar at the bottom; everything else is under Menu.
+  const everyday = ['/', '/assets', '/complaints', '/due', '/approvals'].map((h) => all.find((i) => i.href === h)!).filter(allowed).slice(0, 4);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -142,34 +155,43 @@ export function AppShell({ children }: { children: ReactNode }) {
         onCollapse={setCollapsed}
         breakpoint="lg"
         collapsedWidth={phone ? 0 : 76}
-        width={256}
-        theme="light"
+        width={248}
+        theme="dark"
       >
-        <div style={{ height: 68, display: 'flex', alignItems: 'center', gap: 12, padding: collapsed ? '0 20px' : '0 22px', flex: 'none' }}>
+        <div style={{ height: 60, display: 'flex', alignItems: 'center', gap: 10, padding: '0 22px', flex: 'none' }}>
           <div className="brand-mark">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 12h4l2-5 4 10 2-5h6" />
             </svg>
           </div>
           {!collapsed && (
             <div style={{ lineHeight: 1.25, whiteSpace: 'nowrap' }}>
-              <div style={{ color: COLORS.ink, fontWeight: 800, fontSize: 15.5, letterSpacing: '-0.01em' }}>BME Assets</div>
-              <div style={{ color: COLORS.faint, fontSize: 12, fontWeight: 500 }}>Biomedical engineering</div>
+              <div style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 15 }}>BME Assets</div>
+              <div style={{ color: '#94B7B3', fontSize: 12, fontWeight: 500 }}>Biomedical engineering</div>
             </div>
           )}
         </div>
-        <Menu theme="light" mode="inline" items={items} selectedKeys={selected} onClick={() => phone && setCollapsed(true)} style={{ borderInlineEnd: 0, padding: '4px 14px 20px', background: 'transparent' }} />
+        <Menu theme="dark" mode="inline" items={items} selectedKeys={selected} onClick={() => phone && setCollapsed(true)} style={{ borderInlineEnd: 0, padding: '4px 12px 20px', background: 'transparent' }} />
       </Layout.Sider>
       {/* Phones: the open menu sits over the page; tapping the page behind it closes it. */}
       {phone && !collapsed && <div className="no-print menu-scrim" aria-hidden onClick={() => setCollapsed(true)} />}
       <Layout style={{ minWidth: 0 }}>
         <Layout.Header className="no-print app-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Button
-            className="icon-btn"
-            aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed((c) => !c)}
-          />
+          {!phone && (
+            <Button
+              className="icon-btn"
+              aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed((c) => !c)}
+            />
+          )}
+          {phone && (
+            <Link href="/" aria-label="BME Assets, dashboard" className="brand-mark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 12h4l2-5 4 10 2-5h6" />
+              </svg>
+            </Link>
+          )}
           <div style={{ flex: 1, display: 'flex' }}>{can('asset.view') && <GlobalSearch />}</div>
           {can('notification.view') && <NotificationBell />}
           <Dropdown
@@ -180,10 +202,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                 { key: 'role', label: `${user.roleLabel}`, disabled: true },
                 { key: 'password', icon: <KeyOutlined />, label: 'Change password' },
                 { type: 'divider' },
+                {
+                  type: 'group',
+                  key: 'appearance',
+                  label: 'Appearance',
+                  children: THEMES.map((t) => ({
+                    key: `theme:${t.key}`,
+                    label: t.label,
+                    icon: <CheckOutlined style={{ visibility: theme.choice === t.key ? 'visible' : 'hidden' }} />,
+                  })),
+                },
+                { type: 'divider' },
                 { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out' },
               ],
               onClick: async ({ key }) => {
                 if (key === 'password') setChangingPassword(true);
+                if (key.startsWith('theme:')) theme.setChoice(key.slice(6) as ModeChoice);
                 if (key === 'logout') {
                   await logout();
                   router.replace('/login');
@@ -194,25 +228,40 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               data-testid="account-menu"
-              style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 999, cursor: 'pointer', minHeight: 44, padding: '0 14px 0 4px', font: 'inherit', lineHeight: 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 0, borderRadius: 6, cursor: 'pointer', minHeight: 44, padding: '0 6px 0 4px', font: 'inherit', lineHeight: 1, color: 'inherit' }}
             >
               <span
                 aria-hidden
-                style={{ width: 34, height: 34, borderRadius: '50%', background: COLORS.primary, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}
+                style={{ width: 32, height: 32, borderRadius: '50%', background: COLORS.primarySoft, color: COLORS.primaryHover, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12.5, flex: 'none' }}
               >
                 {initials(user.name)}
               </span>
               <span style={{ textAlign: 'left', lineHeight: 1.25 }} className="user-label">
-                <span style={{ display: 'block', fontWeight: 700, color: COLORS.ink, fontSize: 13 }}>{shortName(user.name)}</span>
+                <span style={{ display: 'block', fontWeight: 600, color: COLORS.ink, fontSize: 13 }}>{shortName(user.name)}</span>
                 <span style={{ display: 'block', color: COLORS.muted, fontSize: 12 }}>{user.roleLabel}</span>
               </span>
               <DownOutlined style={{ fontSize: 10, color: COLORS.faint }} />
             </button>
           </Dropdown>
         </Layout.Header>
-        <Layout.Content style={{ padding: '28px 32px 48px' }} className="app-content">
+        <Layout.Content style={{ padding: '24px 32px 48px' }} className="app-content">
           <div style={{ maxWidth: 1440, margin: '0 auto' }}>{children}</div>
         </Layout.Content>
+        {phone && (
+          <nav className="no-print bottom-nav" aria-label="Quick links">
+            {everyday.map((i) => (
+              <Link key={i.href} href={i.href} aria-current={selected.includes(i.href) ? 'page' : undefined}>
+                {i.icon}
+                <span>{i.short ?? i.label}</span>
+                {counts[i.href] > 0 && <span className="bottom-count num">{counts[i.href]}</span>}
+              </Link>
+            ))}
+            <button type="button" aria-label="Open menu" aria-expanded={!collapsed} onClick={() => setCollapsed((c) => !c)}>
+              <MenuOutlined />
+              <span>Menu</span>
+            </button>
+          </nav>
+        )}
         <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
       </Layout>
     </Layout>

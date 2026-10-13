@@ -27,23 +27,31 @@ export function PageHeader({
   const name = docTitle ?? (typeof title === 'string' ? title : '');
   useDocumentTitle(name ? `${name} · BME Assets` : 'BME Assets');
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+    <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
       <div style={{ minWidth: 0 }}>
         {crumbs.length > 1 && (
           <Breadcrumb
-            style={{ marginBottom: 8, fontSize: 13, fontWeight: 600 }}
+            style={{ marginBottom: 6, fontSize: 13, fontWeight: 500 }}
             items={crumbs.map((c, i) => ({ title: i === 0 && PARENT[c] ? <Link href={PARENT[c]}>{c}</Link> : c }))}
           />
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Typography.Title level={1} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em', fontSize: 28, lineHeight: 1.25 }}>
+          <Typography.Title level={1} style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.015em', fontSize: 24, lineHeight: 1.3 }}>
             {title}
           </Typography.Title>
           {meta}
         </div>
-        {subtitle && <div style={{ color: COLORS.muted, marginTop: 6, fontSize: 15 }}>{subtitle}</div>}
+        {subtitle && (
+          <div className="page-subtitle" style={{ color: COLORS.muted, marginTop: 4, fontSize: 14 }}>
+            {subtitle}
+          </div>
+        )}
       </div>
-      {action && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{action}</div>}
+      {action && (
+        <div className="page-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {action}
+        </div>
+      )}
     </div>
   );
 }

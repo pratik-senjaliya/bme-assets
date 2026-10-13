@@ -1,7 +1,7 @@
 'use client';
 
 import { PaperClipOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, DatePicker, Input, Segmented, Select, Typography } from 'antd';
+import { Button, DatePicker, Grid, Input, Segmented, Select, Typography } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -58,6 +58,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
   });
   const sortOf = (key: string) => (sort.by === key ? (sort.order === 'asc' ? ('ascend' as const) : ('descend' as const)) : null);
   const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?${qs}&k=${reloadKey}`);
+  const phone = Grid.useBreakpoint().md === false;
   const filtered = !!(text || departmentId || range?.[0] || range?.[1] || status !== 'all');
 
   return (
@@ -68,7 +69,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
           placeholder="Search number, equipment or problem"
           aria-label="Search complaints"
-          style={{ flex: '1 1 200px', maxWidth: 300 }}
+          style={{ flex: phone ? '1 1 140px' : '1 1 200px', maxWidth: 300 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -102,8 +103,8 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           </Button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', maxWidth: '100%' }}>
-          {can('report.view') && !assetId && <ExportMenu path={`/reports/breakdowns?${exportQuery}`} name="bme-complaints" />}
-          <span style={{ color: COLORS.muted }}>{complaints.data ? `${complaints.data.total.toLocaleString('en-IN')} ${complaints.data.total === 1 ? 'complaint' : 'complaints'}` : ' '}</span>
+          {can('report.view') && !assetId && <ExportMenu path={`/reports/breakdowns?${exportQuery}`} name="bme-complaints" compact={phone} />}
+          <span style={{ color: COLORS.muted }} className="phone-hide">{complaints.data ? `${complaints.data.total.toLocaleString('en-IN')} ${complaints.data.total === 1 ? 'complaint' : 'complaints'}` : ' '}</span>
           <Segmented
             aria-label="Status"
             value={status}
@@ -140,6 +141,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           {
             title: 'No.',
             key: 'complaintNo',
+            className: 'm-plain',
             dataIndex: 'complaintNo',
             sorter: true,
             sortOrder: sortOf('complaintNo'),
@@ -155,13 +157,15 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
                 {
                   title: 'Equipment',
                   key: 'asset',
+                  className: 'm-title',
                   render: (_: unknown, c: ComplaintRow) => (
                     <div style={{ lineHeight: 1.35 }}>
-                      <Link href={`/assets/${c.assetId}`} className="code">
-                        {c.assetCode}
-                      </Link>
+                      <div style={{ color: COLORS.ink, fontWeight: 600 }}>{c.assetName}</div>
                       <div style={{ color: COLORS.muted, fontSize: 12.5 }}>
-                        {c.assetName} · {c.departmentName}
+                        <Link href={`/assets/${c.assetId}`} className="code">
+                          {c.assetCode}
+                        </Link>{' '}
+                        · {c.departmentName}
                       </div>
                     </div>
                   ),
@@ -170,6 +174,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           {
             title: 'Problem',
             dataIndex: 'description',
+            className: 'm-plain',
             render: (d: string, c) => (
               <div style={{ maxWidth: 360 }}>
                 <Typography.Paragraph ellipsis={{ rows: 2, tooltip: d }} style={{ margin: 0 }}>
@@ -200,6 +205,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
             title: 'Status',
             key: 'status',
             dataIndex: 'status',
+            className: 'm-end',
             sorter: true,
             sortOrder: sortOf('status'),
             render: (s: ComplaintRow['status'], c) => (
@@ -209,8 +215,8 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
               </div>
             ),
           },
-          { title: 'Response', dataIndex: 'responseSeconds', align: 'right', render: formatDuration },
-          { title: 'Downtime', dataIndex: 'downtimeSeconds', align: 'right', render: formatDuration },
+          { title: 'Response', dataIndex: 'responseSeconds', align: 'right', className: 'm-hide', render: formatDuration },
+          { title: 'Downtime', dataIndex: 'downtimeSeconds', align: 'right', className: 'm-hide', render: formatDuration },
         ]}
       />
       <ComplaintDrawer id={openId} onClose={() => setOpenId(null)} onChanged={() => (complaints.reload(), onChanged?.())} />

@@ -108,10 +108,10 @@ export function GlobalSearch() {
         allowClear
         prefix={<SearchOutlined style={{ color: COLORS.faint }} />}
         onKeyDown={(e) => phone && e.key === 'Escape' && close()}
-        suffix={text || phone ? null : <kbd style={{ fontSize: 12, fontFamily: 'inherit', color: COLORS.faint, background: '#fff', border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: '1px 7px' }}>/</kbd>}
+        suffix={text || phone ? null : <kbd style={{ fontSize: 12, fontFamily: 'inherit', color: COLORS.faint, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: '1px 7px' }}>/</kbd>}
         placeholder="Search equipment by ID, name or serial"
         aria-label="Search equipment"
-        style={{ background: COLORS.surfaceAlt, borderColor: COLORS.line, height: 44, borderRadius: 12 }}
+        style={{ background: COLORS.surfaceAlt, borderColor: COLORS.line, height: 44, borderRadius: 8 }}
       />
     </AutoComplete>
   );

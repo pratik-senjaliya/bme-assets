@@ -114,12 +114,13 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
               actions={(c) => (
                 <>
                   {c.status === 'open' && can('complaint.start') && (
-                    <Button onClick={() => start(c)}>
+                    <Button type="primary" onClick={() => start(c)}>
                       Start work
                     </Button>
                   )}
                   {c.status === 'in_progress' && can('complaint.resolve') && (
                     <Button
+                      type="primary"
                       onClick={() => {
                         form.resetFields();
                         setResolving(c);
@@ -200,14 +201,14 @@ function BoardColumn({
       size="small"
       title={
         <Space size={10}>
-          <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
-          <span style={{ fontWeight: 800, fontSize: 15 }}>{title}</span>
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
+          <span style={{ fontWeight: 700, fontSize: 14.5 }}>{title}</span>
           {/* Resolved shows the latest few, so its badge says so instead of an all-time total. */}
-          <span className="num" style={{ color: COLORS.muted, fontWeight: 700, fontSize: 13, background: '#fff', borderRadius: 10, padding: '1px 10px' }}>{status === 'resolved' ? `Latest ${first.length}` : total}</span>
+          <span className="num" style={{ color: COLORS.muted, fontWeight: 600, fontSize: 12.5, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 4, padding: '0 7px' }}>{status === 'resolved' ? `Latest ${first.length}` : total}</span>
         </Space>
       }
-      style={{ marginBottom: 16, background: '#EAEFF1', borderColor: 'transparent', boxShadow: 'none', borderRadius: 18 }}
-      styles={{ header: { borderBottom: 0, minHeight: 52 }, body: { padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 } }}
+      style={{ marginBottom: 16, background: COLORS.surfaceAlt, borderColor: COLORS.line, borderRadius: 8 }}
+      styles={{ header: { borderBottom: 0, minHeight: 48 }, body: { padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 } }}
     >
       {list.error && (
         <Typography.Text type="danger">
@@ -233,11 +234,11 @@ function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: React
   const waiting = c.status === 'open' ? formatDuration((Date.now() - new Date(c.raisedAt).getTime()) / 1000) : null;
   const muted = { color: COLORS.muted, fontSize: 12.5 };
   // The clock that matters for this column, in a box so it reads at a glance; red once over the downtime limit.
-  const clock = { background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.surfaceAlt, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.ink, borderRadius: 10, padding: '8px 12px', marginTop: 10, fontWeight: 700 };
+  const clock = { background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.surfaceAlt, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.ink, borderRadius: 4, padding: '6px 10px', marginTop: 10, fontWeight: 600 };
   return (
-    <Card size="small" styles={{ body: { padding: 16 } }} style={{ borderRadius: 14 }}>
+    <Card size="small" styles={{ body: { padding: 14 } }} style={{ borderRadius: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span className="code" style={{ color: COLORS.faint, fontSize: 12.5, fontWeight: 700 }}>{c.complaintNo}</span>
+        <span className="code" style={{ color: COLORS.muted, fontSize: 12.5 }}>{c.complaintNo}</span>
         <CriticalityTag value={c.criticality} />
       </div>
       {c.overDowntimeLimit && (
@@ -246,10 +247,10 @@ function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: React
         </div>
       )}
       <div style={{ marginTop: 8 }}>
-        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontWeight: 700 }}>
+        <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5 }}>{c.assetName}</div>
+        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontSize: 12.5 }}>
           {c.assetCode}
         </Link>
-        <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5, marginTop: 1 }}>{c.assetName}</div>
       </div>
       <Typography.Paragraph ellipsis={{ rows: 3, tooltip: c.description }} style={{ margin: '8px 0', color: COLORS.text }}>
         {c.description}
@@ -272,7 +273,7 @@ function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: React
         </>
       )}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLORS.lineSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <Button type="link" style={{ padding: 0, fontWeight: 700 }} onClick={onOpen}>
+        <Button type="link" style={{ padding: 0, fontWeight: 600 }} onClick={onOpen}>
           Details{c.attachmentCount > 0 && <span style={{ marginLeft: 8, color: COLORS.muted }}><PaperClipOutlined /> {c.attachmentCount}</span>}
         </Button>
         <Space>{actions}</Space>
@@ -284,7 +285,7 @@ function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: React
 // One placeholder card per column while it loads.
 function CardSkeleton() {
   return (
-    <Card size="small" aria-hidden styles={{ body: { padding: 16, display: 'flex', flexDirection: 'column', gap: 10 } }} style={{ borderRadius: 14 }}>
+    <Card size="small" aria-hidden styles={{ body: { padding: 14, display: 'flex', flexDirection: 'column', gap: 10 } }} style={{ borderRadius: 6 }}>
       {[40, 70, 90, 55].map((w, i) => (
         <Bar key={i} w={`${w}%`} h={i === 2 ? 32 : 12} />
       ))}

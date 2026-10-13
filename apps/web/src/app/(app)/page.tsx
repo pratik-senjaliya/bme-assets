@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRightOutlined, BarcodeOutlined, CalendarOutlined, CheckCircleOutlined, ExclamationCircleOutlined, SafetyCertificateOutlined, ToolOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, CheckCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Col, Grid, Row } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
@@ -13,7 +13,7 @@ import { DashboardSkeleton, EmptyState } from '@/components/Skeletons';
 import { DueText, Pill } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { firstName, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 
 type Tone = 'primary' | 'good' | 'warn' | 'bad';
@@ -24,22 +24,17 @@ const TONE = {
   bad: { fg: COLORS.bad.fg, bg: COLORS.bad.bg },
 };
 
-// A KPI tile: icon, label, one number, a hint. The whole tile is a link to the list behind it.
-function Stat({ label, value, href, icon, tone, hint }: { label: string; value: number | null; href: string; icon: ReactNode; tone: Tone; hint: string }) {
+// A KPI tile: label, one number, a hint. The whole tile is a link to the list behind it.
+function Stat({ label, value, href, tone, hint }: { label: string; value: number | null; href: string; tone: Tone; hint: string }) {
   if (value === null) return null;
   const t = TONE[tone];
   return (
     <Col xs={12} lg={6}>
       <Link href={href} style={{ display: 'block' }}>
-        <Card hoverable styles={{ body: { padding: 20 } }} style={{ height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ color: COLORS.muted, fontWeight: 600 }}>{label}</div>
-            <span aria-hidden style={{ width: 40, height: 40, borderRadius: 12, background: t.bg, color: t.fg, display: 'grid', placeItems: 'center', fontSize: 18, flex: 'none' }}>
-              {icon}
-            </span>
-          </div>
-          <div className="num" style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.1, margin: '6px 0 8px', color: COLORS.ink, letterSpacing: '-0.03em' }}>{value.toLocaleString('en-IN')}</div>
-          <div style={{ color: value > 0 && tone !== 'primary' ? t.fg : COLORS.muted, fontSize: 13, fontWeight: value > 0 && tone !== 'primary' ? 700 : 500 }}>{hint}</div>
+        <Card hoverable styles={{ body: { padding: '16px 18px' } }} style={{ height: '100%' }}>
+          <div style={{ color: COLORS.muted, fontWeight: 600, fontSize: 13 }}>{label}</div>
+          <div className="num" style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.15, margin: '6px 0 4px', color: COLORS.ink, letterSpacing: '-0.02em' }}>{value.toLocaleString('en-IN')}</div>
+          <div style={{ color: value > 0 && tone !== 'primary' ? t.fg : COLORS.muted, fontSize: 13, fontWeight: value > 0 && tone !== 'primary' ? 600 : 500 }}>{hint}</div>
         </Card>
       </Link>
     </Col>
@@ -53,14 +48,14 @@ const Section = ({ title, link, children }: { title: string; link?: ReactNode; c
 );
 
 const ViewAll = ({ href, children }: { href: string; children: ReactNode }) => (
-  <Link href={href} style={{ fontSize: 13, fontWeight: 700 }}>
+  <Link href={href} style={{ fontSize: 13, fontWeight: 600 }}>
     {children} <ArrowRightOutlined style={{ fontSize: 11 }} />
   </Link>
 );
 
 // A list row: the main line and a quiet second line on the left, a status on the right.
 const Row2 = ({ children, right }: { children: ReactNode; right: ReactNode }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
     <div style={{ minWidth: 0 }}>{children}</div>
     {right}
   </div>
@@ -69,13 +64,6 @@ const Sub = ({ children }: { children: ReactNode }) => <div style={{ color: COLO
 
 // An empty list that is good news.
 const Quiet = ({ children, icon = <CheckCircleOutlined /> }: { children: ReactNode; icon?: ReactNode }) => <EmptyState compact icon={icon} title={children} />;
-
-// "Good morning, Meera": first name only, greeting by the hospital's local time.
-function greeting(name: string | undefined) {
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date()));
-  const first = name ? firstName(name) : '';
-  return `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
-}
 
 export default function Home() {
   const { user, can } = useAuth();
@@ -180,7 +168,7 @@ export default function Home() {
   return (
     <>
       <PageHeader
-        title={greeting(user?.name)}
+        title="Today"
         docTitle="Dashboard"
         subtitle={`${d?.scope === 'department' ? `${user?.roleLabel} · ${d.departmentName}` : user?.roleLabel} · ${formatDate(new Date())}`}
         action={can('complaint.create') && <Link href="/complaints"><Button type="primary">Raise complaint</Button></Link>}
@@ -199,10 +187,10 @@ export default function Home() {
             />
           )}
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Stat label={d.scope === 'department' ? 'Your equipment' : 'Active assets'} value={d.activeAssets} href="/assets" icon={<BarcodeOutlined />} tone="primary" hint="In active use" />
-            <Stat label="Open complaints" value={d.openComplaints} href="/complaints" icon={<ToolOutlined />} tone="warn" hint={d.openComplaints ? 'Waiting for a fix' : 'All clear'} />
-            <Stat label="Due this month" value={d.dueThisMonth} href="/due?range=month" icon={<CalendarOutlined />} tone="warn" hint={d.dueThisMonth ? 'PMS and calibration' : 'Nothing due'} />
-            <Stat label="Overdue" value={d.overdue} href="/due?range=overdue" icon={<ExclamationCircleOutlined />} tone="bad" hint={d.overdue ? 'Needs action now' : 'Nothing overdue'} />
+            <Stat label={d.scope === 'department' ? 'Your equipment' : 'Active assets'} value={d.activeAssets} href="/assets" tone="primary" hint="In active use" />
+            <Stat label="Open complaints" value={d.openComplaints} href="/complaints" tone="warn" hint={d.openComplaints ? 'Waiting for a fix' : 'All clear'} />
+            <Stat label="Due this month" value={d.dueThisMonth} href="/due?range=month" tone="warn" hint={d.dueThisMonth ? 'PMS and calibration' : 'Nothing due'} />
+            <Stat label="Overdue" value={d.overdue} href="/due?range=overdue" tone="bad" hint={d.overdue ? 'Needs action now' : 'Nothing overdue'} />
           </Row>
 
           {/* Phones: what needs doing (due items, open complaints) comes before the figures and charts. */}

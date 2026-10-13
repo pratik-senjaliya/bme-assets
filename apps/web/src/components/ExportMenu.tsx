@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { downloadFile } from '@/lib/download';
 
 // Excel and PDF of what is on screen. `path` is the report URL without the format.
-export function ExportMenu({ path, name }: { path: string; name: string }) {
+// `compact` (phones): the icon alone, still named Export for screen readers.
+export function ExportMenu({ path, name, compact }: { path: string; name: string; compact?: boolean }) {
   const { message } = App.useApp();
   const [busy, setBusy] = useState(false);
   async function run(format: 'xlsx' | 'pdf') {
@@ -24,8 +25,8 @@ export function ExportMenu({ path, name }: { path: string; name: string }) {
       trigger={['click']}
       menu={{ items: [{ key: 'xlsx', label: 'Excel (.xlsx)' }, { key: 'pdf', label: 'PDF' }], onClick: ({ key }) => void run(key as 'xlsx' | 'pdf') }}
     >
-      <Button icon={<DownloadOutlined />} loading={busy}>
-        Export
+      <Button icon={<DownloadOutlined />} loading={busy} aria-label={compact ? 'Export' : undefined}>
+        {compact ? null : 'Export'}
       </Button>
     </Dropdown>
   );

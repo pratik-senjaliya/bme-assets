@@ -50,7 +50,7 @@ function SheetTable({ sheet }: { sheet: ReportSheetData }) {
 export function ReportView({ data }: { data: ReportData }) {
   return (
     <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0, 1fr)' }}>
-      <div style={{ color: COLORS.muted, fontSize: 13, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: '10px 14px', justifySelf: 'start' }}>
+      <div style={{ color: COLORS.muted, fontSize: 13, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 8, padding: '10px 14px', justifySelf: 'start' }}>
         <strong style={{ color: COLORS.ink }}>{data.hospital}</strong> · {data.from && data.to ? `${formatDate(data.from)} to ${formatDate(data.to)}` : 'As at today'} · Generated {formatDateTime(data.generatedAt)} by {data.generatedBy}
       </div>
       {data.kpis.length > 0 && <KpiGrid kpis={data.kpis} />}
