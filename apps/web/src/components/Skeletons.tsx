@@ -7,9 +7,9 @@ import { COLORS } from '@/theme';
 // Loading placeholders shaped like the page that is coming, so nothing jumps when the data arrives.
 // Each page picks the one that matches its layout; they are decorative, so screen readers get one "Loading" label.
 
-const card: CSSProperties = { background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 16, padding: 20 };
+const card: CSSProperties = { background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 8, padding: 20 };
 
-export function Bar({ w, h = 14, r = 8, style }: { w: number | string; h?: number; r?: number; style?: CSSProperties }) {
+export function Bar({ w, h = 14, r = 4, style }: { w: number | string; h?: number; r?: number; style?: CSSProperties }) {
   return <Skeleton.Node active style={{ width: w, height: h, borderRadius: r, ...style }} />;
 }
 
@@ -29,7 +29,7 @@ export function HeaderSkeleton({ action = true }: { action?: boolean }) {
         <Bar w={240} h={28} />
         <Bar w={320} h={14} />
       </div>
-      {action && <Bar w={150} h={40} r={10} />}
+      {action && <Bar w={150} h={40} r={6} />}
     </div>
   );
 }
@@ -39,7 +39,7 @@ export function TableSkeleton({ rows = 8, cols = 5 }: { rows?: number; cols?: nu
   const widths = ['70%', '55%', '40%', '60%', '45%', '50%'];
   return (
     <div style={{ ...card, padding: 0, overflow: 'hidden' }} aria-hidden>
-      <div style={{ display: 'flex', gap: 24, padding: '16px 20px', background: '#FAFBFC', borderBottom: `1px solid ${COLORS.line}` }}>
+      <div style={{ display: 'flex', gap: 24, padding: '16px 20px', background: COLORS.surfaceAlt, borderBottom: `1px solid ${COLORS.line}` }}>
         {Array.from({ length: cols }, (_, i) => (
           <div key={i} style={{ flex: i === 0 ? 2 : 1 }}>
             <Bar w={i === 0 ? 90 : 64} h={10} />
@@ -191,9 +191,9 @@ export function DashboardSkeleton({ kpis = 4, header = true }: { kpis?: number; 
 export function ShellSkeleton() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: COLORS.page }}>
-      <div className="shell-skeleton-side" style={{ width: 248, flex: 'none', background: '#fff', borderRight: `1px solid ${COLORS.line}`, padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14 }} aria-hidden>
+      <div className="shell-skeleton-side" style={{ width: 248, flex: 'none', background: 'var(--side)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14, opacity: 0.9 }} aria-hidden>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-          <Bar w={36} h={36} r={10} />
+          <Bar w={32} h={32} r={6} />
           <Bar w={110} h={14} />
         </div>
         {Array.from({ length: 8 }, (_, i) => (
@@ -201,11 +201,11 @@ export function ShellSkeleton() {
         ))}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ height: 68, background: '#fff', borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 28px' }} aria-hidden>
-          <Bar w={360} h={44} r={12} />
+        <div style={{ height: 60, background: COLORS.surface, borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }} aria-hidden>
+          <Bar w={360} h={40} r={6} />
           <div style={{ flex: 1 }} />
-          <Bar w={44} h={44} r={12} />
-          <Bar w={140} h={36} r={18} />
+          <Bar w={40} h={40} r={6} />
+          <Bar w={140} h={32} r={6} />
         </div>
         <div style={{ padding: 28, maxWidth: 1440 }}>
           <ListPageSkeleton />
@@ -220,11 +220,11 @@ export function EmptyState({ icon, title, hint, action, compact }: { icon?: Reac
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8, padding: compact ? '28px 16px' : '56px 16px' }}>
       {icon && (
-        <div aria-hidden style={{ width: 52, height: 52, borderRadius: 16, background: COLORS.primarySoft, color: COLORS.primary, display: 'grid', placeItems: 'center', fontSize: 22, marginBottom: 6 }}>
+        <div aria-hidden style={{ color: COLORS.faint, fontSize: 26, lineHeight: 1, marginBottom: 6 }}>
           {icon}
         </div>
       )}
-      <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.ink }}>{title}</div>
+      <div style={{ fontWeight: 600, fontSize: 14.5, color: COLORS.ink }}>{title}</div>
       {hint && <div style={{ color: COLORS.muted, fontSize: 13.5, maxWidth: 420 }}>{hint}</div>}
       {action && <div style={{ marginTop: 10 }}>{action}</div>}
     </div>

@@ -19,7 +19,7 @@ const ENTITY_TYPES = [
 ];
 
 const Json = ({ value }: { value: unknown }) => (
-  <pre style={{ margin: 0, padding: 12, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.line}`, borderRadius: 10, fontSize: 12, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+  <pre style={{ margin: 0, padding: 12, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.line}`, borderRadius: 6, fontSize: 12, maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
     {value == null ? '—' : JSON.stringify(value, null, 2)}
   </pre>
 );
@@ -102,12 +102,13 @@ export default function AuditPage() {
           rowExpandable: (r) => r.before != null || r.after != null,
         }}
         columns={[
-          { title: 'When', dataIndex: 'at', render: formatDateTime, width: 170 },
+          { title: 'When', dataIndex: 'at', render: formatDateTime, width: 170, className: 'm-plain' },
           { title: 'Who', dataIndex: 'actorName', render: (n: string | null) => n ?? <Typography.Text type="secondary">Not signed in</Typography.Text> },
-          { title: 'Action', dataIndex: 'action', render: (a: string) => <Tag style={{ fontFamily: 'ui-monospace, monospace' }}>{a}</Tag> },
+          { title: 'Action', dataIndex: 'action', className: 'm-end', render: (a: string) => <Tag className="code">{a}</Tag> },
           {
             title: 'Record',
             key: 'entity',
+            className: 'm-title',
             render: (_: unknown, r) => (
               <div style={{ lineHeight: 1.35 }}>
                 <div>
@@ -121,7 +122,7 @@ export default function AuditPage() {
               </div>
             ),
           },
-          { title: 'From', dataIndex: 'ip', render: (ip: string | null) => (ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1' ? 'This computer' : (ip ?? '—')) },
+          { title: 'From', dataIndex: 'ip', className: 'm-hide', render: (ip: string | null) => (ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1' ? 'This computer' : (ip ?? '—')) },
         ]}
       />
     </>

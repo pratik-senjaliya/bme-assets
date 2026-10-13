@@ -33,5 +33,6 @@ create is named `E2E-…` and is removed at the start and the end of a run, so t
 | `misc` | Menus per role, sign in / out, session expiry, notifications, Excel import, every report to Excel and PDF, documents, keyboard |
 | `fixes` | The QA fixes: session expiry, form safety, login lock, change password, permission pages, approvals buttons, sorting, exports that match lists, roles and audit wording, 404, tab titles, tablet sizes |
 | `a11y` | Every screen as every role: errors, headings, tab titles, sideways scroll at 3 widths, serious accessibility problems (axe-core) |
+| `phone` | Phones (375 and 320 wide): each list starts on the first screen, no sideways scroll, bottom bar, sort control; dark mode passes the accessibility check; the light/dark choice is kept |
 
 Failures leave a screenshot in `e2e/.out/`.

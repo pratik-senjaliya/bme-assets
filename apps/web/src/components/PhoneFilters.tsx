@@ -6,6 +6,8 @@ import { useState, type ReactNode } from 'react';
 
 // List filters. On a wide screen they sit in the toolbar as they are. On a phone they hide behind one "Filters"
 // button that says how many are in use, so the list itself is on the first screen; opened, they stack full width.
+// Next to the button is a place for the list's sort control (DataTable puts it there), so search, filters and
+// sorting share one line.
 export function PhoneFilters({ active, children }: { active: number; children: ReactNode }) {
   const phone = Grid.useBreakpoint().md === false;
   const [open, setOpen] = useState(false);
@@ -15,6 +17,7 @@ export function PhoneFilters({ active, children }: { active: number; children: R
       <Button icon={<FilterOutlined />} aria-expanded={open} onClick={() => setOpen((o) => !o)} type={active ? 'primary' : 'default'} ghost={!!active}>
         {active ? `Filters · ${active}` : 'Filters'}
       </Button>
+      <span className="phone-sort-slot" />
       {open && <div className="phone-filters">{children}</div>}
     </>
   );

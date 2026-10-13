@@ -34,7 +34,7 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
 
   const Tip = ({ active, payload, label }: TipProps) =>
     active && payload?.length ? (
-      <div style={{ background: SURFACE, border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 12px', boxShadow: '0 4px 14px rgba(15,23,42,0.12)', fontSize: 13 }}>
+      <div style={{ background: SURFACE, border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 12px', boxShadow: 'var(--float-shadow)', fontSize: 13 }}>
         <div style={{ fontWeight: 600, color: COLORS.ink, marginBottom: 4 }}>{label}</div>
         {payload.map((p) => (
           <div key={String(p.name)} style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.text }}>

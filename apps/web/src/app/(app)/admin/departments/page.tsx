@@ -89,7 +89,7 @@ function DepartmentsPageScreen() {
                 onRetry={departments.reload}
                 emptyText="No departments yet. Add the first one."
                 columns={[
-                  { title: 'Name', dataIndex: 'name' },
+                  { title: 'Name', dataIndex: 'name', className: 'm-title' },
                   { title: 'Code', dataIndex: 'code' },
                   {
                     title: <span className="sr-only">Actions</span>,
@@ -129,7 +129,7 @@ function DepartmentsPageScreen() {
                 onRetry={locations.reload}
                 emptyText="No locations yet. Add the first one."
                 columns={[
-                  { title: 'Name', dataIndex: 'name' },
+                  { title: 'Name', dataIndex: 'name', className: 'm-title' },
                   { title: 'Code', dataIndex: 'code' },
                   { title: 'Department', dataIndex: 'departmentId', render: deptName },
                   {

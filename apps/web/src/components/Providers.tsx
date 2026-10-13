@@ -5,7 +5,8 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { App, ConfigProvider } from 'antd';
 import { useEffect, type ReactNode } from 'react';
 import { AuthProvider } from '@/lib/auth';
-import { appTheme } from '@/theme';
+import { ThemeModeProvider } from '@/lib/themeMode';
+import { makeTheme } from '@/theme';
 
 // Ant Design puts aria-required on the outer <div> of a required Select, which is not a form control, so assistive
 // technology (and accessibility checkers) report it as invalid. The real combobox inside still carries the state.
@@ -23,11 +24,15 @@ export function Providers({ children }: { children: ReactNode }) {
   useCleanSelectAria();
   return (
     <AntdRegistry>
-      <ConfigProvider theme={appTheme}>
-        <App>
-          <AuthProvider>{children}</AuthProvider>
-        </App>
-      </ConfigProvider>
+      <ThemeModeProvider>
+        {(mode) => (
+          <ConfigProvider theme={makeTheme(mode)}>
+            <App>
+              <AuthProvider>{children}</AuthProvider>
+            </App>
+          </ConfigProvider>
+        )}
+      </ThemeModeProvider>
     </AntdRegistry>
   );
 }

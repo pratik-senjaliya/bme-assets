@@ -25,8 +25,8 @@ const ItemsTable = ({ items }: { items: PmsItem[] }) => (
     pagination={false}
     dataSource={items}
     columns={[
-      { title: '#', width: 48, render: (_: unknown, __: PmsItem, i: number) => i + 1 },
-      { title: 'Check', dataIndex: 'label' },
+      { title: '#', width: 48, className: 'm-hide', render: (_: unknown, __: PmsItem, i: number) => i + 1 },
+      { title: 'Check', dataIndex: 'label', className: 'm-title' },
       { title: 'Type', dataIndex: 'type', render: (t: PmsItemType) => TYPE_LABEL[t] },
       { title: 'Allowed', key: 'range', render: (_: unknown, i) => rangeText(i) },
       { title: 'Required', dataIndex: 'required', render: (r: boolean) => (r ? 'Yes' : 'No') },

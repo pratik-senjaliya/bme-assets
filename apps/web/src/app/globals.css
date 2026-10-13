@@ -1,22 +1,90 @@
-/* Mirrors COLORS in src/theme.ts for the few rules Ant Design tokens cannot reach. */
+/* Colour roles for each mode. The same values as PALETTE in src/theme.ts; COLORS there points at these. */
 :root {
-  --primary: #0a6c74;
-  --primary-soft: #e3f2f3;
-  --ink: #10242e;
-  --muted: #4f6570;
-  --faint: #5b717c;
-  --line: #e3e9ec;
-  --line-soft: #eef2f4;
-  --page: #f3f6f7;
-  --surface-alt: #f7f9fa;
-  --shadow-card: 0 1px 2px rgba(16, 36, 46, 0.04);
+  color-scheme: light;
+  --primary: #0E7C7B;
+  --primary-hover: #0B6463;
+  --primary-soft: #E6F4F3;
+  --on-primary: #FFFFFF;
+  --ink: #1C1917;
+  --text: #292524;
+  --muted: #5F5852;
+  --faint: #6B635B;
+  --line: #ECE8E3;
+  --line-soft: #F3F0EC;
+  --border: #DDD7D0;
+  --page: #FAF9F7;
+  --surface: #FFFFFF;
+  --surface-alt: #F5F3F0;
+  --side: #0F2A2A;
+  --good-fg: #0E6B4F;
+  --good-bg: #E6F6EF;
+  --good-dot: #22A06B;
+  --warn-fg: #8A4F05;
+  --warn-bg: #FEF4E2;
+  --warn-dot: #F0A02B;
+  --bad-fg: #B4321F;
+  --bad-bg: #FDEEEA;
+  --bad-dot: #E5533D;
+  --info-fg: #0B6463;
+  --info-bg: #E6F4F3;
+  --info-dot: #0E7C7B;
+  --neutral-fg: #44403C;
+  --neutral-bg: #F2EFEB;
+  --neutral-dot: #A8A29E;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --primary: #2BB3A8;
+  --primary-hover: #5ED3C8;
+  --primary-soft: #173B38;
+  --on-primary: #04201E;
+  --ink: #E7EEEC;
+  --text: #D5DFDC;
+  --muted: #9DB0AC;
+  --faint: #93A6A2;
+  --line: #24312F;
+  --line-soft: #1C2725;
+  --border: #334341;
+  --page: #0D1413;
+  --surface: #131C1B;
+  --surface-alt: #182321;
+  --side: #091110;
+  --good-fg: #6FD9A8;
+  --good-bg: #14302A;
+  --good-dot: #2FBF7F;
+  --warn-fg: #F5BE6A;
+  --warn-bg: #33291A;
+  --warn-dot: #F0A02B;
+  --bad-fg: #FF9C8A;
+  --bad-bg: #3A1F1A;
+  --bad-dot: #F2715C;
+  --info-fg: #5ED3C8;
+  --info-bg: #173B38;
+  --info-dot: #2BB3A8;
+  --neutral-fg: #C5D1CE;
+  --neutral-bg: #1E2927;
+  --neutral-dot: #7E9692;
+}
+:root {
+  --side: #0f2a2a;
+  --row-hover: #f7f5f2;
+  --error-tint: #fffaf8;
+  --float-shadow: 0 12px 32px rgba(28, 25, 23, 0.14);
+  --scrim: rgba(28, 25, 23, 0.4);
+}
+:root[data-theme='dark'] {
+  --side: #091110;
+  --row-hover: #17221f;
+  --error-tint: #2a1a17;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.55);
 }
 
 html,
 body {
   margin: 0;
   background: var(--page);
-  color: #1d3440;
+  color: var(--text);
   font-family: var(--font-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -38,12 +106,12 @@ h3,
   font-variant-numeric: tabular-nums;
 }
 
-/* Asset IDs and complaint numbers: a fixed-width look so they are easy to scan and compare. */
+/* Asset IDs and complaint numbers: monospace, so they are easy to scan and compare. */
 .code {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
-  letter-spacing: 0.01em;
-  font-weight: 600;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.93em;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 a {
@@ -56,23 +124,20 @@ a {
   outline-offset: 2px;
 }
 
-/* Tables: quiet uppercase headers, no heavy lines, clickable rows feel alive. */
+/* Tables: quiet sentence-case headers, hairline rows, one border around the list. */
 .ant-table-wrapper .ant-table-thead > tr > th {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12.5px;
+  font-weight: 600;
   border-bottom: 1px solid var(--line);
 }
 .ant-table-wrapper .ant-table {
-  border-radius: 16px;
+  border-radius: 8px;
 }
 .ant-table-wrapper .ant-table-container {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
-  background: #fff;
-  box-shadow: var(--shadow-card);
+  background: var(--surface);
 }
 .ant-table-wrapper .ant-table-tbody > tr:last-child > td {
   border-bottom: 0;
@@ -81,20 +146,17 @@ a {
   margin: 16px 4px 0;
 }
 
-/* Cards sit on a soft border with a hairline shadow. */
+/* Cards: a hairline border, no shadow. */
 .ant-card {
   border-color: var(--line);
-  box-shadow: var(--shadow-card);
 }
 .ant-card .ant-card-head-title {
   font-weight: 700;
 }
 
-/* Modals and drawers: a heavier title, a calm footer. */
 .ant-modal .ant-modal-title,
 .ant-drawer .ant-drawer-title {
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-weight: 700;
 }
 
 /* Tabs read as a section bar. */
@@ -102,39 +164,42 @@ a {
   border-bottom-color: var(--line);
 }
 .ant-tabs .ant-tabs-tab {
-  font-weight: 700;
+  font-weight: 600;
 }
 
-/* The app shell: a light sidebar with a hairline edge, sticky so it stays while the page scrolls. */
+/* The app shell: a deep-teal sidebar, sticky so it stays while the page scrolls. */
 .app-sider {
   position: sticky !important;
   top: 0;
   height: 100vh;
   align-self: flex-start;
   overflow: auto;
-  border-right: 1px solid var(--line);
 }
 .app-sider .ant-layout-sider-children {
   display: flex;
   flex-direction: column;
 }
 .app-sider .ant-menu-item {
+  font-weight: 500;
+}
+.app-sider .ant-menu-item-selected {
   font-weight: 600;
 }
+.app-sider .ant-menu-item-selected .anticon {
+  color: #5eead4;
+}
 .app-sider .ant-menu-item-group-title {
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
   padding-top: 18px;
 }
 .brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--primary);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #14b8a6;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: #0f2a2a;
   flex: none;
 }
 .app-header {
@@ -142,37 +207,24 @@ a {
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.92) !important;
-  backdrop-filter: saturate(1.4) blur(8px);
 }
 .icon-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid var(--line) !important;
-  background: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
   color: var(--muted);
 }
 
-/* Soft-tinted status pill (see StatusTag). */
+/* Status tag (see StatusTag): the word on a tint, small and squared. */
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px 3px 9px;
-  border-radius: 999px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 18px;
   white-space: nowrap;
-}
-.pill::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.85;
 }
 
 /* Rows that are links to a detail page. */
@@ -180,14 +232,7 @@ a {
   cursor: pointer;
 }
 
-/* Tablet: bigger tap targets in lists and menus. */
-@media (max-width: 1100px) {
-  .ant-table-wrapper .ant-table-tbody > tr > td {
-    padding-block: 14px;
-  }
-}
-
-/* Printing a PMS record: only the record, on a plain page. */
+/* Printing a PMS record: only the record, on a plain page, always in light colours. */
 @media print {
   .no-print {
     display: none !important;
@@ -206,26 +251,30 @@ a {
   }
 }
 
-/* Login: brand panel on the left, form on the right; the panel is hidden on narrow screens. */
-.login-grid {
+/* Sign in: one plain card in the middle of the page. */
+.login-page {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(420px, 5fr) 6fr;
-}
-.login-hero {
-  background: #0b3c42;
-  color: #fff;
-  padding: 48px 56px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px 16px;
+  box-sizing: border-box;
+  background: var(--page);
 }
-@media (max-width: 900px) {
-  .login-grid {
-    grid-template-columns: 1fr;
-  }
-  .login-hero {
-    display: none;
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 32px;
+}
+@media (max-width: 480px) {
+  .login-card {
+    padding: 24px 20px;
   }
 }
 @media (max-width: 1100px) {
@@ -234,7 +283,7 @@ a {
   }
 }
 
-/* Form footer: Cancel and Save stay in view while a long form scrolls, as a floating bar. */
+/* Form footer: Cancel and Save stay in view while a long form scrolls, as a floating bar (above the phone's bottom bar). */
 .form-actions {
   position: sticky;
   bottom: 16px;
@@ -244,11 +293,10 @@ a {
   gap: 8px;
   padding: 12px 16px;
   margin-top: 16px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(8px);
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(16, 36, 46, 0.1);
+  border-radius: 8px;
+  box-shadow: var(--float-shadow);
 }
 
 /* Six summary figures on a record: one row on a wide screen, then three, then two, never one left alone. */
@@ -271,21 +319,21 @@ a {
 /* PMS checklist: a chosen Pass is green and a chosen Fail is red, so the answers read at a glance. */
 .ant-radio-button-wrapper.pf-pass.ant-radio-button-wrapper-checked,
 .ant-radio-button-wrapper.pf-pass.ant-radio-button-wrapper-checked:hover {
-  background: #047857 !important;
-  border-color: #047857 !important;
-  color: #fff !important;
+  background: var(--good-fg) !important;
+  border-color: var(--good-fg) !important;
+  color: var(--surface) !important;
 }
 .ant-radio-button-wrapper.pf-fail.ant-radio-button-wrapper-checked,
 .ant-radio-button-wrapper.pf-fail.ant-radio-button-wrapper-checked:hover {
-  background: #b91c1c !important;
-  border-color: #b91c1c !important;
-  color: #fff !important;
+  background: var(--bad-fg) !important;
+  border-color: var(--bad-fg) !important;
+  color: var(--surface) !important;
 }
 
-/* Figure tiles: --cols across on a desktop, two across on a tablet, one on a phone. */
+/* Figure tiles: --cols across on a desktop, two across on a tablet and a phone. */
 .kpi-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
 }
 @media (max-width: 1100px) {
@@ -332,8 +380,8 @@ a {
     line-height: 34px;
   }
   .ant-segmented-item-label {
-    min-height: 36px;
-    line-height: 36px;
+    min-height: 34px;
+    line-height: 34px;
   }
   .ant-tabs-tab {
     padding-block: 12px;
@@ -343,10 +391,10 @@ a {
 /* Phones and small tablets: tighter page gutters; the loading sidebar is hidden like the real one collapses. */
 @media (max-width: 760px) {
   .app-content {
-    padding: 20px 16px 40px !important;
+    padding: 16px 16px 40px !important;
   }
   .app-header {
-    padding-inline: 16px !important;
+    padding-inline: 12px !important;
   }
   .shell-skeleton-side {
     display: none !important;
@@ -357,7 +405,94 @@ a {
     position: fixed !important;
     left: 0;
     z-index: 100;
-    box-shadow: 0 12px 32px rgba(16, 36, 46, 0.18);
+    box-shadow: var(--float-shadow);
+  }
+  /* The bottom bar takes the last 60px of a phone screen; the page, and a form's floating Save bar, end above it. */
+  .app-content {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+  }
+  .form-actions {
+    bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Phones: the everyday pages one tap away at the bottom of the screen. */
+.bottom-nav {
+  display: none;
+}
+@media (max-width: 767px) {
+  .bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: flex;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bottom-nav a,
+  .bottom-nav button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 58px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    position: relative;
+  }
+  .bottom-nav .anticon {
+    font-size: 19px;
+  }
+  .bottom-nav [aria-current='page'] {
+    color: var(--primary);
+  }
+  .bottom-nav .bottom-count {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 6px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    box-sizing: border-box;
+    border-radius: 9px;
+    background: #c2412f;
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+  }
+}
+
+/* Page header: on a phone the description is left out; a short title and its buttons share one line, a long title
+   takes the full width and the buttons go under it. */
+@media (max-width: 767px) {
+  .page-header {
+    margin-bottom: 14px !important;
+    align-items: center !important;
+    gap: 10px 12px !important;
+  }
+  .page-header > div:first-child {
+    flex: 1 1 auto;
+  }
+  .page-header h1.ant-typography {
+    font-size: 22px !important;
+  }
+  .page-header .page-subtitle {
+    display: none;
+  }
+  .page-header .page-actions .ant-space {
+    flex-wrap: nowrap;
   }
 }
 
@@ -407,7 +542,7 @@ a {
 }
 /* A field in error gets a soft red tint as well as the red border, so it is easy to find on a long form. */
 .ant-form-item-has-error :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-picker, .ant-select-selector) {
-  background-color: #fffaf8 !important;
+  background-color: var(--error-tint) !important;
 }
 /* Modal forms: a little more air between the last field and the buttons. */
 .ant-modal .ant-form {
@@ -437,25 +572,16 @@ a {
 
 /* An error drawn outside an Ant Design form item (checklists, inline lists). */
 .field-error {
-  color: #b2330e;
+  color: var(--bad-fg);
   font-size: 12.5px;
   line-height: 1.4;
   margin-top: 8px;
 }
 
-/* Full-page answers ("You cannot…", "not found"): the picture shrinks on a phone so the words and the button show. */
+/* Full-page answers ("You cannot…", "not found"): less room around them on a phone. */
 @media (max-width: 760px) {
   .ant-result {
     padding: 24px 8px;
-  }
-  .ant-result .ant-result-image {
-    width: 160px;
-    height: 160px;
-    margin-bottom: 16px;
-  }
-  .ant-result .ant-result-image svg {
-    width: 100%;
-    height: 100%;
   }
   .ant-result .ant-result-title {
     font-size: 20px;
@@ -465,30 +591,27 @@ a {
 /* A count next to a menu entry (requests waiting for the HOD). */
 .nav-count {
   flex: none;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 11px;
-  background: #fde8e1;
-  color: #b2330e;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 22px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: #14b8a6;
+  color: #0f2a2a;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 20px;
   text-align: center;
 }
 .ant-menu-inline-collapsed .nav-count {
   display: none;
 }
 
-/* Phones: a list table becomes a stack of cards, one per row, each value named by its column (data-label, set in
-   DataTable). Sort buttons stay: the header row is kept as one sideways-scrolling line of the sortable columns only. */
+/* Phones: a list table becomes a compact list, one row per record in a single bordered box. The cell a page marks
+   m-title leads in bold, m-end sits top right (a status), m-hide is left out (it is on the record's own page), m-plain
+   is a line without its column name, and every other cell is a short line named by its column (data-label, set in
+   DataTable). The header row is hidden; DataTable shows one "Sort" control instead. */
 @media (max-width: 767px) {
-  .ant-table-wrapper .ant-table-container {
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    overflow: visible;
-  }
   .ant-table-wrapper .ant-table-content {
     overflow: visible !important;
   }
@@ -499,118 +622,108 @@ a {
     min-width: 0 !important;
   }
   .ant-table-wrapper colgroup,
-  .ant-table-wrapper .ant-table-measure-row {
-    display: none;
-  }
-  .ant-table-wrapper .ant-table {
-    background: transparent;
-  }
+  .ant-table-wrapper .ant-table-measure-row,
   .ant-table-wrapper .ant-table-thead {
-    display: block;
-    margin-bottom: 10px;
-  }
-  .ant-table-wrapper .ant-table-thead:has(.ant-table-column-has-sorters)::before {
-    content: 'Sort by';
-    display: block;
-    margin-bottom: 6px;
-    color: var(--muted);
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .ant-table-wrapper .ant-table-thead > tr {
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .ant-table-wrapper .ant-table-thead > tr > th.ant-table-column-has-sorters {
-    flex: none;
-    white-space: nowrap;
-  }
-  .ant-table-wrapper .ant-table-thead > tr > th {
     display: none;
   }
-  .ant-table-wrapper .ant-table-thead > tr > th.ant-table-column-has-sorters {
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 3px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row:last-child {
+    border-bottom: 0;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td {
+    grid-column: 1;
     display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    min-height: 36px;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-  }
-  .ant-table-wrapper .ant-table-thead > tr > th::before {
-    display: none;
-  }
-  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder):not(.ant-table-measure-row) {
-    display: block;
-    position: relative;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 6px 14px;
-    margin-bottom: 10px;
-    box-shadow: var(--shadow-card);
-  }
-  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 6px;
     min-width: 0;
-    padding: 9px 0 !important;
-    border-bottom: 1px solid var(--line-soft) !important;
-    text-align: right;
+    padding: 0 !important;
+    border: 0 !important;
+    text-align: left !important;
     background: transparent !important;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
   }
-  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td:last-child {
-    border-bottom: 0 !important;
-  }
-  .ant-table-wrapper .ant-table-tbody > tr > td[data-label]::before {
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td[data-label]::before {
     content: attr(data-label);
     flex: none;
-    max-width: 40%;
-    text-align: left;
-    color: var(--muted);
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    color: var(--faint);
+    font-size: 12px;
   }
-  /* A cell with no title (the row's actions) sits on the right, on its own line. */
-  .ant-table-wrapper .ant-table-tbody > tr > td:not([data-label]) {
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td.m-title {
+    order: -2;
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td.m-end {
+    grid-column: 2;
+    grid-row: 1;
     justify-content: flex-end;
+    align-self: start;
   }
-  /* A card holds everything in view, so a column pinned to the right edge is no longer pinned. */
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td:is(.m-title, .m-end, .m-plain)::before {
+    display: none;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td.m-hide {
+    display: none !important;
+  }
+  /* A cell with no title (the row's actions) sits on the right, under the status. */
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td:not([data-label]):not(.m-title):not(.m-plain):not(.ant-table-row-expand-icon-cell) {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    justify-content: flex-end;
+    align-self: center;
+  }
+  .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td.ant-table-row-expand-icon-cell {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+    align-self: center;
+  }
+  /* The list holds everything in view, so a column pinned to an edge is no longer pinned. */
   .ant-table-wrapper .ant-table-cell-fix-right,
   .ant-table-wrapper .ant-table-cell-fix-left {
     position: static !important;
   }
   .ant-table-wrapper .ant-table-tbody > tr.ant-table-placeholder {
     display: block;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
   }
   .ant-table-wrapper .ant-table-tbody > tr.ant-table-placeholder > td {
     display: block;
     border: 0;
   }
-  /* An expanded audit entry opens under its card. */
+  /* An expanded audit entry opens under its row. */
   .ant-table-wrapper .ant-table-tbody > tr.ant-table-expanded-row {
     display: block;
-    margin: -6px 0 10px;
+    border-bottom: 1px solid var(--line);
   }
   .ant-table-wrapper .ant-table-tbody > tr.ant-table-expanded-row > td {
     display: block;
     text-align: left;
-    padding: 12px 14px !important;
+    padding: 0 14px 12px !important;
+    border: 0 !important;
   }
-  .ant-table-wrapper .ant-table-tbody > tr:not(.ant-table-placeholder) > td.ant-table-row-expand-icon-cell {
-    justify-content: flex-start;
+  /* Things a phone list leaves out because the record's own page has them (a count above the list). */
+  .phone-hide {
+    display: none !important;
   }
+}
+
+/* The phone list's sort control (see DataTable): next to Filters when the page has them, else on its own line. */
+.phone-sort {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 8px;
+}
+.phone-sort-slot:empty {
+  display: none;
 }
 
 /* Segmented switches (status filters) scroll within themselves rather than widening the page. */
@@ -680,7 +793,7 @@ a {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(16, 36, 46, 0.35);
+  background: var(--scrim);
 }
 
 /* Phones: the open search covers the top bar (see GlobalSearch). */
@@ -691,8 +804,8 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
-  background: #fff;
+  padding: 0 12px;
+  background: var(--surface);
 }
 
 /* Phones: opened list filters stack full width under the search (see PhoneFilters). */

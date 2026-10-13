@@ -95,12 +95,12 @@ function UsersPageScreen() {
         onRetry={users.reload}
         emptyText="No users yet. Add the first one."
         columns={[
-          { title: 'Name', dataIndex: 'name' },
-          { title: 'Email', dataIndex: 'email' },
+          { title: 'Name', dataIndex: 'name', className: 'm-title' },
+          { title: 'Email', dataIndex: 'email', className: 'm-plain' },
           { title: 'Role', dataIndex: 'roleLabel' },
           { title: 'Department', dataIndex: 'departmentName', render: (v) => v ?? '—' },
-          { title: 'Status', dataIndex: 'active', render: (a: boolean) => <StatusTag status={a ? 'active' : 'inactive'} /> },
-          { title: 'Added', dataIndex: 'createdAt', render: formatDate },
+          { title: 'Status', dataIndex: 'active', className: 'm-end', render: (a: boolean) => <StatusTag status={a ? 'active' : 'inactive'} /> },
+          { title: 'Added', dataIndex: 'createdAt', className: 'm-hide', render: formatDate },
           {
             title: <span className="sr-only">Actions</span>,
             key: 'actions',
