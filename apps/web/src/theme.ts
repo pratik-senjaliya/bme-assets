@@ -92,6 +92,9 @@ export function makeTheme(mode: Mode): ThemeConfig {
     algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: {
       colorPrimary: P.primary,
+      // Hover and pressed shades set here, not derived: a lighter derived teal fails contrast with white text.
+      colorPrimaryHover: dark ? '#5ED3C8' : '#0B6463',
+      colorPrimaryActive: dark ? '#22968D' : '#09504F',
       colorInfo: P.info.dot,
       colorSuccess: P.good.dot,
       colorWarning: P.warn.dot,
