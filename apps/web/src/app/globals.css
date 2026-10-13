@@ -283,7 +283,7 @@ a {
   }
 }
 
-/* Form footer: Cancel and Save stay in view while a long form scrolls, as a floating bar. */
+/* Form footer: Cancel and Save stay in view while a long form scrolls, as a floating bar (above the phone's bottom bar). */
 .form-actions {
   position: sticky;
   bottom: 16px;
@@ -407,9 +407,12 @@ a {
     z-index: 100;
     box-shadow: var(--float-shadow);
   }
-  /* The bottom bar takes the last 60px of a phone screen; the page ends above it. */
+  /* The bottom bar takes the last 60px of a phone screen; the page, and a form's floating Save bar, end above it. */
   .app-content {
     padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+  }
+  .form-actions {
+    bottom: calc(70px + env(safe-area-inset-bottom));
   }
 }
 
@@ -575,19 +578,10 @@ a {
   margin-top: 8px;
 }
 
-/* Full-page answers ("You cannot…", "not found"): the picture shrinks on a phone so the words and the button show. */
+/* Full-page answers ("You cannot…", "not found"): less room around them on a phone. */
 @media (max-width: 760px) {
   .ant-result {
     padding: 24px 8px;
-  }
-  .ant-result .ant-result-image {
-    width: 160px;
-    height: 160px;
-    margin-bottom: 16px;
-  }
-  .ant-result .ant-result-image svg {
-    width: 100%;
-    height: 100%;
   }
   .ant-result .ant-result-title {
     font-size: 20px;
