@@ -87,7 +87,8 @@ export function NotificationBell() {
         if (v) void load();
       }}
     >
-      <Button className="icon-btn" aria-label={`Reminders, ${data.unread} unread`}>
+      {/* The spoken name says the count as the badge shows it ("99+" past 99), so the two never disagree. */}
+      <Button className="icon-btn" aria-label={`Reminders, ${data.unread > 99 ? '99+' : data.unread} unread`}>
         <Badge count={data.unread} size="small" overflowCount={99}>
           <BellOutlined style={{ fontSize: 18, color: COLORS.muted }} />
         </Badge>
