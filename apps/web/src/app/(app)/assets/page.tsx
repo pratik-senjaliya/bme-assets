@@ -1,6 +1,6 @@
 'use client';
 
-import { InboxOutlined, MoreOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
+import { InboxOutlined, MoreOutlined, QrcodeOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { Button, Dropdown, Grid, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -65,6 +65,10 @@ function AssetList() {
   const exportQuery = new URLSearchParams(
     Object.entries({ search: q.search, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, assetStatus: q.status ?? 'active' }).filter(([, v]) => v) as [string, string][],
   );
+  // QR labels for what is on screen: the same search and filters (see /assets/labels).
+  const labelsQuery = new URLSearchParams(
+    Object.entries({ search: q.search, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, status: q.status }).filter(([, v]) => v) as [string, string][],
+  );
   const select = (key: string, placeholder: string, options: { value: string; label: string }[]) => (
     <Select
       allowClear
@@ -84,9 +88,14 @@ function AssetList() {
         subtitle={user?.role === 'nursing' ? 'Equipment in your department' : 'Every piece of equipment in the hospital'}
         crumbs={['Assets']}
         action={
-          (canAdd || can('report.view')) && (
+          (canAdd || can('report.view') || can('asset.edit')) && (
             <Space wrap>
               {can('report.view') && <ExportMenu path={`/reports/asset-master?${exportQuery}`} name="bme-assets" compact={phone} />}
+              {can('asset.edit') && (
+                <Link href={`/assets/labels?${labelsQuery}`}>
+                  {phone ? <Button aria-label="QR labels" icon={<QrcodeOutlined />} /> : <Button icon={<QrcodeOutlined />}>QR labels</Button>}
+                </Link>
+              )}
               {canAdd && (
                 <>
                   <Link href="/assets/import">

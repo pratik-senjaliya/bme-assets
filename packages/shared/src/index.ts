@@ -277,6 +277,19 @@ export type AssetListQuery = z.infer<typeof assetListQuerySchema>;
 
 export type Paged<T> = { items: T[]; total: number; page: number; pageSize: number };
 
+// QR labels: the same filters as the register (no paging, sorted by asset ID), or a list of asset ids.
+export const assetLabelsQuerySchema = assetListQuerySchema.omit({ sortBy: true, order: true, page: true, pageSize: true }).extend({
+  ids: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined))
+    .pipe(z.array(z.string().uuid()).max(1000).optional()),
+});
+export type AssetLabel = { id: string; assetCode: string; name: string; departmentName: string; locationName: string };
+// At most MAX_LABELS in one print; `total` says how many matched, so the page can say when it is cut short.
+export const MAX_LABELS = 1000;
+export type AssetLabelsResponse = { hospitalName: string; items: AssetLabel[]; total: number };
+
 export type WarrantyStatus = 'none' | 'active' | 'expiring' | 'expired';
 
 export type AssetRow = {

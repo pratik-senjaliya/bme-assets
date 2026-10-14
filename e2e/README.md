@@ -34,5 +34,6 @@ create is named `E2E-…` and is removed at the start and the end of a run, so t
 | `fixes` | The QA fixes: session expiry, form safety, login lock, change password, permission pages, approvals buttons, sorting, exports that match lists, roles and audit wording, 404, tab titles, tablet sizes |
 | `a11y` | Every screen as every role: errors, headings, tab titles, sideways scroll at 3 widths, serious accessibility problems (axe-core) |
 | `phone` | Phones (375 and 320 wide): each list starts on the first screen, no sideways scroll, bottom bar, sort control; dark mode passes the accessibility check; the light/dark choice is kept |
+| `labels` | QR labels: the sheet follows the list's filters, every printed code decodes to its machine's link, scanning opens the machine (after sign-in), another department's label is refused, nursing cannot print |
 
 Failures leave a screenshot in `e2e/.out/`.
