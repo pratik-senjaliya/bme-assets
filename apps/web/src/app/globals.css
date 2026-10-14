@@ -820,3 +820,86 @@ a {
   max-width: none !important;
   flex: none !important;
 }
+
+/* QR labels (assets/labels): A4 sheets of 3 × 7 labels, 63.5 × 38.1 mm. Always black on white, also in dark mode,
+   because they are printed. On screen the sheet scrolls sideways inside its own box on a narrow window. */
+.label-scroll {
+  overflow-x: auto;
+}
+.label-sheet {
+  display: grid;
+  grid-template-columns: repeat(3, 63.5mm);
+  grid-auto-rows: 38.1mm;
+  gap: 0 2.5mm;
+  width: max-content;
+  padding: 6mm;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.qr-label {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  padding: 3mm;
+  box-sizing: border-box;
+  border: 1px dashed #d6d3d1;
+  color: #000;
+  background: #fff;
+  overflow: hidden;
+  break-inside: avoid;
+}
+.qr-label-code {
+  flex: none;
+  width: 27mm;
+  height: 27mm;
+}
+.qr-label-code svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.qr-label-text {
+  min-width: 0;
+  line-height: 1.25;
+}
+.qr-label-hospital {
+  font-size: 6.5pt;
+  color: #44403c;
+}
+.qr-label-id {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 7.5pt;
+  font-weight: 600;
+  margin: 1mm 0;
+  overflow-wrap: anywhere;
+}
+.qr-label-name {
+  font-size: 8pt;
+  font-weight: 700;
+}
+.qr-label-where {
+  font-size: 6.5pt;
+  color: #44403c;
+  margin-top: 0.5mm;
+}
+@page labels {
+  size: A4;
+  margin: 15mm 7mm;
+}
+@media print {
+  .label-sheet {
+    page: labels;
+  }
+  .label-scroll {
+    overflow: visible;
+  }
+  .label-sheet {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .qr-label {
+    border-color: #e7e5e4;
+  }
+}

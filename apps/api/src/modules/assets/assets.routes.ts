@@ -2,6 +2,8 @@ import { Router, type Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import {
   KEY_FIELDS,
+  MAX_LABELS,
+  assetLabelsQuerySchema,
   assetListQuerySchema,
   attachmentCreateSchema,
   attachmentOwnerSchema,
@@ -10,6 +12,7 @@ import {
   purchaseOrderSchema,
   serviceContractSchema,
   updateAssetSchema,
+  type AssetLabelsResponse,
   type AssetListQuery,
   type AssetRow,
   type AttachmentOwnerType,
@@ -69,19 +72,22 @@ const detail = async (id: string) =>
 
 // ---------- Register ----------
 
+// The register's filters, shared with the QR label sheet so a printed sheet matches the list on screen.
+const registerWhere = (req: Request, q: Omit<AssetListQuery, 'sortBy' | 'order' | 'page' | 'pageSize'>): Prisma.AssetWhereInput => ({
+  ...(q.status === 'all' ? {} : { status: q.status }),
+  ...(q.departmentId && { departmentId: q.departmentId }),
+  ...(q.locationId && { locationId: q.locationId }),
+  ...(q.equipmentTypeId && { equipmentTypeId: q.equipmentTypeId }),
+  ...(q.criticality && { criticality: q.criticality }),
+  ...(q.search && {
+    OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
+  }),
+  ...departmentScope(currentUser(req)), // last, so a nursing user cannot widen it with ?departmentId=
+});
+
 assetsRouter.get('/', requirePermission('asset.view'), async (req, res) => {
   const q = assetListQuerySchema.parse(req.query);
-  const where: Prisma.AssetWhereInput = {
-    ...(q.status === 'all' ? {} : { status: q.status }),
-    ...(q.departmentId && { departmentId: q.departmentId }),
-    ...(q.locationId && { locationId: q.locationId }),
-    ...(q.equipmentTypeId && { equipmentTypeId: q.equipmentTypeId }),
-    ...(q.criticality && { criticality: q.criticality }),
-    ...(q.search && {
-      OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
-    }),
-    ...departmentScope(currentUser(req)), // last, so a nursing user cannot widen it with ?departmentId=
-  };
+  const where = registerWhere(req, q);
   const [total, rows] = await prisma.$transaction([
     prisma.asset.count({ where }),
     prisma.asset.findMany({
@@ -102,6 +108,34 @@ assetsRouter.post('/', requirePermission('asset.create'), validate(createAssetSc
   await assertSerialFree(input.serialNo);
   const [row] = await prisma.$transaction((tx) => createAssets(tx, req, [input]), CREATE_TX_OPTIONS);
   res.status(201).json(await detail(row.id));
+});
+
+// ---------- QR labels ----------
+
+// What to print on a sheet of labels: the listed ids, or everything the register's filters match. For the people
+// who look after the equipment (asset.edit), not for departments that only see it.
+assetsRouter.get('/labels', requirePermission('asset.edit'), async (req, res) => {
+  const { ids, ...q } = assetLabelsQuerySchema.parse(req.query);
+  const where: Prisma.AssetWhereInput = ids ? { id: { in: ids }, ...departmentScope(currentUser(req)) } : registerWhere(req, q);
+  const [total, rows, settings] = await Promise.all([
+    prisma.asset.count({ where }),
+    prisma.asset.findMany({ where, include: { department: true, location: true }, orderBy: { assetCode: 'asc' }, take: MAX_LABELS }),
+    prisma.hospitalSettings.findFirstOrThrow(),
+  ]);
+  const body: AssetLabelsResponse = {
+    hospitalName: settings.name,
+    total,
+    items: rows.map((a) => ({ id: a.id, assetCode: a.assetCode, name: a.name, departmentName: a.department.name, locationName: a.location.name })),
+  };
+  res.json(body);
+});
+
+// A scanned label: the asset ID printed on it, to the record. Department scope applies as everywhere, so a label
+// on another department's equipment reads as not found for nursing staff.
+assetsRouter.get('/by-code/:code', requirePermission('asset.view'), async (req, res) => {
+  const asset = await prisma.asset.findFirst({ where: { assetCode: String(req.params.code), ...departmentScope(currentUser(req)) }, select: { id: true } });
+  if (!asset) throw new HttpError(404, 'No equipment with this label');
+  res.json(asset);
 });
 
 assetsRouter.get('/:id', requirePermission('asset.view'), async (req, res) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { FileTextOutlined, InboxOutlined, LockOutlined } from '@ant-design/icons';
+import { FileTextOutlined, InboxOutlined, LockOutlined, QrcodeOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Tabs, Timeline, Tooltip, Typography, Upload } from 'antd';
 import dayjs from 'dayjs';
 import dynamic from 'next/dynamic';
@@ -101,12 +101,13 @@ export default function AssetDetailPage() {
                 <Button type="primary">Edit asset</Button>
               </Link>
             )}
-            {(can('asset.request_change') || can('report.view')) && (
+            {(can('asset.request_change') || can('report.view') || can('asset.edit')) && (
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
                     ...(can('report.view') ? [{ key: 'history', icon: <FileTextOutlined />, label: 'Full history report' }] : []),
+                    ...(can('asset.edit') ? [{ key: 'label', icon: <QrcodeOutlined />, label: 'Print QR label' }] : []),
                     ...(can('asset.request_change')
                       ? [
                           // Condemned equipment keeps its record and certificate: no condemn or delete any more.
@@ -121,6 +122,7 @@ export default function AssetDetailPage() {
                   ],
                   onClick: ({ key }) => {
                     if (key === 'history') router.push(`/assets/${a.id}/history`);
+                    else if (key === 'label') router.push(`/assets/labels?ids=${a.id}`);
                     else if (key === 'condemn') setCondemning(true);
                     else setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` });
                   },
