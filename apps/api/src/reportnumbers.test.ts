@@ -2,12 +2,11 @@
 // Each checks a size or range edge the earlier tests never reached: more than 8 items, more than 24 months, a quiet
 // month, a financial year, condemned equipment, and impossible dates. Needs a migrated + seeded database.
 import assert from 'node:assert/strict';
-import { inflateSync } from 'node:zlib';
 import { after, before, describe, it } from 'node:test';
 import type { DashboardResponse, ReportData } from '@bme/shared';
 import { addMonths, isoDate, parseDate, todayISO } from './lib/dates';
 import { prisma } from './lib/prisma';
-import { call, login, startServer } from './testUtils';
+import { call, login, pdfTextOf, startServer } from './testUtils';
 
 const PREFIX = 'NTEST-';
 let base = '';
@@ -47,23 +46,7 @@ const makeAsset = async (extra: object = {}) => {
 };
 const report = async (path: string) => (await (await call(base, admin, 'GET', path)).json()) as ReportData;
 
-// The text drawn in a PDFKit file: inflate each content stream and decode its hex strings (WinAnsi text).
-async function pdfText(path: string) {
-  const buf = Buffer.from(await (await call(base, admin, 'GET', path)).arrayBuffer());
-  const raw = buf.toString('latin1');
-  let out = '';
-  for (let i = raw.indexOf('stream\n'); i >= 0; i = raw.indexOf('stream\n', i + 1)) {
-    const end = raw.indexOf('endstream', i);
-    try {
-      const content = inflateSync(buf.subarray(i + 7, end)).toString('latin1');
-      for (const m of content.matchAll(/<([0-9a-fA-F]+)>/g)) out += Buffer.from(m[1], 'hex').toString('latin1');
-      out += '\n';
-    } catch {
-      // not a compressed content stream (fonts, images)
-    }
-  }
-  return out;
-}
+const pdfText = async (path: string) => pdfTextOf(Buffer.from(await (await call(base, admin, 'GET', path)).arrayBuffer()));
 
 describe('18. Dashboard "Cover ending in 60 days"', () => {
   it('counts every warranty ending, not just the 8 listed', async () => {

@@ -7,7 +7,7 @@ type Settings = Awaited<ReturnType<typeof prisma.hospitalSettings.findFirstOrThr
 // and a from-address are saved in Hospital settings.
 export const smtpConfigured = (s: Settings) => !!(s.smtpHost && s.smtpFrom);
 
-export async function sendMail(s: Settings, to: string, subject: string, text: string) {
+export async function sendMail(s: Settings, to: string, subject: string, text: string, attachments?: { filename: string; content: Buffer }[]) {
   const transport = nodemailer.createTransport({
     host: s.smtpHost!,
     port: s.smtpPort ?? 587,
@@ -17,5 +17,5 @@ export async function sendMail(s: Settings, to: string, subject: string, text: s
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
   });
-  await transport.sendMail({ from: s.smtpFrom!, to, subject, text });
+  await transport.sendMail({ from: s.smtpFrom!, to, subject, text, attachments });
 }

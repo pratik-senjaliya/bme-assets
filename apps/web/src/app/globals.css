@@ -347,6 +347,16 @@ a {
   }
 }
 
+/* Report tables: the tab names wrap onto more lines instead of hiding behind a "more" button, so every table is
+   one tap away on any screen. The active tab is underlined by itself (the sliding bar assumes one line). */
+.report-tabs > .ant-tabs-nav .ant-tabs-nav-wrap { overflow: visible; }
+.report-tabs > .ant-tabs-nav .ant-tabs-nav-list { flex-wrap: wrap; column-gap: 24px; transform: none !important; }
+.report-tabs > .ant-tabs-nav .ant-tabs-tab + .ant-tabs-tab { margin-left: 0; }
+.report-tabs > .ant-tabs-nav .ant-tabs-ink-bar { display: none; }
+.report-tabs > .ant-tabs-nav .ant-tabs-tab-active { box-shadow: inset 0 -2px 0 var(--primary); }
+.report-tabs > .ant-tabs-nav .ant-tabs-nav-operations { display: none; }
+.report-tabs > .ant-tabs-nav .ant-tabs-tab, .report-tabs > .ant-tabs-nav .ant-tabs-tab-btn { white-space: normal; max-width: 100%; }
+
 /* Text for screen readers only (a table's action column needs a header, but nobody needs to see it). */
 .sr-only {
   position: absolute;

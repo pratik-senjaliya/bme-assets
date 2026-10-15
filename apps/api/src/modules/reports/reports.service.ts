@@ -20,7 +20,7 @@ export type Collector = { sheets: ReportSheetData[]; kpis: Kpi[]; charts: ChartS
 // Dates become YYYY-MM-DD here, once, so everything downstream is plain JSON.
 const plain = (v: unknown): string | number | null => (v instanceof Date ? isoDate(v) : typeof v === 'number' ? v : v == null || v === '' ? null : String(v));
 
-function addSheet(out: Collector, name: string, cols: Col[], rows: Row[], totals?: string[]) {
+export function addSheet(out: Collector, name: string, cols: Col[], rows: Row[], totals?: string[]) {
   out.sheets.push({
     name,
     columns: cols.map((c) => ({ ...c, width: c.width ?? Math.max(12, c.header.length + 2) })),
@@ -29,17 +29,17 @@ function addSheet(out: Collector, name: string, cols: Col[], rows: Row[], totals
   });
 }
 
-const kpi = (out: Collector, label: string, value: number | string | null, fmt: ValueFmt, hint?: string, tone?: Kpi['tone']) => out.kpis.push({ label, value, fmt, hint, tone });
+export const kpi = (out: Collector, label: string, value: number | string | null, fmt: ValueFmt, hint?: string, tone?: Kpi['tone']) => out.kpis.push({ label, value, fmt, hint, tone });
 
 // A chart of one measure. `entries` are [label, value] pairs in the order to show.
-const oneSeries = (id: string, title: string, kind: 'column' | 'bar' | 'line', unit: string, entries: [string, number][], fmt: ValueFmt, subtitle?: string): ChartSpec => ({
+export const oneSeries = (id: string, title: string, kind: 'column' | 'bar' | 'line', unit: string, entries: [string, number][], fmt: ValueFmt, subtitle?: string): ChartSpec => ({
   id, title, subtitle, kind, fmt, series: [{ key: 'v', label: unit }], data: entries.map(([label, v]) => ({ label, v })),
 });
 // Oct 2025 (the longer form, for table cells); monthLabel is the short one for chart axes.
-const monthFull = (key: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parseDate(`${key}-01`));
-const monthLabel = (key: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(parseDate(`${key}-01`));
+export const monthFull = (key: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parseDate(`${key}-01`));
+export const monthLabel = (key: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(parseDate(`${key}-01`));
 // Every month from `from` to `to` (YYYY-MM-DD), so a quiet month shows as zero instead of vanishing.
-const monthKeys = (from: string, to: string) => {
+export const monthKeys = (from: string, to: string) => {
   const keys: string[] = [];
   for (let d = parseDate(`${from.slice(0, 7)}-01`); isoDate(d).slice(0, 7) <= to.slice(0, 7); d = addMonths(d, 1)) keys.push(isoDate(d).slice(0, 7));
   return keys;
@@ -61,21 +61,30 @@ const periodName = (p: string, group: Group, full = false) => {
 };
 const PER: Record<Group, string> = { month: 'per month', year: 'per year', fy: 'per financial year' };
 
-const top = <T,>(items: T[], n: number) => items.slice(0, n);
+export const top = <T,>(items: T[], n: number) => items.slice(0, n);
 const span = (c: { from: string; to: string }) => `${prettyDate(parseDate(c.from))} to ${prettyDate(parseDate(c.to))}`;
 // Count items by a label, biggest first.
-const tally = <T,>(items: T[], label: (t: T) => string): [string, number][] => {
+export const tally = <T,>(items: T[], label: (t: T) => string): [string, number][] => {
   const m = new Map<string, number>();
   for (const i of items) m.set(label(i), (m.get(label(i)) ?? 0) + 1);
   return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 };
-const avg = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
+export const avg = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 
-type Ctx = { req: Request; q: ReportQuery; from: string; to: string; fromAt: Date; toAt: Date; scope: { departmentId?: string } };
+export type Ctx = { q: ReportQuery; from: string; to: string; fromAt: Date; toAt: Date; scope: { departmentId?: string } };
+// A period in hospital days, for one department or (empty scope) the whole hospital.
+export const periodCtx = (from: string, to: string, scope: Ctx['scope'], q: Partial<ReportQuery> = {}): Ctx => ({
+  q: { group: 'month', format: 'json', ...q } as ReportQuery,
+  from,
+  to,
+  fromAt: zonedDayStart(from),
+  toAt: zonedDayStart(addDaysISO(to, 1)),
+  scope,
+});
 
-const STATUS_LABEL: Record<string, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'CONDEMNED' };
-const stamp = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: config.timezone }).format(d).replace(/(\d{4}) /, '$1, ') : '');
-const hours = (ms: number) => Math.round((ms / 3_600_000) * 100) / 100;
+export const STATUS_LABEL: Record<string, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'CONDEMNED' };
+export const stamp = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: config.timezone }).format(d).replace(/(\d{4}) /, '$1, ') : '');
+export const hours = (ms: number) => Math.round((ms / 3_600_000) * 100) / 100;
 const hoursOf = (seconds: number | null) => (seconds == null ? null : Math.round((seconds / 3600) * 100) / 100);
 
 
@@ -126,7 +135,7 @@ async function assetMaster(wb: Collector, c: Ctx) {
 // Each PMS counts once. A correction is a new record (rule 1) but not another PMS: it replaces the result of the PMS
 // it corrects, whenever it was made. Returns the PMS that were done (originals, on their own date) with the result of
 // their latest correction.
-async function pmsDone<T extends { id: string; correctsRecordId: string | null; result: string }>(records: T[]): Promise<T[]> {
+export async function pmsDone<T extends { id: string; correctsRecordId: string | null; result: string }>(records: T[]): Promise<T[]> {
   const originals = records.filter((r) => !r.correctsRecordId);
   const rootOf = new Map(originals.map((r) => [r.id, r.id]));
   const latest = new Map<string, { result: string; submittedAt: Date }>();
@@ -263,7 +272,9 @@ const overlapMs = (raised: Date, resolved: Date | null, from: Date, to: Date) =>
   return Math.max(0, end - start);
 };
 
-async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
+// Uptime of each asset over the period: 24 hours a day from when it was registered, up to now (the future has no uptime
+// yet) or the day it was condemned. Overlapping complaints about one machine count once (machineDownMs).
+export async function uptimeData(c: Ctx, criticalOnly: boolean) {
   const now = new Date();
   const periodEnd = new Date(Math.min(c.toAt.getTime(), now.getTime())); // the future has no uptime yet
   const assets = await prisma.asset.findMany({
@@ -291,7 +302,11 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
     const downMs = machineDownMs(mine, start, end);
     return { a, mine, periodMs, downMs };
   }).filter((r) => r.periodMs > 0);
+  return { rows, periodEnd };
+}
 
+async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
+  const { rows, periodEnd } = await uptimeData(c, criticalOnly);
   addSheet(wb, 'Uptime', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Equipment type', key: 'type', width: 18 }, { header: 'Department', key: 'dept', width: 22 },
     { header: 'Criticality', key: 'crit' }, { header: 'Status', key: 'status' }, { header: 'Hours in period', key: 'period', fmt: 'hours', width: 16 }, { header: 'Breakdowns', key: 'count', fmt: 'int' },
@@ -460,11 +475,17 @@ async function warrantyContracts(wb: Collector, c: Ctx) {
 const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contracts'];
 
 export async function buildReport(type: ReportType, req: Request, q: ReportQuery): Promise<{ data: ReportData; filename: string }> {
+  const me = currentUser(req);
+  return buildReportAs(type, q, me.name, departmentScope(me));
+}
+
+// The same report for someone named `by`, limited to `scope` (empty: the whole hospital). Used by the audit pack.
+export async function buildReportAs(type: ReportType, q: ReportQuery, by: string, scope: Ctx['scope']): Promise<{ data: ReportData; filename: string }> {
   const today = todayISO();
   const to = q.to ?? today;
   const from = q.from ?? isoDate(addMonths(parseDate(to), -12));
   if (from > to) throw new HttpError(400, 'The start date is after the end date. Choose an end date on or after it.', { fieldErrors: { to: ['Before the start date'] } });
-  const ctx: Ctx = { req, q, from, to, fromAt: zonedDayStart(from), toAt: zonedDayStart(addDaysISO(to, 1)), scope: departmentScope(currentUser(req)) };
+  const ctx = periodCtx(from, to, scope, q);
 
   const out: Collector = { sheets: [], kpis: [], charts: [] };
   const settings = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true } });
@@ -492,7 +513,7 @@ export async function buildReport(type: ReportType, req: Request, q: ReportQuery
     to: ranged ? to : null,
     group: type === 'breakdowns' ? q.group : null,
     generatedAt: new Date().toISOString(),
-    generatedBy: currentUser(req).name,
+    generatedBy: by,
     note: 'Condemned and not-in-use assets are included and labelled in the Status column.',
     ...out,
   };
