@@ -10,12 +10,12 @@ const b = await launch();
 const probe = await session(b, 'admin@demo.local');
 const asset = (await probe.api('GET', '/assets?pageSize=1')).body.items[0];
 const pms = (await probe.api('GET', `/assets/${asset.id}/pms`)).body[0];
-const ROUTES = ['/', '/assets', '/assets/new', '/assets/import', '/assets/labels', `/assets/${asset.id}`, `/assets/${asset.id}/edit`, `/assets/${asset.id}/history`, `/assets/${asset.id}/pms/new`, pms ? `/pms/${pms.id}` : null,
+const ROUTES = ['/', '/my-work', '/assets', '/assets/new', '/assets/import', '/assets/labels', `/assets/${asset.id}`, `/assets/${asset.id}/edit`, `/assets/${asset.id}/history`, `/assets/${asset.id}/pms/new`, pms ? `/pms/${pms.id}` : null,
   '/complaints', '/due', '/approvals', '/reports', '/reports/pms', '/reports/warranty-contracts', '/admin/users', '/admin/roles', '/admin/departments', '/admin/equipment-types', '/admin/pms-templates', '/admin/audit', '/admin/settings', '/nope'].filter(Boolean);
 await probe.ctx.close();
 
 // What each role is expected to be refused: those pages must say so plainly rather than fail to load.
-const FORBIDDEN = { biomed: ['/admin/users', '/admin/roles', '/admin/settings', '/admin/audit', '/admin/departments', '/admin/equipment-types', '/admin/pms-templates'], nursing: ['/assets/new', '/assets/import', '/assets/labels', '/due', '/approvals', '/reports', '/reports/pms', '/reports/warranty-contracts', '/admin/users', '/admin/roles', '/admin/settings', '/admin/audit', '/admin/departments', '/admin/equipment-types', '/admin/pms-templates', `/assets/${asset.id}/history`, `/assets/${asset.id}/edit`, `/assets/${asset.id}/pms/new`, pms ? `/pms/${pms.id}` : ''] };
+const FORBIDDEN = { biomed: ['/admin/users', '/admin/roles', '/admin/settings', '/admin/audit', '/admin/departments', '/admin/equipment-types', '/admin/pms-templates'], nursing: ['/my-work', '/assets/new', '/assets/import', '/assets/labels', '/due', '/approvals', '/reports', '/reports/pms', '/reports/warranty-contracts', '/admin/users', '/admin/roles', '/admin/settings', '/admin/audit', '/admin/departments', '/admin/equipment-types', '/admin/pms-templates', `/assets/${asset.id}/history`, `/assets/${asset.id}/edit`, `/assets/${asset.id}/pms/new`, pms ? `/pms/${pms.id}` : ''] };
 const titles = new Map();
 
 for (const role of ['superadmin', 'admin', 'biomed', 'nursing']) {

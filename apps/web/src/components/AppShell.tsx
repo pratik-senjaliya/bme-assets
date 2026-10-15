@@ -7,6 +7,7 @@ import {
   BarcodeOutlined,
   CalendarOutlined,
   CheckOutlined,
+  CheckSquareOutlined,
   DashboardOutlined,
   DownOutlined,
   HistoryOutlined,
@@ -43,7 +44,12 @@ type Group = { title?: string; items: Item[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
 const GROUPS: Group[] = [
-  { items: [{ href: '/', label: 'Dashboard', short: 'Today', icon: <DashboardOutlined /> }] },
+  {
+    items: [
+      { href: '/', label: 'Dashboard', short: 'Today', icon: <DashboardOutlined /> },
+      { href: '/my-work', label: 'My work', icon: <CheckSquareOutlined />, permission: 'complaint.start' },
+    ],
+  },
   {
     title: 'Equipment',
     items: [
@@ -143,7 +149,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const all = GROUPS.flatMap((g) => g.items);
   const selected = all.filter((i) => (i.href === '/' ? pathname === '/' : pathname.startsWith(i.href))).map((i) => i.href);
   // Phones: the everyday pages sit in a bar at the bottom; everything else is under Menu.
-  const everyday = ['/', '/assets', '/complaints', '/due', '/approvals'].map((h) => all.find((i) => i.href === h)!).filter(allowed).slice(0, 4);
+  const everyday = ['/', '/my-work', '/assets', '/complaints', '/due', '/approvals'].map((h) => all.find((i) => i.href === h)!).filter(allowed).slice(0, 4);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

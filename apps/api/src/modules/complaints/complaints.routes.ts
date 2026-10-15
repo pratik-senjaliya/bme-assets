@@ -1,9 +1,12 @@
 import { Router, type Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import {
+  assignComplaintSchema,
   complaintListQuerySchema,
   createComplaintSchema,
   resolveComplaintSchema,
+  type AssignComplaintInput,
+  type Assignee,
   type ComplaintRow,
   type CreateComplaintInput,
   type Paged,
@@ -37,8 +40,10 @@ const one = async (id: string): Promise<ComplaintRow> =>
 
 complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) => {
   const q = complaintListQuerySchema.parse(req.query);
+  const me = currentUser(req);
   const where: Prisma.ComplaintWhereInput = {
-    ...(q.status && { status: q.status }),
+    ...(q.status && { status: q.status === 'unresolved' ? { in: ['open', 'in_progress'] } : q.status }),
+    ...(q.assignedTo && { assignedToId: q.assignedTo === 'me' ? me.id : q.assignedTo === 'none' ? null : q.assignedTo }),
     ...(q.assetId && { assetId: q.assetId }),
     ...(q.departmentId && { departmentId: q.departmentId }),
     // Dates are the hospital's calendar days, not UTC days.
@@ -51,17 +56,28 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
         { asset: { name: { contains: q.search, mode: 'insensitive' as const } } },
       ],
     }),
-    ...departmentScope(currentUser(req)), // last, so it cannot be widened from the query
+    ...departmentScope(me), // last, so it cannot be widened from the query
   };
   // Waiting complaints: longest-waiting first. Resolved: most recent first. Mixed: newest first.
   const orderBy: Prisma.ComplaintOrderByWithRelationInput | Prisma.ComplaintOrderByWithRelationInput[] = q.sortBy
     ? [{ [q.sortBy]: q.order }, { complaintNo: 'desc' }]
-    : q.status === 'open' || q.status === 'in_progress' ? { raisedAt: 'asc' } : q.status === 'resolved' ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
+    : q.status === 'open' || q.status === 'in_progress' || q.status === 'unresolved' ? { raisedAt: 'asc' } : q.status === 'resolved' ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
   const [total, rows] = await prisma.$transaction([
     prisma.complaint.count({ where }),
     prisma.complaint.findMany({ where, include: complaintInclude, orderBy, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
   ]);
   const body: Paged<ComplaintRow> = { items: await toComplaintRows(rows), total, page: q.page, pageSize: q.pageSize };
+  res.json(body);
+});
+
+// The people a complaint can go to: active users who can start work on complaints, with their current load.
+complaintsRouter.get('/assignees', requirePermission('complaint.assign'), async (_req, res) => {
+  const ids = await usersWithPermissions('complaint.start');
+  const [users, load] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: ids }, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.complaint.groupBy({ by: ['assignedToId'], where: { status: { in: ['open', 'in_progress'] }, assignedToId: { in: ids } }, _count: true }),
+  ]);
+  const body: Assignee[] = users.map((u) => ({ ...u, openCount: load.find((l) => l.assignedToId === u.id)?._count ?? 0 }));
   res.json(body);
 });
 
@@ -101,9 +117,11 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
 
 // Open → In progress → Resolved, one step at a time. The status check sits inside the UPDATE, so two
 // people pressing the button at once cannot both succeed.
-async function transition(req: Request, from: 'open' | 'in_progress', data: Prisma.ComplaintUncheckedUpdateManyInput, action: string, wrong: string) {
+type Changes = Prisma.ComplaintUncheckedUpdateManyInput;
+async function transition(req: Request, from: 'open' | 'in_progress', changes: Changes | ((before: { assignedToId: string | null }) => Changes), action: string, wrong: string) {
   const before = await findScoped(req);
   if (before.status !== from) throw new HttpError(409, wrong);
+  const data = typeof changes === 'function' ? changes(before) : changes;
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.complaint.updateMany({ where: { id: before.id, status: from }, data });
     if (count === 0) throw new HttpError(409, wrong);
@@ -114,10 +132,13 @@ async function transition(req: Request, from: 'open' | 'in_progress', data: Pris
 }
 
 complaintsRouter.post('/:id/start', requirePermission('complaint.start'), async (req, res) => {
+  const me = currentUser(req).id;
+  const now = new Date();
   const row = await transition(
     req,
     'open',
-    { status: 'in_progress', startedAt: new Date(), startedBy: currentUser(req).id },
+    // Starting an unassigned complaint makes it yours; one assigned to someone else stays theirs.
+    (before) => ({ status: 'in_progress', startedAt: now, startedBy: me, ...(!before.assignedToId && { assignedToId: me, assignedAt: now, assignedBy: me }) }),
     'complaint.start',
     'This complaint has already been started',
   );
@@ -140,4 +161,43 @@ complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), va
     await notify(prisma, [row.raisedById], `Complaint ${row.complaintNo} resolved: ${asset.assetCode} ${asset.name}`, asset.id, 'complaint');
   }
   res.json(await one(row.id));
+});
+
+// Assign, reassign or clear. The HOD (complaint.assign) may give a complaint to anyone who can work on complaints;
+// an engineer may only take an unassigned one for themselves. A resolved complaint keeps its assignment.
+complaintsRouter.post('/:id/assign', requirePermission('complaint.view'), validate(assignComplaintSchema), async (req, res) => {
+  const me = currentUser(req);
+  const { userId } = req.body as AssignComplaintInput;
+  const before = await findScoped(req);
+  if (before.status === 'resolved') throw new HttpError(409, 'This complaint is already resolved');
+  const isHod = me.permissions.includes('complaint.assign');
+  if (!isHod) {
+    if (!me.permissions.includes('complaint.start') || userId !== me.id) throw new HttpError(403, 'Only the HOD can assign complaints to others');
+    if (before.assignedToId && before.assignedToId !== me.id) throw new HttpError(409, 'This complaint is already assigned to someone else');
+  }
+  if (userId && userId !== before.assignedToId) {
+    const canWork = (await usersWithPermissions('complaint.start')).includes(userId);
+    const active = await prisma.user.findFirst({ where: { id: userId, active: true }, select: { id: true } });
+    if (!canWork || !active) throw new HttpError(400, 'This person cannot work on complaints', { fieldErrors: { userId: ['Choose someone who can work on complaints'] } });
+  }
+  if (userId === before.assignedToId) {
+    res.json(await one(before.id)); // nothing changes
+    return;
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    // Taking a complaint only succeeds while it is still free, so two engineers pressing "Take it" at once cannot both get it.
+    const { count } = await tx.complaint.updateMany({
+      where: { id: before.id, status: { in: ['open', 'in_progress'] }, ...(isHod ? {} : { assignedToId: null }) },
+      data: { assignedToId: userId, assignedAt: userId ? now : null, assignedBy: userId ? me.id : null },
+    });
+    if (count === 0) throw new HttpError(409, 'This complaint changed meanwhile; refresh and try again');
+    const after = await tx.complaint.findUniqueOrThrow({ where: { id: before.id } });
+    await audit(tx, req, { action: 'complaint.assign', entityType: 'complaint', entityId: before.id, before, after });
+    if (userId && userId !== me.id) {
+      await notify(tx, [userId], `Complaint ${before.complaintNo} assigned to you: ${before.asset.assetCode} ${before.asset.name} (by ${me.name})`, before.assetId, 'complaint');
+    }
+  });
+  res.json(await one(before.id));
 });
