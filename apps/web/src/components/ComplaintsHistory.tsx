@@ -215,6 +215,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
               </div>
             ),
           },
+          { title: 'Assigned to', dataIndex: 'assignedToName', className: 'm-hide', render: (v: string | null) => v ?? <span style={{ color: COLORS.muted }}>—</span> },
           { title: 'Response', dataIndex: 'responseSeconds', align: 'right', className: 'm-hide', render: formatDuration },
           { title: 'Downtime', dataIndex: 'downtimeSeconds', align: 'right', className: 'm-hide', render: formatDuration },
         ]}

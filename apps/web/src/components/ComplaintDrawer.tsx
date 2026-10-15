@@ -4,6 +4,7 @@ import { Alert, Button, Drawer, Timeline, Typography } from 'antd';
 import Link from 'next/link';
 import type { ComplaintDetail, ComplaintEvent } from '@bme/shared';
 import { useState } from 'react';
+import { useComplaintWork } from '@/components/ComplaintWork';
 import { DocumentList } from '@/components/DocumentList';
 import { RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, StatusTag } from '@/components/StatusTag';
@@ -13,7 +14,7 @@ import { formatDateTime, formatDuration, formatMoney } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { FactsSkeleton } from '@/components/Skeletons';
 
-const DOT: Record<ComplaintEvent['kind'], string> = { raised: COLORS.bad.dot, started: COLORS.warn.dot, resolved: COLORS.good.dot, document: COLORS.neutral.dot, expense: COLORS.neutral.dot };
+const DOT: Record<ComplaintEvent['kind'], string> = { raised: COLORS.bad.dot, assigned: COLORS.info.dot, started: COLORS.warn.dot, resolved: COLORS.good.dot, document: COLORS.neutral.dot, expense: COLORS.neutral.dot };
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div style={{ background: COLORS.surfaceAlt, borderRadius: 8, padding: '12px 14px' }}>
@@ -28,6 +29,11 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
   const { can } = useAuth();
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const complaint = useFetch<ComplaintDetail>(id ? `/complaints/${id}` : null);
+  // The next step (take, assign, start, resolve) can be done from here too.
+  const { actions, dialogs } = useComplaintWork(() => {
+    void complaint.reload();
+    onChanged?.();
+  });
   const c = complaint.data && complaint.data.id === id ? complaint.data : null;
   const canAttach = !!c && c.status !== 'resolved' && (can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
   // Running time for a complaint that is still open (display only; stored times are the server's).
@@ -68,9 +74,11 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
             <Fact label="Criticality">
               <CriticalityTag value={c.criticality} />
             </Fact>
+            <Fact label="Assigned to">{c.assignedToName ?? <span style={{ color: COLORS.muted, fontWeight: 400 }}>Nobody yet</span>}</Fact>
             <Fact label="Response time">{c.startedAt ? formatDuration(c.responseSeconds) : <span style={{ color: COLORS.muted, fontWeight: 400 }}>Not started</span>}</Fact>
             <Fact label={c.resolvedAt ? 'Downtime' : 'Open for'}>{c.resolvedAt ? formatDuration(c.downtimeSeconds) : openFor}</Fact>
           </div>
+          {actions(c) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{actions(c)}</div>}
           <div>
             <Typography.Title level={5} style={{ marginTop: 0 }}>
               Problem
@@ -149,6 +157,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
         </div>
       )}
       <RequestDeleteModal target={deleting} onClose={() => setDeleting(null)} onRequested={() => setDeleting(null)} />
+      {dialogs}
     </Drawer>
   );
 }

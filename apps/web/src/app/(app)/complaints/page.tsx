@@ -1,19 +1,17 @@
 'use client';
 
-import { CheckCircleOutlined, PaperClipOutlined } from '@ant-design/icons';
-import { App, Button, Card, Col, Form, Input, Modal, Row, Space, Tabs, Typography } from 'antd';
+import { CheckCircleOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Row, Space, Tabs, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
-import { resolveComplaintSchema, type ComplaintRow, type ComplaintStatus, type Paged } from '@bme/shared';
+import type { ComplaintRow, ComplaintStatus, Paged } from '@bme/shared';
+import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
-import { Bar, EmptyState } from '@/components/Skeletons';
-import { CriticalityTag, Pill } from '@/components/StatusTag';
+import { EmptyState } from '@/components/Skeletons';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatDateTime, formatDuration } from '@/lib/format';
 import { COLORS } from '@/theme';
-import { parseForm, useSingleFlight } from '@/lib/forms';
 
 // The history tab, the details drawer and the raise dialog load when first opened, so the board shows sooner.
 const ComplaintDrawer = dynamic(() => import('@/components/ComplaintDrawer').then((m) => m.ComplaintDrawer));
@@ -59,100 +57,27 @@ export default function ComplaintsPage() {
 }
 
 function Board({ version, onChanged, onOpen }: { version: number; onChanged: () => void; onOpen: (id: string) => void }) {
-  const { can } = useAuth();
-  const { message } = App.useApp();
-  const [resolving, setResolving] = useState<ComplaintRow | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [form] = Form.useForm();
+  const { actions, dialogs } = useComplaintWork(onChanged);
   // The board is watched for a while: refresh it every minute (new complaints, waiting times), but not while the
-  // tab is hidden or someone is writing a resolution.
+  // tab is hidden.
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => {
-      if (document.visibilityState === 'visible' && !resolving) setTick((n) => n + 1);
+      if (document.visibilityState === 'visible') setTick((n) => n + 1);
     }, 60_000);
     return () => clearInterval(t);
-  }, [resolving]);
-
-  async function start(c: ComplaintRow) {
-    try {
-      await api(`/complaints/${c.id}/start`, { method: 'POST' });
-      message.success(`${c.complaintNo} started`);
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Could not start');
-    }
-    onChanged();
-  }
-
-  const single = useSingleFlight();
-
-  async function resolve() {
-    const input = parseForm(form, resolveComplaintSchema, form.getFieldsValue());
-    if (!input || !resolving) return;
-    setSaving(true);
-    try {
-      await api(`/complaints/${resolving.id}/resolve`, { body: input });
-      message.success(`${resolving.complaintNo} resolved`);
-      setResolving(null);
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Could not resolve');
-    } finally {
-      setSaving(false);
-      onChanged();
-    }
-  }
+  }, []);
 
   return (
     <>
       <Row gutter={16}>
         {COLUMNS.map((col) => (
           <Col key={col.status} xs={24} lg={8}>
-            <BoardColumn
-              {...col}
-              version={version * 10_000 + tick}
-              onOpen={onOpen}
-              actions={(c) => (
-                <>
-                  {c.status === 'open' && can('complaint.start') && (
-                    <Button type="primary" onClick={() => start(c)}>
-                      Start work
-                    </Button>
-                  )}
-                  {c.status === 'in_progress' && can('complaint.resolve') && (
-                    <Button
-                      type="primary"
-                      onClick={() => {
-                        form.resetFields();
-                        setResolving(c);
-                      }}
-                    >
-                      Resolve
-                    </Button>
-                  )}
-                </>
-              )}
-            />
+            <BoardColumn {...col} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
           </Col>
         ))}
       </Row>
-      <Modal
-        open={!!resolving}
-        title={`Resolve ${resolving?.complaintNo ?? ''}`}
-        okText="Mark resolved"
-        confirmLoading={saving}
-        onOk={() => single(resolve)}
-        onCancel={() => setResolving(null)}
-        destroyOnHidden
-      >
-        <Typography.Paragraph type="secondary">
-          This stops the downtime clock for {resolving?.assetCode}. The time is recorded by the system and cannot be changed.
-        </Typography.Paragraph>
-        <Form form={form} layout="vertical" requiredMark>
-          <Form.Item label="What was done?" name="resolutionNotes" rules={[{ required: true, message: 'Say what was done' }]}>
-            <Input.TextArea rows={4} maxLength={2000} showCount />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {dialogs}
     </>
   );
 }
@@ -225,70 +150,6 @@ function BoardColumn({
           Show more ({total - shown.length} more)
         </Button>
       )}
-    </Card>
-  );
-}
-
-function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions: ReactNode; onOpen: () => void }) {
-  // Display only: how long it has been waiting by this browser's clock. Stored times are the server's.
-  const waiting = c.status === 'open' ? formatDuration((Date.now() - new Date(c.raisedAt).getTime()) / 1000) : null;
-  const muted = { color: COLORS.muted, fontSize: 12.5 };
-  // The clock that matters for this column, in a box so it reads at a glance; red once over the downtime limit.
-  const clock = { background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.surfaceAlt, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.ink, borderRadius: 4, padding: '6px 10px', marginTop: 10, fontWeight: 600 };
-  return (
-    <Card size="small" styles={{ body: { padding: 14 } }} style={{ borderRadius: 6 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span className="code" style={{ color: COLORS.muted, fontSize: 12.5 }}>{c.complaintNo}</span>
-        <CriticalityTag value={c.criticality} />
-      </div>
-      {c.overDowntimeLimit && (
-        <div style={{ marginTop: 8 }}>
-          <Pill tone="bad">Over downtime limit</Pill>
-        </div>
-      )}
-      <div style={{ marginTop: 8 }}>
-        <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5 }}>{c.assetName}</div>
-        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontSize: 12.5 }}>
-          {c.assetCode}
-        </Link>
-      </div>
-      <Typography.Paragraph ellipsis={{ rows: 3, tooltip: c.description }} style={{ margin: '8px 0', color: COLORS.text }}>
-        {c.description}
-      </Typography.Paragraph>
-      <div style={muted}>
-        {c.departmentName} · raised by {c.raisedByName}
-      </div>
-      <div style={muted} className="num">{formatDateTime(c.raisedAt)}</div>
-      {waiting && <div style={clock} className="num">Waiting {waiting}</div>}
-      {c.startedAt && (
-        <div style={{ ...clock, ...(c.resolvedAt ? { background: 'transparent', padding: 0, color: COLORS.text, fontWeight: 600 } : {}) }} className="num">
-          Response {formatDuration(c.responseSeconds)}
-          <span style={{ ...muted, fontWeight: 500 }}> · started by {c.startedByName}</span>
-        </div>
-      )}
-      {c.resolvedAt && (
-        <>
-          <div style={{ ...clock, background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.good.bg, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.good.fg }} className="num">Downtime {formatDuration(c.downtimeSeconds)}</div>
-          <div style={{ ...muted, marginTop: 6 }}>{c.resolutionNotes}</div>
-        </>
-      )}
-      <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLORS.lineSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <Button type="link" style={{ padding: 0, fontWeight: 600 }} onClick={onOpen}>
-          Details{c.attachmentCount > 0 && <span style={{ marginLeft: 8, color: COLORS.muted }}><PaperClipOutlined /> {c.attachmentCount}</span>}
-        </Button>
-        <Space>{actions}</Space>
-      </div>
-    </Card>
-  );
-}
-
-// One placeholder card per column while it loads.
-function CardSkeleton() {
-  return (
-    <Card size="small" aria-hidden styles={{ body: { padding: 14, display: 'flex', flexDirection: 'column', gap: 10 } }} style={{ borderRadius: 6 }}>
-      {[40, 70, 90, 55].map((w, i) => (
-        <Bar key={i} w={`${w}%`} h={i === 2 ? 32 : 12} />
-      ))}
     </Card>
   );
 }

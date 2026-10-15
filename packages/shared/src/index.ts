@@ -39,6 +39,7 @@ export const PERMISSIONS = [
   'complaint.create',
   'complaint.start',
   'complaint.resolve',
+  'complaint.assign',
   'expense.manage',
   'pms.perform',
   'calibration.manage',
@@ -402,7 +403,10 @@ export const resolveComplaintSchema = z.object({
 export type ResolveComplaintInput = z.infer<typeof resolveComplaintSchema>;
 
 export const complaintListQuerySchema = z.object({
-  status: z.enum(COMPLAINT_STATUSES).optional(),
+  // 'unresolved' = open and in progress together (someone's work list).
+  status: z.enum([...COMPLAINT_STATUSES, 'unresolved']).optional(),
+  // 'me' = assigned to whoever is asking, 'none' = nobody yet, or one person's id.
+  assignedTo: z.union([z.enum(['me', 'none']), z.string().uuid()]).optional(),
   assetId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
   search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, problem text
@@ -414,6 +418,13 @@ export const complaintListQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type ComplaintListQuery = z.infer<typeof complaintListQuerySchema>;
+
+// Assign a complaint to someone who can work on it, or (null) take the assignment away. The HOD may assign anyone;
+// an engineer may only take an unassigned complaint for themselves.
+export const assignComplaintSchema = z.object({ userId: z.string().uuid().nullable() });
+export type AssignComplaintInput = z.infer<typeof assignComplaintSchema>;
+// The people a complaint can be assigned to, with how many unresolved complaints each already has.
+export type Assignee = { id: string; name: string; openCount: number };
 
 export type ComplaintRow = {
   id: string;
@@ -433,6 +444,10 @@ export type ComplaintRow = {
   resolvedAt: string | null;
   resolvedByName: string | null;
   resolutionNotes: string | null;
+  // Who is to fix it: set by the HOD, taken by an engineer, or the engineer who started work on it.
+  assignedToId: string | null;
+  assignedToName: string | null;
+  assignedAt: string | null;
   // started − raised, resolved − raised (seconds); null until that step has happened.
   responseSeconds: number | null;
   downtimeSeconds: number | null;
@@ -443,7 +458,7 @@ export type ComplaintRow = {
 
 export type ComplaintEvent = {
   at: string; // ISO date-time
-  kind: 'raised' | 'started' | 'resolved' | 'document' | 'expense';
+  kind: 'raised' | 'assigned' | 'started' | 'resolved' | 'document' | 'expense';
   title: string;
   detail?: string | null;
   by?: string | null;

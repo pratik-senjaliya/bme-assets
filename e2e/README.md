@@ -35,5 +35,6 @@ create is named `E2E-…` and is removed at the start and the end of a run, so t
 | `a11y` | Every screen as every role: errors, headings, tab titles, sideways scroll at 3 widths, serious accessibility problems (axe-core) |
 | `phone` | Phones (375 and 320 wide): each list starts on the first screen, no sideways scroll, bottom bar, sort control; dark mode passes the accessibility check; the light/dark choice is kept |
 | `labels` | QR labels: the sheet follows the list's filters, every printed code decodes to its machine's link, scanning opens the machine (after sign-in), another department's label is refused, nursing cannot print |
+| `assign` | Complaint assignment and My work: the HOD assigns from the board and the engineer is told, the engineer finds it under "Assigned to me" and takes another, the nurse sees who has it, My work only for people who fix things |
 
 Failures leave a screenshot in `e2e/.out/`.

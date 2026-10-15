@@ -5,7 +5,7 @@ import { toAttachmentRow } from '../assets/attachments.service';
 
 type Db = Prisma.TransactionClient;
 
-export const complaintInclude = { asset: true, department: true, raisedBy: true } satisfies Prisma.ComplaintInclude;
+export const complaintInclude = { asset: true, department: true, raisedBy: true, assignedTo: { select: { name: true } } } satisfies Prisma.ComplaintInclude;
 export type ComplaintWithRefs = Prisma.ComplaintGetPayload<{ include: typeof complaintInclude }>;
 
 export const secondsBetween = (from: Date, to: Date | null) => (to ? Math.max(0, Math.round((to.getTime() - from.getTime()) / 1000)) : null);
@@ -19,9 +19,9 @@ export const complaintMetrics = (c: { raisedAt: Date; startedAt: Date | null; re
 
 export const complaintNo = (seq: number) => `CMP-${String(seq).padStart(4, '0')}`;
 
-// started_by / resolved_by are plain ids, so look the names up in one query for the whole page.
+// started_by / resolved_by / assigned_by are plain ids, so look the names up in one query for the whole page.
 export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<ComplaintRow[]> {
-  const ids = [...new Set(rows.flatMap((c) => [c.startedBy, c.resolvedBy]).filter((id): id is string => !!id))];
+  const ids = [...new Set(rows.flatMap((c) => [c.startedBy, c.resolvedBy, c.assignedBy]).filter((id): id is string => !!id))];
   const [users, { criticalDowntimeHours }, files] = await Promise.all([
     ids.length ? prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [],
     prisma.hospitalSettings.findFirstOrThrow({ select: { criticalDowntimeHours: true } }),
@@ -51,6 +51,9 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
       resolvedAt: c.resolvedAt?.toISOString() ?? null,
       resolvedByName: name(c.resolvedBy),
       resolutionNotes: c.resolutionNotes,
+      assignedToId: c.assignedToId,
+      assignedToName: c.assignedTo?.name ?? null,
+      assignedAt: c.assignedAt?.toISOString() ?? null,
       ...metrics,
       overDowntimeLimit: c.asset.criticality === 'critical' && downSeconds > criticalDowntimeHours * 3600,
       attachmentCount: files.find((f) => f.ownerId === c.id)?._count ?? 0,
@@ -62,12 +65,21 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
 // (for people allowed to see costs) every expense booked against it.
 export async function toComplaintDetail(c: ComplaintWithRefs, canSeeCosts: boolean): Promise<ComplaintDetail> {
   const [row] = await toComplaintRows([c]);
-  const [files, expenses] = await Promise.all([
+  const [files, expenses, assigner] = await Promise.all([
     prisma.attachment.findMany({ where: { ownerType: 'complaint', ownerId: c.id }, orderBy: { createdAt: 'asc' } }),
     canSeeCosts ? prisma.serviceExpense.findMany({ where: { complaintId: c.id }, orderBy: { date: 'asc' } }) : [],
+    c.assignedBy ? prisma.user.findUnique({ where: { id: c.assignedBy }, select: { name: true } }) : null,
   ]);
+  // Only the current assignment is shown; earlier ones are in the audit log. Taking a complaint, or starting it,
+  // reads as the engineer's own doing.
+  const selfTaken = c.assignedBy === c.assignedToId;
+  // Starting an unassigned complaint makes it the starter's; "Work started" already says so.
+  const byStarting = selfTaken && c.startedBy === c.assignedToId && c.startedAt?.getTime() === c.assignedAt?.getTime();
   const events: ComplaintEvent[] = [
     { at: row.raisedAt, kind: 'raised', title: 'Complaint raised', detail: row.description, by: row.raisedByName },
+    ...(row.assignedAt && row.assignedToName && !byStarting
+      ? [{ at: row.assignedAt, kind: 'assigned', title: selfTaken ? `Taken by ${row.assignedToName}` : `Assigned to ${row.assignedToName}`, by: selfTaken ? null : (assigner?.name ?? null) } satisfies ComplaintEvent]
+      : []),
     ...(row.startedAt ? [{ at: row.startedAt, kind: 'started', title: 'Work started', detail: `Response time ${durationText(row.responseSeconds)}`, by: row.startedByName } satisfies ComplaintEvent] : []),
     ...files.map((f): ComplaintEvent => ({ at: f.createdAt.toISOString(), kind: 'document', title: `Document added: ${f.fileName || f.kind}` })),
     ...expenses.map((e): ComplaintEvent => ({ at: e.createdAt.toISOString(), kind: 'expense', title: `Expense booked: ${e.description}`, detail: `₹ ${new Intl.NumberFormat('en-IN').format(Number(e.amount))}` })),
