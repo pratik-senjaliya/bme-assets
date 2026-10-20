@@ -5,7 +5,7 @@ import { Button, Dropdown, Grid, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { CRITICALITIES, CRITICALITY_LABEL, type AssetRow, type Paged } from '@bme/shared';
+import { CRITICALITIES, CRITICALITY_LABEL, type AssetRow, type HospitalInfo, type Paged } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { ExportMenu } from '@/components/ExportMenu';
 import { PageHeader } from '@/components/PageHeader';
@@ -24,12 +24,14 @@ const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'not_in_use', label: 'Not in use' },
   { value: 'condemned', label: 'Condemned' },
+  { value: 'transferred', label: 'Transferred' },
   { value: 'all', label: 'All' },
 ];
 
 // Filters live in the URL so a filtered list can be shared as a link.
 function AssetList() {
   const { can, user } = useAuth();
+  const hospital = useFetch<HospitalInfo>('/hospital'); // the Transferred filter only where transfers are on
   const phone = Grid.useBreakpoint().md === false;
   const router = useRouter();
   const pathname = usePathname();
@@ -112,7 +114,7 @@ function AssetList() {
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
         <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
-          <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
+          <Segmented aria-label="Status" value={q.status ?? 'active'} options={STATUS_OPTIONS.filter((o) => o.value !== 'transferred' || hospital.data?.transfersEnabled || q.status === 'transferred')} onChange={(v) => set({ status: v === 'active' ? undefined : String(v) })} />
         </div>
         <span style={{ color: COLORS.muted, fontWeight: 600 }} className="num phone-hide">
           {assets.data ? `${assets.data.total.toLocaleString('en-IN')} ${assets.data.total === 1 ? 'asset' : 'assets'}` : ' '}

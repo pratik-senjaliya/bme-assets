@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { prisma } from './lib/prisma';
-import { call, login, startServer } from './testUtils';
+import { call, condemnForm, login, startServer } from './testUtils';
 
 const PREFIX = 'ATEST-';
 process.env.STORAGE_DRIVER = 'local';
@@ -135,8 +135,7 @@ describe('who may decide', () => {
 
 describe('condemnation', () => {
   const condemn = (cookie: string, assetId: string, reason = 'Beyond economical repair, no spares available') => {
-    const form = new FormData();
-    form.set('reason', reason);
+    const form = condemnForm(reason);
     return fetch(`${base}/assets/${assetId}/condemn`, { method: 'POST', headers: { cookie }, body: form });
   };
 
@@ -172,8 +171,7 @@ describe('condemnation', () => {
 
   it('keeps the end-of-life letter with the request', async () => {
     const a = await makeAsset();
-    const form = new FormData();
-    form.set('reason', 'Manufacturer ended support');
+    const form = condemnForm('Manufacturer ended support');
     form.set('file', new Blob([new Uint8Array(Buffer.from('%PDF-1.4\nEOL letter'))]), 'eol-letter.pdf');
     const res = await fetch(`${base}/assets/${a.id}/condemn`, { method: 'POST', headers: { cookie: biomed }, body: form });
     assert.equal(res.status, 201);

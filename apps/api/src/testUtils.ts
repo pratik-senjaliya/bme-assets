@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import net, { type AddressInfo } from 'node:net';
 import { inflateSync } from 'node:zlib';
 import { createApp } from './app';
+import { todayISO } from './lib/dates';
 
 export const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
 
@@ -83,3 +84,13 @@ export function fakeSmtp() {
 
 // A 1 × 1 PNG: the smallest file the upload checks accept.
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+// A condemnation request as the committee's form sends it (multipart), with `reason` as the details.
+export function condemnForm(reason: string) {
+  const form = new FormData();
+  form.set('reasonCategory', 'damaged');
+  form.set('reason', reason);
+  form.set('estimatedValue', '5000');
+  form.set('committeeDate', todayISO());
+  return form;
+}

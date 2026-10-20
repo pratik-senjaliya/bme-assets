@@ -2,18 +2,19 @@
 
 import { Alert, Button, Space } from 'antd';
 import Link from 'next/link';
-import type { ApprovalRow, AssetDetail, CondemnationInfo } from '@bme/shared';
+import type { ApprovalRow, AssetDetail, CondemnationInfo, TransferInfo } from '@bme/shared';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 
-// Shown above an asset: what is waiting for the HOD, and, for a condemned asset, why and by whom.
+// Shown above an asset: what is waiting for the HOD, and, for a condemned or transferred asset, why and by whom.
 export function AssetApprovalBanners({ asset, version }: { asset: AssetDetail; version: number }) {
   const { can } = useAuth();
   const sees = can('asset.request_change') || can('approval.decide');
   const pending = useFetch<ApprovalRow[]>(sees ? `/approvals?status=pending&assetId=${asset.id}&v=${version}` : null);
   const condemnation = useFetch<CondemnationInfo>(asset.status === 'condemned' ? `/assets/${asset.id}/condemnation` : null);
+  const transfer = useFetch<TransferInfo>(asset.status === 'transferred' ? `/assets/${asset.id}/transfer` : null);
 
   return (
     <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
@@ -46,6 +47,25 @@ export function AssetApprovalBanners({ asset, version }: { asset: AssetDetail; v
                   <Button size="small">Certificate</Button>
                 </Link>
               </Space>
+            )
+          }
+        />
+      )}
+      {asset.status === 'transferred' && (
+        <Alert
+          type="warning"
+          showIcon
+          message={transfer.data ? `Transferred to ${transfer.data.toUnit}` : 'This asset has been transferred to another unit'}
+          description={
+            transfer.data ? (
+              <div>
+                {transfer.data.reason}
+                <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>
+                  Requested by {transfer.data.requestedByName}, approved by {transfer.data.approvedByName} on {formatDate(transfer.data.approvedAt)}. Its record up to then stays here, in history and exports.
+                </div>
+              </div>
+            ) : (
+              'It is read-only here and stays in history and exports.'
             )
           }
         />

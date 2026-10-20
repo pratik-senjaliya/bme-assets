@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { ApprovalRow, ApprovalStatus, ApprovalType } from '@bme/shared';
+import { CONDEMN_REASON_LABEL, isGone, type ApprovalRow, type ApprovalStatus, type ApprovalType, type CondemnReason } from '@bme/shared';
 import { audit } from '../../lib/audit';
 import { prettyDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
@@ -42,7 +42,7 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
   if (request.type === 'edit_key_field') {
     const before = await tx.asset.findUnique({ where: { id: request.targetId } });
     if (!before) throw new HttpError(409, 'The asset no longer exists, so this request cannot be applied. Reject it.');
-    if (before.status === 'condemned') throw new HttpError(409, 'The asset has been condemned and can no longer be edited');
+    if (isGone(before.status)) throw new HttpError(409, `The asset has been ${before.status} and can no longer be edited`);
     const changes = (payload.changes ?? {}) as { serialNo?: string | null; equipmentTypeId?: string; departmentId?: string; locationId?: string };
     // The request was made against the values it shows as "from". If someone has changed them since (another
     // approved request, or a direct edit by the HOD), applying it now would quietly undo that newer change.
@@ -66,10 +66,20 @@ export async function applyApproval(tx: Db, req: Request, request: Prisma.Approv
   } else if (request.type === 'condemn') {
     const before = await tx.asset.findUnique({ where: { id: request.targetId } });
     if (!before) throw new HttpError(409, 'The asset no longer exists. Reject this request.');
-    if (before.status === 'condemned') throw new HttpError(409, 'The asset is already condemned');
+    if (isGone(before.status)) throw new HttpError(409, `The asset has already been ${before.status}`);
     const after = await tx.asset.update({ where: { id: before.id }, data: { status: 'condemned' } });
     await audit(tx, req, { action: 'asset.condemn', entityType: 'asset', entityId: before.id, before, after });
-    await closeComplaintsOnCondemnation(tx, before.id, request.decidedBy!);
+    await closeComplaintsOnCondemnation(tx, before.id, request.decidedBy!, undefined, request.decidedAt ?? undefined);
+    await clearReminders(tx, before.id, ['pms', 'calibration', 'warranty', 'contract']);
+  } else if (request.type === 'transfer') {
+    // Gone to another unit: the same as condemnation for this hospital's lists, reminders and complaints, but its
+    // record says where it went. The other unit registers it afresh.
+    const before = await tx.asset.findUnique({ where: { id: request.targetId } });
+    if (!before) throw new HttpError(409, 'The asset no longer exists. Reject this request.');
+    if (isGone(before.status)) throw new HttpError(409, `The asset has already been ${before.status}`);
+    const after = await tx.asset.update({ where: { id: before.id }, data: { status: 'transferred' } });
+    await audit(tx, req, { action: 'asset.transfer', entityType: 'asset', entityId: before.id, before, after: { ...after, toUnit: payload.toUnit } });
+    await closeComplaintsOnCondemnation(tx, before.id, request.decidedBy!, `Closed: the equipment was transferred to ${String(payload.toUnit)}.`, request.decidedAt ?? undefined);
     await clearReminders(tx, before.id, ['pms', 'calibration', 'warranty', 'contract']);
   } else {
     filesToRemove.push(...(await applyDelete(tx, req, request.targetType, request.targetId)));
@@ -216,7 +226,14 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
         .map(([k, v]) => `Change ${field[k] ?? k} from ${label[k]?.(p.previous?.[k]) ?? '?'} to ${label[k]?.(v) ?? String(v)}`)
         .join('; ');
     } else if (r.type === 'condemn') {
-      summary = 'Condemn this asset. It leaves the active lists and reminders but stays in history and exports.';
+      const form = [
+        p.reasonCategory ? CONDEMN_REASON_LABEL[p.reasonCategory as CondemnReason] : null,
+        p.estimatedValue != null ? `estimated value today ${money(p.estimatedValue)}` : null,
+        p.committeeDate ? `committee on ${prettyDate(new Date(`${String(p.committeeDate)}T00:00:00Z`))}` : null,
+      ].filter(Boolean);
+      summary = `Condemn this asset${form.length ? ` (${form.join('; ')})` : ''}. It leaves the active lists and reminders but stays in history and exports.`;
+    } else if (r.type === 'transfer') {
+      summary = `Transfer this asset to ${String(p.toUnit)}. It leaves this hospital's active lists and reminders but stays in history and exports, marked transferred.`;
     } else {
       const po = pos.find((x) => x.id === r.targetId);
       const c = contracts.find((x) => x.id === r.targetId);

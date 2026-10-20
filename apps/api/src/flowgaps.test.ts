@@ -11,7 +11,7 @@ import { recordFailure, resetLoginThrottle } from './lib/loginThrottle';
 import { prisma } from './lib/prisma';
 import { machineDownMs } from './modules/complaints/complaints.service';
 import { generateReminders, OVERDUE_THRESHOLD } from './modules/reminders/reminders.service';
-import { call, login, startServer } from './testUtils';
+import { call, condemnForm, login, startServer } from './testUtils';
 
 const PREFIX = 'FTEST-';
 let base = '';
@@ -86,8 +86,7 @@ const raise = async (assetId: string, cookie = nursing) => {
 };
 const unread = (userId: string, assetId: string, type: string) => prisma.notification.count({ where: { userId, assetId, type, readAt: null } });
 const condemn = async (assetId: string) => {
-  const form = new FormData();
-  form.set('reason', 'Beyond economical repair');
+  const form = condemnForm('Beyond economical repair');
   assert.equal((await fetch(`${base}/assets/${assetId}/condemn`, { method: 'POST', headers: { cookie: biomed }, body: form })).status, 201);
   const request = await prisma.approvalRequest.findFirstOrThrow({ where: { targetId: assetId, type: 'condemn', status: 'pending' } });
   assert.equal((await call(base, admin, 'POST', `/approvals/${request.id}/approve`, {})).status, 200);

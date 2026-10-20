@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { createServiceLogSchema, type CreateServiceLogInput, type ServiceLogRow } from '@bme/shared';
+import { createServiceLogSchema, isGone, type CreateServiceLogInput, type ServiceLogRow } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser, requirePermission } from '../../lib/auth';
 import { isoDate, parseDate, todayISO } from '../../lib/dates';
@@ -32,7 +32,7 @@ serviceLogRouter.get('/:id/service-logs', requirePermission('asset.view'), async
 serviceLogRouter.post('/:id/service-logs', requirePermission('asset.edit'), validate(createServiceLogSchema), async (req, res) => {
   const asset = await findScopedAsset(req);
   const input = req.body as CreateServiceLogInput;
-  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so service can no longer be logged');
+  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so service can no longer be logged`);
   // Service already happened, so a past date is fine; a future one is not a record of anything.
   if (input.serviceDate > todayISO()) throw new HttpError(400, 'The service date cannot be in the future', { fieldErrors: { serviceDate: ['Cannot be in the future'] } });
   const row = await audited(req, { action: 'service_log.create', entityType: 'service_log' }, (tx) =>

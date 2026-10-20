@@ -20,6 +20,7 @@ const STATUS = {
   inactive: { tone: 'neutral', label: 'Inactive' },
   not_in_use: { tone: 'neutral', label: 'Not in use' },
   condemned: { tone: 'neutral', label: 'Condemned' },
+  transferred: { tone: 'neutral', label: 'Transferred' },
   open: { tone: 'bad', label: 'Open' },
   in_progress: { tone: 'warn', label: 'In progress' },
   on_hold: { tone: 'info', label: 'On hold' },

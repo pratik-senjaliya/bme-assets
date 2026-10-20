@@ -5,15 +5,20 @@ import {
   approveApprovalSchema,
   condemnRequestSchema,
   deleteRequestSchema,
+  isGone,
   rejectApprovalSchema,
+  transferRequestSchema,
   type ApprovalRow,
   type ApproveApprovalInput,
   type CondemnationInfo,
   type DeleteRequestInput,
   type RejectApprovalInput,
+  type TransferInfo,
+  type TransferRequestInput,
 } from '@bme/shared';
 import { audit } from '../../lib/audit';
 import { currentUser, requireAnyPermission, requirePermission } from '../../lib/auth';
+import { todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
@@ -25,29 +30,54 @@ export const approvalsRouter = Router();
 
 const REQUEST = 'asset.request_change' as const;
 
-async function assertNoPending(type: 'condemn' | 'delete', targetType: string, targetId: string) {
+async function assertNoPending(type: 'condemn' | 'delete' | 'transfer', targetType: string, targetId: string) {
   const dup = await prisma.approvalRequest.findFirst({ where: { type, targetType, targetId, status: 'pending' } });
   if (dup) throw new HttpError(409, 'There is already a pending request for this. Wait for the HOD to decide it.');
 }
 
 // ---------- Making a request ----------
 
-// Condemnation request, with an optional end-of-life letter (the manufacturer's or vendor's letter) as the
-// supporting document. Nothing changes on the asset until the HOD approves.
+// A machine that has left (condemned or transferred) cannot be asked about again.
+const goneMessage = (status: string) => (status === 'transferred' ? 'This equipment has been transferred to another unit' : 'This asset is already condemned');
+
+// Condemnation request: the committee's form (reason, estimated value today, committee date), with an optional
+// end-of-life letter (the manufacturer's or vendor's letter). Nothing changes on the asset until the HOD approves.
 approvalsRouter.post('/assets/:id/condemn', requirePermission(REQUEST), upload.single('file'), async (req, res) => {
   const me = currentUser(req);
-  const { reason } = condemnRequestSchema.parse(req.body);
+  const { reason, reasonCategory, estimatedValue, committeeDate } = condemnRequestSchema.parse(req.body);
+  if (committeeDate > todayISO()) throw new HttpError(400, 'The committee date cannot be in the future', { fieldErrors: { committeeDate: ['The committee date cannot be in the future'] } });
   const asset = await findScopedAsset(req);
-  if (asset.status === 'condemned') throw new HttpError(409, 'This asset is already condemned');
+  if (isGone(asset.status)) throw new HttpError(409, goneMessage(asset.status));
   await assertNoPending('condemn', 'asset', asset.id);
+  await assertNoPending('transfer', 'asset', asset.id);
 
   const letter = req.file ? await storeAttachment(req, { assetId: asset.id, ownerType: 'asset', ownerId: asset.id, kind: 'eol_letter' }) : null;
   const request = await prisma.$transaction(async (tx) => {
     const row = await tx.approvalRequest.create({
-      data: { type: 'condemn', targetType: 'asset', targetId: asset.id, payload: { reason, attachmentId: letter?.id ?? null }, requestedBy: me.id, createdBy: me.id },
+      data: { type: 'condemn', targetType: 'asset', targetId: asset.id, payload: { reason, reasonCategory, estimatedValue, committeeDate, attachmentId: letter?.id ?? null }, requestedBy: me.id, createdBy: me.id },
     });
     await audit(tx, req, { action: 'approval.request', entityType: 'approval_request', entityId: row.id, after: row });
     await notify(tx, await approvers(), `${me.name} asks to condemn ${asset.assetCode} ${asset.name}`, asset.id);
+    return row;
+  });
+  res.status(201).json((await toApprovalRows([request]))[0] satisfies ApprovalRow);
+});
+
+// Transfer to another unit of the group, where the hospital has turned transfers on. Nothing changes until the HOD
+// approves; then the asset is marked transferred and leaves the active lists, keeping its record and history here.
+approvalsRouter.post('/assets/:id/transfer', requirePermission(REQUEST), validate(transferRequestSchema), async (req, res) => {
+  const me = currentUser(req);
+  const { toUnit, reason } = req.body as TransferRequestInput;
+  const { transfersEnabled } = await prisma.hospitalSettings.findFirstOrThrow({ select: { transfersEnabled: true } });
+  if (!transfersEnabled) throw new HttpError(409, 'Transfers to other units are not turned on for this hospital (Hospital settings)');
+  const asset = await findScopedAsset(req);
+  if (isGone(asset.status)) throw new HttpError(409, goneMessage(asset.status));
+  await assertNoPending('transfer', 'asset', asset.id);
+  await assertNoPending('condemn', 'asset', asset.id);
+  const request = await prisma.$transaction(async (tx) => {
+    const row = await tx.approvalRequest.create({ data: { type: 'transfer', targetType: 'asset', targetId: asset.id, payload: { toUnit, reason }, requestedBy: me.id, createdBy: me.id } });
+    await audit(tx, req, { action: 'approval.request', entityType: 'approval_request', entityId: row.id, after: row });
+    await notify(tx, await approvers(), `${me.name} asks to transfer ${asset.assetCode} ${asset.name} to ${toUnit}`, asset.id);
     return row;
   });
   res.status(201).json((await toApprovalRows([request]))[0] satisfies ApprovalRow);
@@ -65,8 +95,8 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
   if (input.targetType === 'complaint' && (await prisma.complaint.findUniqueOrThrow({ where: { id: input.targetId } })).status !== 'open') {
     throw new HttpError(409, NOT_DELETABLE_COMPLAINT);
   }
-  if (input.targetType === 'asset' && asset.status === 'condemned') {
-    throw new HttpError(409, 'This asset has been condemned. Its record and certificate are kept, so it cannot be deleted.');
+  if (input.targetType === 'asset' && isGone(asset.status)) {
+    throw new HttpError(409, `${goneMessage(asset.status)}. Its record is kept, so it cannot be deleted.`);
   }
   await assertNoPending('delete', input.targetType, input.targetId);
 
@@ -104,17 +134,29 @@ approvalsRouter.get('/assets/:id/condemnation', requirePermission('asset.view'),
   });
   if (!request || !request.decidedAt) throw new HttpError(404, 'This asset has not been condemned');
   const [row] = await toApprovalRows([request]);
-  const attachmentId = (request.payload as { attachmentId?: string | null }).attachmentId;
-  const letter = attachmentId ? await prisma.attachment.findUnique({ where: { id: attachmentId } }) : null;
+  const p = request.payload as { attachmentId?: string | null; reasonCategory?: CondemnationInfo['reasonCategory']; estimatedValue?: number; committeeDate?: string };
+  const letter = p.attachmentId ? await prisma.attachment.findUnique({ where: { id: p.attachmentId } }) : null;
   res.json({
     hospitalName: (await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true } })).name,
     reason: row.requestReason ?? '',
+    reasonCategory: p.reasonCategory ?? null,
+    estimatedValue: p.estimatedValue ?? null,
+    committeeDate: p.committeeDate ?? null,
     requestedByName: row.requestedByName,
     requestedAt: row.createdAt,
     approvedByName: row.decidedByName ?? '',
     approvedAt: row.decidedAt!,
     eolLetter: letter ? { id: letter.id, fileName: letter.fileName } : null,
   } satisfies CondemnationInfo);
+});
+
+// Where an asset was transferred to, why, and who approved it (asset page banner).
+approvalsRouter.get('/assets/:id/transfer', requirePermission('asset.view'), async (req, res) => {
+  const asset = await findScopedAsset(req);
+  const request = await prisma.approvalRequest.findFirst({ where: { type: 'transfer', targetType: 'asset', targetId: asset.id, status: 'approved' }, orderBy: { decidedAt: 'desc' } });
+  if (!request || !request.decidedAt) throw new HttpError(404, 'This asset has not been transferred');
+  const [row] = await toApprovalRows([request]);
+  res.json({ toUnit: (request.payload as { toUnit: string }).toUnit, reason: row.requestReason ?? '', requestedByName: row.requestedByName, approvedByName: row.decidedByName ?? '', approvedAt: row.decidedAt! } satisfies TransferInfo);
 });
 
 // ---------- Deciding ----------

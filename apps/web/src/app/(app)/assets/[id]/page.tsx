@@ -13,6 +13,7 @@ import {
   EXPENSE_TYPES,
   MAX_UPLOAD_BYTES,
   createExpenseSchema,
+  isGone,
   purchaseOrderSchema,
   serviceContractSchema,
   type AssetDetail,
@@ -20,6 +21,7 @@ import {
   type ComplaintRow,
   type ExpenseList,
   type ExpenseRow,
+  type HospitalInfo,
   type Paged,
   type PurchaseOrderRow,
   type ServiceContractRow,
@@ -49,11 +51,13 @@ const ComplaintsHistory = dynamic(() => import('@/components/ComplaintsHistory')
 const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
 const RequestCondemnModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestCondemnModal));
 const RequestDeleteModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestDeleteModal));
+const RequestTransferModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestTransferModal));
 
 // Dot colours from the one status mapping: work done is green, a breakdown is red, registration is blue, paperwork is grey.
 const TIMELINE_COLOR: Record<TimelineEvent['kind'], string> = {
   registered: COLORS.info.dot, purchase_order: COLORS.neutral.dot, installation: COLORS.good.dot, warranty: COLORS.neutral.dot, contract: COLORS.neutral.dot, document: COLORS.neutral.dot,
   pms: COLORS.good.dot, calibration: COLORS.good.dot, complaint: COLORS.bad.dot, service: COLORS.good.dot, opening: COLORS.neutral.dot,
+  condemned: COLORS.neutral.dot, transferred: COLORS.neutral.dot,
 };
 
 export default function AssetDetailPage() {
@@ -65,6 +69,8 @@ export default function AssetDetailPage() {
   const [raising, setRaising] = useState(false);
   const [complaintsVersion, setComplaintsVersion] = useState(0);
   const [condemning, setCondemning] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const hospital = useFetch<HospitalInfo>(can('asset.request_change') ? '/hospital' : null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const [requests, setRequests] = useState(0); // bumps to refresh the "waiting for HOD" banners
 
@@ -73,6 +79,7 @@ export default function AssetDetailPage() {
   }
   if (!asset.data) return <DetailPageSkeleton kpis={0} />;
   const a = asset.data;
+  const gone = isGone(a.status); // condemned or transferred: read-only, kept in history
 
   return (
     <>
@@ -91,12 +98,12 @@ export default function AssetDetailPage() {
         crumbs={['Assets', a.assetCode]}
         action={
           <Space>
-            {can('complaint.create') && a.status !== 'condemned' && (
+            {can('complaint.create') && !gone && (
               <Button type={can('asset.edit') ? 'default' : 'primary'} onClick={() => setRaising(true)}>
                 Raise complaint
               </Button>
             )}
-            {can('asset.edit') && a.status !== 'condemned' && (
+            {can('asset.edit') && !gone && (
               <Link href={`/assets/${a.id}/edit`}>
                 <Button type="primary">Edit asset</Button>
               </Link>
@@ -110,10 +117,11 @@ export default function AssetDetailPage() {
                     ...(can('asset.edit') ? [{ key: 'label', icon: <QrcodeOutlined />, label: 'Print QR label' }, { key: 'pms-sticker', icon: <PrinterOutlined />, label: 'Print PMS sticker' }] : []),
                     ...(can('asset.request_change')
                       ? [
-                          // Condemned equipment keeps its record and certificate: no condemn or delete any more.
-                          ...(a.status !== 'condemned'
+                          // Equipment that has left keeps its record (and certificate): no condemn, transfer or delete any more.
+                          ...(!gone
                             ? [
                                 { key: 'condemn', label: 'Request condemnation' },
+                                ...(hospital.data?.transfersEnabled ? [{ key: 'transfer', label: 'Request transfer to another unit' }] : []),
                                 { key: 'delete', label: 'Request deletion (entered by mistake)', danger: true },
                               ]
                             : []),
@@ -125,6 +133,7 @@ export default function AssetDetailPage() {
                     else if (key === 'label') router.push(`/assets/labels?ids=${a.id}`);
                     else if (key === 'pms-sticker') router.push(`/assets/labels?kind=pms&ids=${a.id}`);
                     else if (key === 'condemn') setCondemning(true);
+                    else if (key === 'transfer') setTransferring(true);
                     else setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` });
                   },
                 }}
@@ -172,14 +181,15 @@ export default function AssetDetailPage() {
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
           ...(can('pms.perform') ? [{ key: 'pms', label: 'PMS', children: <AssetPmsTab asset={a} /> }] : []),
           ...(can('calibration.manage') ? [{ key: 'calibration', label: 'Calibration', children: <AssetCalibrationTab asset={a} onChanged={asset.reload} /> }] : []),
-          ...(can('asset.edit') ? [{ key: 'service', label: 'Service log', children: <AssetServiceLogTab assetId={a.id} canEdit={a.status !== 'condemned'} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
+          ...(can('asset.edit') ? [{ key: 'service', label: 'Service log', children: <AssetServiceLogTab assetId={a.id} canEdit={!gone} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
           ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsHistory assetId={a.id} reloadKey={complaintsVersion} /> }] : []),
           ...(can('expense.manage') ? [{ key: 'expenses', label: 'Expenses', children: <ExpensesTab id={a.id} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
-          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && a.status !== 'condemned'} showCosts={can('expense.manage')} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
+          { key: 'purchase', label: 'Purchase & contracts', children: <PurchaseTab id={a.id} canEdit={can('asset.edit') && !gone} showCosts={can('expense.manage')} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> },
           { key: 'documents', label: 'Documents', children: <DocumentsTab id={a.id} canEdit={can('asset.edit')} /> },
         ]}
       />
       <RequestCondemnModal open={condemning} asset={a} onClose={() => setCondemning(false)} onRequested={() => setRequests((v) => v + 1)} />
+      <RequestTransferModal open={transferring} asset={a} onClose={() => setTransferring(false)} onRequested={() => setRequests((v) => v + 1)} />
       <RequestDeleteModal target={deleting} onClose={() => setDeleting(null)} onRequested={() => setRequests((v) => v + 1)} />
       <RaiseComplaintModal
         open={raising}

@@ -21,6 +21,7 @@ enum AssetStatus {
   active
   not_in_use
   condemned
+  transferred // moved permanently to another unit, with HOD approval
 }
 
 enum ContractType {
@@ -71,6 +72,7 @@ enum ApprovalType {
   condemn
   delete
   edit_key_field
+  transfer
 }
 
 enum ApprovalStatus {
@@ -93,6 +95,8 @@ model HospitalSettings {
   criticalDowntimeHours Int   @default(24)
   // A resolved complaint its raiser has not closed closes by itself after this many days (decision B).
   complaintCloseDays    Int   @default(3)
+  // Transfers of equipment to another unit of the group: only for hospitals that have other units.
+  transfersEnabled      Boolean @default(false)
   // Counters incremented inside the creating transaction (asset IDs / complaint numbers are never reused).
   assetSeq         Int      @default(0)
   complaintSeq     Int      @default(0)

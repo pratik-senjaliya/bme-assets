@@ -4,7 +4,7 @@ import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { AutoComplete, Button, Grid, Input, type InputRef } from 'antd';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import type { AssetRow, Paged } from '@bme/shared';
+import { ASSET_STATUS_LABEL, type AssetRow, type Paged } from '@bme/shared';
 import { api } from '@/lib/api';
 import { COLORS } from '@/theme';
 
@@ -79,7 +79,7 @@ export function GlobalSearch() {
         </span>
         <span style={{ color: COLORS.muted, fontSize: 12 }}>
           {a.name} · {a.departmentName}, {a.locationName}
-          {a.status !== 'active' && ' · ' + (a.status === 'condemned' ? 'Condemned' : 'Not in use')}
+          {a.status !== 'active' && ' · ' + ASSET_STATUS_LABEL[a.status]}
         </span>
       </div>
     ),

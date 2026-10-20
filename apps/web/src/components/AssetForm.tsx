@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import {
   CRITICALITIES,
   createAssetSchema,
+  isGone,
   updateAssetSchema,
   type AssetDetail,
   type AssetStatus,
@@ -289,7 +290,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
             <InputNumber min={1} max={120} placeholder="e.g. 6" suffix="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
-        {asset && asset.status !== 'condemned' && (
+        {asset && !isGone(asset.status) && (
           <Col {...half}>
             <Form.Item label="Status" name="status" extra="Condemning an asset is a separate request that the HOD approves.">
               <Select options={[{ value: 'active', label: 'Active' }, { value: 'not_in_use', label: 'Not in use' }]} />

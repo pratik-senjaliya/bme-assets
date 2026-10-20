@@ -1,14 +1,15 @@
 import { Router, type Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import {
-  KEY_FIELDS,
-  MAX_LABELS,
   assetLabelsQuerySchema,
   assetListQuerySchema,
   attachmentCreateSchema,
   attachmentOwnerSchema,
   attachmentUploadSchema,
   createAssetSchema,
+  isGone,
+  KEY_FIELDS,
+  MAX_LABELS,
   purchaseOrderSchema,
   serviceContractSchema,
   updateAssetSchema,
@@ -155,7 +156,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   const me = currentUser(req);
   const input = req.body as UpdateAssetInput;
   const before = await findScoped(req);
-  if (before.status === 'condemned') throw new HttpError(409, 'A condemned asset can no longer be edited');
+  if (isGone(before.status)) throw new HttpError(409, `A ${before.status} asset can no longer be edited`);
 
   const changes: Record<string, unknown> = {};
   const keyChanges: Record<string, unknown> = {};
@@ -264,7 +265,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
 
 assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
-  const [orders, contracts, attachments, pms, calibrations, complaints, serviceLogs] = await Promise.all([
+  const [orders, contracts, attachments, pms, calibrations, complaints, serviceLogs, departures] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { assetId: asset.id } }),
     prisma.serviceContract.findMany({ where: { assetId: asset.id } }),
     prisma.attachment.findMany({ where: { ownerType: 'asset', ownerId: asset.id } }),
@@ -272,9 +273,17 @@ assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, r
     prisma.calibrationRecord.findMany({ where: { assetId: asset.id } }),
     prisma.complaint.findMany({ where: { assetId: asset.id } }),
     prisma.serviceLog.findMany({ where: { assetId: asset.id } }),
+    // The day it left the hospital: condemnation or transfer, as approved by the HOD.
+    prisma.approvalRequest.findMany({ where: { targetType: 'asset', targetId: asset.id, type: { in: ['condemn', 'transfer'] }, status: 'approved' } }),
   ]);
 
   const events: TimelineEvent[] = [
+    ...departures.map((r): TimelineEvent => {
+      const p = r.payload as { reason?: string; toUnit?: string };
+      return r.type === 'transfer'
+        ? { date: r.decidedAt!.toISOString(), kind: 'transferred', title: `Transferred to ${p.toUnit ?? 'another unit'}`, detail: p.reason }
+        : { date: r.decidedAt!.toISOString(), kind: 'condemned', title: 'Condemned', detail: p.reason };
+    }),
     { date: asset.createdAt.toISOString(), kind: 'registered', title: `Registered as ${asset.assetCode}` },
     ...orders.map((o): TimelineEvent => ({ date: isoDate(o.poDate), kind: 'purchase_order', title: `Purchase order ${o.poNumber}`, detail: o.vendor })),
     ...(asset.installationDate ? [{ date: isoDate(asset.installationDate), kind: 'installation', title: 'Installed' } satisfies TimelineEvent] : []),
@@ -321,7 +330,7 @@ assetsRouter.get('/:id/purchase-orders', requirePermission('asset.view'), async 
 
 assetsRouter.post('/:id/purchase-orders', requirePermission('asset.edit'), validate(purchaseOrderSchema), async (req, res) => {
   const asset = await findScoped(req);
-  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so purchase orders can no longer be added');
+  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so purchase orders can no longer be added`);
   const input = req.body as PurchaseOrderInput;
   const row = await audited(req, { action: 'purchase_order.create', entityType: 'purchase_order' }, (tx) =>
     tx.purchaseOrder.create({ data: { ...input, poDate: parseDate(input.poDate), assetId: asset.id, createdBy: currentUser(req).id } }),
@@ -345,7 +354,7 @@ assetsRouter.get('/:id/contracts', requirePermission('asset.view'), async (req, 
 
 assetsRouter.post('/:id/contracts', requirePermission('asset.edit'), validate(serviceContractSchema), async (req, res) => {
   const asset = await findScoped(req);
-  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so service contracts can no longer be added');
+  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so service contracts can no longer be added`);
   const input = req.body as ServiceContractInput;
   const row = await audited(req, { action: 'service_contract.create', entityType: 'service_contract' }, (tx) =>
     tx.serviceContract.create({
@@ -441,7 +450,7 @@ attachmentsRouter.post('/', upload.single('file'), async (req, res) => {
   const me = currentUser(req);
   if (!WRITE_PERMISSIONS[ownerType].some((p) => me.permissions.includes(p))) throw new HttpError(403, 'You do not have permission to add documents here');
   const asset = await scopedOwnerAsset(req, ownerType, ownerId);
-  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so documents can no longer be added');
+  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so documents can no longer be added`);
   if (ownerType === 'complaint') {
     const c = await prisma.complaint.findUniqueOrThrow({ where: { id: ownerId } });
     if (c.resolvedAt) throw new HttpError(409, 'This complaint is resolved, so documents can no longer be added');

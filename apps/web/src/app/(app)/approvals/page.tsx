@@ -14,7 +14,7 @@ import { useSingleFlight } from '@/lib/forms';
 import { StatusResult } from '@/components/StatusResult';
 import { COLORS } from '@/theme';
 
-const TYPE_LABEL: Record<ApprovalType, string> = { edit_key_field: 'Key-field edit', condemn: 'Condemnation', delete: 'Deletion' };
+const TYPE_LABEL: Record<ApprovalType, string> = { edit_key_field: 'Key-field edit', condemn: 'Condemnation', delete: 'Deletion', transfer: 'Transfer' };
 const STATUSES = [
   { value: 'pending', label: 'Waiting for decision' },
   { value: 'approved', label: 'Approved' },

@@ -132,7 +132,7 @@ await step('The vendor\'s super admin login is not offered for editing to the HO
 await step('Approve and Reject are fully on screen at 1440 and 1024 wide', async () => {
   const mk = (n) => biomed.api('POST', '/assets', { equipmentTypeId: VENT, name: n, departmentId: ICU, locationId: ICU1 });
   const a = (await mk('E2E-Appr')).body;
-  await biomed.api('POST', `/assets/${a.id}/condemn`, { reason: 'E2E layout check of the approvals screen' });
+  await biomed.api('POST', `/assets/${a.id}/condemn`, { reasonCategory: 'damaged', reason: 'E2E layout check of the approvals screen', estimatedValue: 0, committeeDate: new Date().toISOString().slice(0, 10) });
   for (const w of [1440, 1024]) {
     await ap.setViewportSize({ width: w, height: 900 });
     await ap.goto(BASE + '/approvals'); await ap.waitForLoadState('networkidle'); await ap.waitForTimeout(700);

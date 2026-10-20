@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { COMPLAINT_STATUS_LABEL, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
+import { COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
@@ -82,7 +82,7 @@ export const periodCtx = (from: string, to: string, scope: Ctx['scope'], q: Part
   scope,
 });
 
-export const STATUS_LABEL: Record<string, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'CONDEMNED' };
+export const STATUS_LABEL: Record<string, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'CONDEMNED', transferred: 'TRANSFERRED' };
 export const stamp = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: config.timezone }).format(d).replace(/(\d{4}) /, '$1, ') : '');
 export const hours = (ms: number) => Math.round((ms / 3_600_000) * 100) / 100;
 const hoursOf = (seconds: number | null) => (seconds == null ? null : Math.round((seconds / 3600) * 100) / 100);
@@ -108,13 +108,15 @@ async function assetMaster(wb: Collector, c: Ctx) {
   kpi(wb, 'Active', active.length, 'int');
   kpi(wb, 'Not in use', assets.filter((a) => a.status === 'not_in_use').length, 'int');
   kpi(wb, 'Condemned', assets.filter((a) => a.status === 'condemned').length, 'int');
+  const transferred = assets.filter((a) => a.status === 'transferred').length;
+  if (transferred) kpi(wb, 'Transferred', transferred, 'int', 'To other units');
   kpi(wb, 'Critical (active)', active.filter((a) => isCritical(a.criticality)).length, 'int');
   const expiring = rowsOf.filter((r, i) => assets[i].status === 'active' && r.warrantyStatus === 'expiring').length;
   kpi(wb, 'Warranty ending in 30 days', expiring, 'int', expiring ? 'Plan a contract' : 'None', expiring ? 'warn' : 'good');
   wb.charts.push(oneSeries('by-department', 'Active equipment by department', 'bar', 'Assets', tally(active, (a) => a.department.name), 'int'));
   wb.charts.push(oneSeries('by-type', 'Active equipment by type', 'bar', 'Assets', top(tally(active, (a) => a.equipmentType.name), 10), 'int'));
   wb.charts.push(oneSeries('by-criticality', 'Active equipment by criticality', 'column', 'Assets', CRITICALITIES.map((c) => [CRITICALITY_LABEL[c], active.filter((a) => a.criticality === c).length] as [string, number]), 'int'));
-  wb.charts.push(oneSeries('by-status', 'Equipment by status', 'column', 'Assets', [['Active', active.length], ['Not in use', assets.filter((a) => a.status === 'not_in_use').length], ['Condemned', assets.filter((a) => a.status === 'condemned').length]], 'int'));
+  wb.charts.push(oneSeries('by-status', 'Equipment by status', 'column', 'Assets', [['Active', active.length], ['Not in use', assets.filter((a) => a.status === 'not_in_use').length], ['Condemned', assets.filter((a) => a.status === 'condemned').length], ...(transferred ? [['Transferred', transferred] as [string, number]] : [])], 'int'));
   addSheet(wb, 'Asset master', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Name', key: 'name', width: 28 }, { header: 'Equipment type', key: 'type', width: 18 },
     { header: 'Make', pdf: false, key: 'make' }, { header: 'Model', pdf: false, key: 'model' }, { header: 'Serial no', pdf: false, key: 'serial', width: 18 },
@@ -291,9 +293,9 @@ export async function uptimeData(c: Ctx, criticalOnly: boolean) {
     orderBy: { raisedAt: 'asc' },
   });
 
-  // Condemned equipment is measured up to the day it was condemned, not counted as running after it.
+  // Condemned or transferred equipment is measured up to the day it left, not counted as running after it.
   const condemnations = await prisma.approvalRequest.findMany({
-    where: { type: 'condemn', status: 'approved', targetId: { in: assets.filter((a) => a.status === 'condemned').map((a) => a.id) } },
+    where: { type: { in: ['condemn', 'transfer'] }, status: 'approved', targetId: { in: assets.filter((a) => a.status === 'condemned' || a.status === 'transferred').map((a) => a.id) } },
     select: { targetId: true, decidedAt: true },
   });
   const condemnedAt = new Map(condemnations.map((r) => [r.targetId, r.decidedAt]));
@@ -425,6 +427,40 @@ async function expenses(wb: Collector, c: Ctx) {
     [...byMonth].sort(([a], [b]) => a.localeCompare(b)).map(([month, total]) => ({ month: monthFull(month), total })), ['total']);
 }
 
+// The condemnation committee's register: equipment condemned with HOD approval, dated by the committee's meeting
+// (requests from before the committee form existed use the approval date). Purchase cost is what its purchase orders
+// add up to.
+async function condemnationRegister(wb: Collector, c: Ctx) {
+  const approved = await prisma.approvalRequest.findMany({ where: { type: 'condemn', status: 'approved' }, orderBy: { decidedAt: 'asc' } });
+  type Form = { reason?: string; reasonCategory?: CondemnReason; estimatedValue?: number; committeeDate?: string };
+  const dated = approved.map((r) => ({ r, p: r.payload as Form, date: (r.payload as Form).committeeDate ?? isoDate(r.decidedAt!) })).filter((x) => x.date >= c.from && x.date <= c.to);
+  const assets = await prisma.asset.findMany({ where: { id: { in: dated.map((x) => x.r.targetId) }, ...c.scope }, include: { equipmentType: true, department: true, purchaseOrders: true } });
+  const users = await prisma.user.findMany({ where: { id: { in: [...new Set(dated.flatMap((x) => [x.r.requestedBy, x.r.decidedBy ?? '']))] } }, select: { id: true, name: true } });
+  const name = (id: string | null) => users.find((u) => u.id === id)?.name ?? '';
+  const rows = dated.flatMap(({ r, p, date }) => {
+    const a = assets.find((x) => x.id === r.targetId);
+    if (!a) return [];
+    const cost = a.purchaseOrders.reduce((t, o) => t + Number(o.cost), 0);
+    const years = a.installationDate ? (parseDate(date).getTime() - a.installationDate.getTime()) / (365.25 * 86400_000) : null;
+    return [{
+      committee: date, code: a.assetCode, name: a.name, type: a.equipmentType.name, make: [a.make, a.model].filter(Boolean).join(' '), serial: a.serialNo, dept: a.department.name,
+      installed: a.installationDate, age: years == null ? null : Math.round(years * 10) / 10, cost: cost || null, value: p.estimatedValue ?? null,
+      reason: p.reasonCategory ? CONDEMN_REASON_LABEL[p.reasonCategory] : '', details: p.reason ?? '', by: name(r.requestedBy), approver: name(r.decidedBy), approved: r.decidedAt, category: p.reasonCategory ?? 'other',
+    }];
+  }).sort((x, y) => x.committee.localeCompare(y.committee) || x.code.localeCompare(y.code));
+  kpi(wb, 'Equipment condemned', rows.length, 'int', span(c));
+  kpi(wb, 'Purchase cost', rows.reduce((t, r) => t + (r.cost ?? 0), 0), 'money', 'From their purchase orders');
+  kpi(wb, 'Estimated value today', rows.reduce((t, r) => t + (r.value ?? 0), 0), 'money', 'As given to the committee');
+  wb.charts.push(oneSeries('by-reason', 'Equipment condemned by reason', 'bar', 'Equipment', CONDEMN_REASONS.map((k) => [CONDEMN_REASON_LABEL[k], rows.filter((r) => r.category === k).length] as [string, number]), 'int'));
+  addSheet(wb, 'Condemnation register', [
+    { header: 'Committee date', key: 'committee', fmt: 'date' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Equipment', key: 'name', width: 26 }, { header: 'Type', pdf: false, key: 'type', width: 18 },
+    { header: 'Make / model', key: 'make', width: 22 }, { header: 'Serial no.', key: 'serial', width: 18 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Installed', pdf: false, key: 'installed', fmt: 'date' },
+    { header: 'Age (years)', key: 'age', fmt: 'years' }, { header: 'Purchase cost', key: 'cost', fmt: 'money' }, { header: 'Estimated value today', key: 'value', fmt: 'money', width: 20 },
+    { header: 'Reason', key: 'reason', width: 34 }, { header: 'Details', key: 'details', width: 40 }, { header: 'Asked by', pdf: false, key: 'by', width: 20 },
+    { header: 'Approved by', key: 'approver', width: 20 }, { header: 'Approved on', pdf: false, key: 'approved', fmt: 'date' },
+  ], rows, ['cost', 'value']);
+}
+
 async function warrantyContracts(wb: Collector, c: Ctx) {
   const today = parseDate(todayISO());
   const [assets, contracts] = await Promise.all([
@@ -504,6 +540,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     'equipment-age': () => equipmentAge(out, ctx),
     expenses: () => expenses(out, ctx),
     'warranty-contracts': () => warrantyContracts(out, ctx),
+    condemnation: () => condemnationRegister(out, ctx),
   };
   await builders[type]();
 
@@ -518,7 +555,10 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     group: type === 'breakdowns' ? q.group : null,
     generatedAt: new Date().toISOString(),
     generatedBy: by,
-    note: 'Condemned and not-in-use assets are included and labelled in the Status column.',
+    note:
+      type === 'condemnation'
+        ? 'Condemnation committee members (name, designation, signature, date): ________________________________'
+        : 'Condemned, transferred and not-in-use assets are included and labelled in the Status column.',
     ...out,
   };
   return { data, filename: `bme-${type}-${ranged ? `${from}_to_${to}` : today}` };
@@ -617,7 +657,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     group: null,
     generatedAt: new Date().toISOString(),
     generatedBy: me.name,
-    note: asset.status === 'condemned' ? 'This equipment has been CONDEMNED. Its history is kept.' : null,
+    note: asset.status === 'condemned' ? 'This equipment has been CONDEMNED. Its history is kept.' : asset.status === 'transferred' ? 'This equipment has been TRANSFERRED to another unit. Its history up to then is kept.' : null,
     ...wb,
   };
   return { data, filename: `bme-history-${asset.assetCode}-${todayISO()}`, assetCode: asset.assetCode };

@@ -5,6 +5,7 @@ import {
   complaintListQuerySchema,
   complaintNoteSchema,
   createComplaintSchema,
+  isGone,
   optionalNoteSchema,
   resolveComplaintSchema,
   UNRESOLVED_STATUSES,
@@ -98,7 +99,7 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
   const me = currentUser(req);
   const input = req.body as CreateComplaintInput;
   const asset = await findScopedAsset(req, input.assetId);
-  if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so complaints can no longer be raised for it');
+  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so complaints can no longer be raised for it`);
   // The people who can start work on it hear about it at once, not only when the board happens to be open.
   const staff = (await usersWithPermissions('complaint.start', 'notification.view')).filter((id) => id !== me.id);
 
