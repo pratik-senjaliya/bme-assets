@@ -130,6 +130,6 @@ describe('Sorting and filtered exports', () => {
     const rows = async (qs: string) => ((await (await call(base, admin, 'GET', `/reports/breakdowns?format=json&from=2020-01-01&${qs}`)).json()) as ReportData).sheets[0].rows;
     const all = await rows('');
     const open = await rows('complaintStatus=open');
-    assert.ok(open.length <= all.length && open.every((r) => r.status === 'open'));
+    assert.ok(open.length <= all.length && open.every((r) => r.status === 'Open'));
   });
 });

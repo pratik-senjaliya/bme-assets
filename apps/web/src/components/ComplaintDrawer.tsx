@@ -4,7 +4,7 @@ import { Alert, Button, Drawer, Timeline, Typography } from 'antd';
 import Link from 'next/link';
 import type { ComplaintDetail, ComplaintEvent } from '@bme/shared';
 import { useState } from 'react';
-import { useComplaintWork } from '@/components/ComplaintWork';
+import { StepNote, useComplaintWork } from '@/components/ComplaintWork';
 import { DocumentList } from '@/components/DocumentList';
 import { RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, StatusTag } from '@/components/StatusTag';
@@ -14,7 +14,18 @@ import { formatDateTime, formatDuration, formatMoney } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { FactsSkeleton } from '@/components/Skeletons';
 
-const DOT: Record<ComplaintEvent['kind'], string> = { raised: COLORS.bad.dot, assigned: COLORS.info.dot, started: COLORS.warn.dot, resolved: COLORS.good.dot, document: COLORS.neutral.dot, expense: COLORS.neutral.dot };
+const DOT: Record<ComplaintEvent['kind'], string> = {
+  raised: COLORS.bad.dot,
+  assigned: COLORS.info.dot,
+  started: COLORS.warn.dot,
+  escalated: COLORS.warn.dot,
+  held: COLORS.info.dot,
+  resumed: COLORS.warn.dot,
+  resolved: COLORS.good.dot,
+  closed: COLORS.neutral.dot,
+  document: COLORS.neutral.dot,
+  expense: COLORS.neutral.dot,
+};
 
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div style={{ background: COLORS.surfaceAlt, borderRadius: 8, padding: '12px 14px' }}>
@@ -35,7 +46,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
     onChanged?.();
   });
   const c = complaint.data && complaint.data.id === id ? complaint.data : null;
-  const canAttach = !!c && c.status !== 'resolved' && (can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
+  const canAttach = !!c && !c.resolvedAt && (can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
   // Running time for a complaint that is still open (display only; stored times are the server's).
   const openFor = c && !c.resolvedAt ? formatDuration((Date.now() - new Date(c.raisedAt).getTime()) / 1000) : null;
 
@@ -61,7 +72,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
       {c && (
         <div style={{ display: 'grid', gap: 24 }}>
           {c.overDowntimeLimit && (
-            <Alert type="error" showIcon message="Critical equipment down beyond the hospital's limit" description={c.status === 'resolved' ? 'This breakdown ran longer than the limit set in Hospital settings.' : 'This breakdown is still open and has passed the limit set in Hospital settings.'} />
+            <Alert type="error" showIcon message="Critical equipment down beyond the hospital's limit" description={c.resolvedAt ? 'This breakdown ran longer than the limit set in Hospital settings.' : 'This breakdown is still open and has passed the limit set in Hospital settings.'} />
           )}
           <div>
             <Link href={`/assets/${c.assetId}`} className="code">
@@ -78,6 +89,15 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
             <Fact label="Response time">{c.startedAt ? formatDuration(c.responseSeconds) : <span style={{ color: COLORS.muted, fontWeight: 400 }}>Not started</span>}</Fact>
             <Fact label={c.resolvedAt ? 'Downtime' : 'Open for'}>{c.resolvedAt ? formatDuration(c.downtimeSeconds) : openFor}</Fact>
           </div>
+          {c.status === 'resolved' && (
+            <Alert
+              type="success"
+              showIcon
+              message={`Resolved · waiting for ${c.raisedByName} to close it`}
+              description="Whoever raised it closes it once the equipment works again. Downtime ended when it was resolved."
+            />
+          )}
+          <StepNote c={c} />
           {actions(c) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{actions(c)}</div>}
           <div>
             <Typography.Title level={5} style={{ marginTop: 0 }}>
@@ -128,7 +148,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
               }}
               emptyText={canAttach ? 'No documents yet. Add a photo of the fault if it helps.' : 'No documents.'}
             />
-            {!canAttach && c.status === 'resolved' && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>A resolved complaint is closed, so documents can no longer be added.</div>}
+            {!canAttach && c.resolvedAt && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>A resolved complaint is closed, so documents can no longer be added.</div>}
           </div>
           {c.expenses.length > 0 && (
             <div>

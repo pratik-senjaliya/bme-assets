@@ -44,15 +44,16 @@ await step('Existing equipment: a warning says it will show overdue until the la
   await bp.waitForTimeout(500);
   expect((await bp.getByText(/will show as overdue/i).count()) === 0, 'the warning stayed after the dates were entered');
 }, bp);
-await step('New asset: installation report, photos and manual can be attached in the same form', async () => {
+await step('New asset: installation report, purchase order and photos can be attached in the same form', async () => {
   await fillAsset(bp, 'E2E-Docs');
   await bp.locator('.ant-upload input[type=file]').nth(0).setInputFiles(FIX('photo.png'));
-  await bp.locator('.ant-upload input[type=file]').nth(1).setInputFiles(FIX('photo.png'));
+  await bp.locator('.ant-upload input[type=file]').nth(1).setInputFiles(FIX('photo.png')); // purchase order
+  await bp.locator('.ant-upload input[type=file]').nth(2).setInputFiles(FIX('photo.png'));
   await bp.getByRole('button', { name: 'Create asset' }).click();
   await bp.waitForURL(/\/assets\/[0-9a-f-]{36}$/); await bp.waitForTimeout(1200);
   const id = bp.url().split('/').pop();
   const kinds = (await admin.api('GET', `/assets/${id}/attachments`)).body.map((f) => f.kind).sort();
-  expect(kinds.join() === 'installation_report,photo', `documents: ${kinds}`);
+  expect(kinds.join() === 'installation_report,photo,po', `documents: ${kinds}`);
 }, bp);
 
 // ---------- Session and sign-in ----------

@@ -37,9 +37,11 @@ export function RaiseComplaintModal({
     setAlready(null);
     if (!open || !chosen) return;
     let current = true;
-    void Promise.all(['open', 'in_progress'].map((s) => api<Paged<ComplaintRow>>(`/complaints?assetId=${chosen}&status=${s}&pageSize=1`).catch(() => null))).then((lists) => {
-      if (current) setAlready(lists.flatMap((l) => l?.items ?? [])[0] ?? null);
-    });
+    void api<Paged<ComplaintRow>>(`/complaints?assetId=${chosen}&status=unresolved&pageSize=1`)
+      .catch(() => null)
+      .then((list) => {
+        if (current) setAlready(list?.items[0] ?? null);
+      });
     return () => {
       current = false;
     };

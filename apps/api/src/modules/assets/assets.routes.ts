@@ -408,7 +408,7 @@ attachmentsRouter.get('/', async (req, res) => {
   if (!currentUser(req).permissions.includes(READ_PERMISSION[ownerType])) throw new HttpError(403, 'You do not have permission to see these documents');
   await scopedOwnerAsset(req, ownerType, ownerId);
   const rows = await prisma.attachment.findMany({ where: { ownerType, ownerId }, orderBy: { createdAt: 'desc' } });
-  const open = ownerType === 'complaint' && (await prisma.complaint.findUnique({ where: { id: ownerId } }))?.status !== 'resolved';
+  const open = ownerType === 'complaint' && !(await prisma.complaint.findUnique({ where: { id: ownerId } }))?.resolvedAt;
   res.json(rows.map((f) => ({ ...toAttachmentRow(f), canRemove: open && mayRemoveComplaintFile(req, f) })));
 });
 
@@ -425,7 +425,7 @@ attachmentsRouter.delete('/:id', requirePermission('asset.view'), async (req, re
   await scopedOwnerAsset(req, 'complaint', file.ownerId);
   if (!mayRemoveComplaintFile(req, file)) throw new HttpError(403, 'Only the person who added this file, or the biomedical team, can remove it');
   const complaint = await prisma.complaint.findUniqueOrThrow({ where: { id: file.ownerId } });
-  if (complaint.status === 'resolved') throw new HttpError(409, 'This complaint is resolved and closed, so its documents are kept');
+  if (complaint.resolvedAt) throw new HttpError(409, 'This complaint is resolved, so its documents are kept');
   await prisma.$transaction(async (tx) => {
     await tx.attachment.delete({ where: { id: file.id } });
     await audit(tx, req, { action: 'attachment.delete', entityType: 'attachment', entityId: file.id, before: file });
@@ -442,7 +442,7 @@ attachmentsRouter.post('/', upload.single('file'), async (req, res) => {
   if (asset.status === 'condemned') throw new HttpError(409, 'This equipment has been condemned, so documents can no longer be added');
   if (ownerType === 'complaint') {
     const c = await prisma.complaint.findUniqueOrThrow({ where: { id: ownerId } });
-    if (c.status === 'resolved') throw new HttpError(409, 'This complaint is resolved and closed, so documents can no longer be added');
+    if (c.resolvedAt) throw new HttpError(409, 'This complaint is resolved, so documents can no longer be added');
   }
   res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset.id, ownerType, ownerId, kind })));
 });

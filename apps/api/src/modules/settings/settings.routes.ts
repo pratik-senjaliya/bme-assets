@@ -18,6 +18,7 @@ const toResponse = (s: Row): SettingsResponse => ({
   patternLocked: s.patternLocked,
   reminderDays: s.reminderDays,
   criticalDowntimeHours: s.criticalDowntimeHours,
+  complaintCloseDays: s.complaintCloseDays,
   smtpHost: s.smtpHost,
   smtpPort: s.smtpPort,
   smtpUser: s.smtpUser,

@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
+import { COMPLAINT_STATUS_LABEL, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
@@ -229,17 +229,18 @@ async function breakdowns(wb: Collector, c: Ctx) {
     { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', width: 20 }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'asset', width: 26 },
     { header: 'Department', key: 'dept', width: 22 }, { header: 'Criticality', key: 'crit' }, { header: 'Asset status', pdf: false, key: 'astatus' }, { header: 'Problem', key: 'desc', width: 40 },
     { header: 'Raised by', pdf: false, key: 'by', width: 20 }, { header: 'Status', key: 'status' }, { header: 'Started', pdf: false, key: 'started', width: 20 }, { header: 'Started by', pdf: false, key: 'startedBy', width: 20 },
-    { header: 'Resolved', pdf: false, key: 'resolved', width: 20 }, { header: 'Resolved by', pdf: false, key: 'resolvedBy', width: 20 }, { header: 'Response time (h)', key: 'resp', fmt: 'hours', width: 18 },
+    { header: 'Resolved', pdf: false, key: 'resolved', width: 20 }, { header: 'Resolved by', pdf: false, key: 'resolvedBy', width: 20 }, { header: 'Closed', pdf: false, key: 'closed', width: 20 },
+    { header: 'Response time (h)', key: 'resp', fmt: 'hours', width: 18 },
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'Resolution', key: 'notes', width: 40 },
   ], rows.map(({ x, m }) => ({
     no: x.complaintNo, raised: stamp(x.raisedAt), code: x.asset.assetCode, asset: x.asset.name, dept: x.department.name, crit: CRITICALITY_LABEL[x.asset.criticality], astatus: STATUS_LABEL[x.asset.status], desc: x.description,
-    by: x.raisedBy.name, status: x.status.replace('_', ' '), started: stamp(x.startedAt), startedBy: name(x.startedBy), resolved: stamp(x.resolvedAt), resolvedBy: name(x.resolvedBy),
+    by: x.raisedBy.name, status: COMPLAINT_STATUS_LABEL[x.status], started: stamp(x.startedAt), startedBy: name(x.startedBy), resolved: stamp(x.resolvedAt), resolvedBy: name(x.resolvedBy), closed: stamp(x.closedAt),
     resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: x.resolutionNotes,
   })));
 
   const downs = rows.map((r) => r.m.downtimeSeconds).filter((v): v is number => v != null);
   const resps = rows.map((r) => r.m.responseSeconds).filter((v): v is number => v != null);
-  const stillOpen = rows.filter((r) => r.x.status !== 'resolved').length;
+  const stillOpen = rows.filter((r) => !r.x.resolvedAt).length;
   kpi(wb, 'Breakdowns', rows.length, 'int', span(c));
   kpi(wb, 'Still open', stillOpen, 'int', stillOpen ? 'Waiting for a fix' : 'All resolved', stillOpen ? 'warn' : 'good');
   kpi(wb, 'Average response', avg(resps) == null ? null : avg(resps)! / 3600, 'hours', 'Raised to started');
@@ -594,7 +595,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'What was done', key: 'notes', width: 40 },
   ], complaints.map((c) => {
     const m = complaintMetrics(c);
-    return { no: c.complaintNo, raised: stamp(c.raisedAt), by: c.raisedBy.name, desc: c.description, status: c.status.replace('_', ' '), started: stamp(c.startedAt), resolved: stamp(c.resolvedAt), resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: c.resolutionNotes };
+    return { no: c.complaintNo, raised: stamp(c.raisedAt), by: c.raisedBy.name, desc: c.description, status: COMPLAINT_STATUS_LABEL[c.status], started: stamp(c.startedAt), resolved: stamp(c.resolvedAt), resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: c.resolutionNotes };
   }));
   addSheet(wb, 'Service log', [{ header: 'Date', key: 'date', fmt: 'date' }, { header: 'Kind', key: 'kind' }, { header: 'Vendor', key: 'vendor', width: 24 }, { header: 'What was done', key: 'desc', width: 50 }],
     logs.map((l) => ({ date: l.serviceDate, kind: SERVICE_KIND[l.kind], vendor: l.vendor, desc: l.description })));

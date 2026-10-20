@@ -7,6 +7,7 @@ import { useState, type ReactNode } from 'react';
 import type { DashboardResponse } from '@bme/shared';
 import { ChartGrid } from '@/components/charts/LazyCharts';
 import { ComplaintsMiniList } from '@/components/ComplaintsMiniList';
+import { ToClose } from '@/components/ComplaintWork';
 import { KpiGrid } from '@/components/KpiTile';
 import { PageHeader } from '@/components/PageHeader';
 import { DashboardSkeleton, EmptyState } from '@/components/Skeletons';
@@ -71,6 +72,7 @@ export default function Home() {
   const d = dash.data;
   const phone = Grid.useBreakpoint().md === false;
   const [showCharts, setShowCharts] = useState(false);
+  const [closedVersion, setClosedVersion] = useState(0);
 
   const figures = d && (
     <>
@@ -186,6 +188,13 @@ export default function Home() {
               action={<Link href="/approvals"><Button size="small">Review</Button></Link>}
             />
           )}
+          <ToClose
+            version={closedVersion}
+            onChanged={() => {
+              setClosedVersion((v) => v + 1);
+              dash.reload();
+            }}
+          />
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
             <Stat label={d.scope === 'department' ? 'Your equipment' : 'Active assets'} value={d.activeAssets} href="/assets" tone="primary" hint="In active use" />
             <Stat label="Open complaints" value={d.openComplaints} href="/complaints" tone="warn" hint={d.openComplaints ? 'Waiting for a fix' : 'All clear'} />
