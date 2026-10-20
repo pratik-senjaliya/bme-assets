@@ -1,10 +1,10 @@
 'use client';
 
 import { PaperClipOutlined, UserOutlined } from '@ant-design/icons';
-import { App, Button, Card, Form, Input, Modal, Select, Space, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, Input, Modal, Select, Space, Typography } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import { resolveComplaintSchema, type Assignee, type ComplaintRow } from '@bme/shared';
+import { complaintNoteSchema, optionalNoteSchema, resolveComplaintSchema, type Assignee, type ComplaintRow, type Paged } from '@bme/shared';
 import { Bar } from '@/components/Skeletons';
 import { CriticalityTag, Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
@@ -13,16 +13,53 @@ import { formatDateTime, formatDuration } from '@/lib/format';
 import { parseForm, useSingleFlight } from '@/lib/forms';
 import { COLORS } from '@/theme';
 
-// Working on complaints, shared by the complaints board and "My work": the card, and the buttons for the next step
-// (Take it, Start work, Resolve, Assign) with their dialogs. The server checks every step again.
+// The steps that take a short note, with the words for their dialog. Escalating and holding need a reason; going
+// back to work and closing do not.
+const NOTE_STEPS = {
+  escalate: {
+    title: 'Escalate to the HOD',
+    ok: 'Escalate',
+    label: 'Why can it not be fixed here?',
+    initial: 'Needs OEM support',
+    placeholder: '',
+    intro: 'The HOD is told at once and decides what happens next (for example, putting it on hold for the OEM engineer). It stays with you meanwhile.',
+    required: true,
+  },
+  hold: {
+    title: 'Put on hold',
+    ok: 'Put on hold',
+    label: 'Why, and what happens next?',
+    initial: '',
+    placeholder: 'e.g. Spoke to the company engineer: he will attend in two days with the spare part.',
+    intro: 'The engineer it is assigned to is told. The downtime clock keeps running: the equipment is still down.',
+    required: true,
+  },
+  resume: { title: 'Back to work', ok: 'Back to work', label: 'Note (optional)', initial: '', placeholder: '', intro: 'The engineer it is assigned to is told it is back with them.', required: false },
+  close: {
+    title: 'Close complaint',
+    ok: 'Close complaint',
+    label: 'Anything to add? (optional)',
+    initial: '',
+    placeholder: 'e.g. Working fine since this morning.',
+    intro: 'Close it once you have checked the equipment works again. If it still does not work, raise a new complaint instead.',
+    required: false,
+  },
+} as const;
+type NoteStep = keyof typeof NOTE_STEPS;
+
+// Working on complaints, shared by the complaints board, "My work" and the details drawer: the card, and the buttons
+// for the next step (Take it, Start work, Escalate, Put on hold, Back to work, Resolve, Assign, Close) with their
+// dialogs. The server checks every step again.
 export function useComplaintWork(onChanged: () => void) {
   const { can, user } = useAuth();
   const { message } = App.useApp();
   const [resolving, setResolving] = useState<ComplaintRow | null>(null);
   const [assigning, setAssigning] = useState<ComplaintRow | null>(null);
+  const [noting, setNoting] = useState<{ c: ComplaintRow; step: NoteStep } | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
+  const [noteForm] = Form.useForm();
   const isHod = can('complaint.assign');
   const assignees = useFetch<Assignee[]>(isHod && assigning ? '/complaints/assignees' : null, { fresh: true });
   const single = useSingleFlight();
@@ -53,6 +90,29 @@ export function useComplaintWork(onChanged: () => void) {
     }
   }
 
+  function askNote(c: ComplaintRow, step: NoteStep) {
+    noteForm.setFieldsValue({ note: NOTE_STEPS[step].initial });
+    setNoting({ c, step });
+  }
+
+  async function saveNote() {
+    if (!noting) return;
+    const { c, step } = noting;
+    const input = parseForm(noteForm, NOTE_STEPS[step].required ? complaintNoteSchema : optionalNoteSchema, noteForm.getFieldsValue());
+    if (!input) return;
+    setSaving(true);
+    try {
+      await api(`/complaints/${c.id}/${step}`, { body: input });
+      message.success({ escalate: `${c.complaintNo} sent to the HOD`, hold: `${c.complaintNo} is on hold`, resume: `${c.complaintNo} is back in progress`, close: `${c.complaintNo} closed` }[step]);
+      setNoting(null);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setSaving(false);
+      onChanged();
+    }
+  }
+
   async function assign() {
     if (!assigning) return;
     const userId: string | null = assignForm.getFieldValue('userId') ?? null;
@@ -70,10 +130,18 @@ export function useComplaintWork(onChanged: () => void) {
     }
   }
 
-  // The buttons for the next step, or null when this person has none (nursing staff, a resolved complaint).
+  // The buttons for the next step, or null when this person has none.
   const actions = (c: ComplaintRow): ReactNode => {
-    if (c.status === 'resolved') return null;
+    if (c.status === 'closed') return null;
+    // Resolved: only whoever raised it has a step left, closing it.
+    if (c.status === 'resolved')
+      return c.raisedById === user?.id ? (
+        <Button type="primary" onClick={() => askNote(c, 'close')}>
+          Close complaint
+        </Button>
+      ) : null;
     const free = !c.assignedToId;
+    const canHold = can('complaint.hold');
     const take = () => single(() => step(c, 'assign', { userId: user?.id }, `${c.complaintNo} is yours`));
     const buttons = [
       isHod && (
@@ -97,7 +165,24 @@ export function useComplaintWork(onChanged: () => void) {
           Start work
         </Button>
       ),
-      c.status === 'in_progress' && can('complaint.resolve') && (
+      // The HOD answers an escalation (or ends a hold) by sending it back to work, or puts it on hold.
+      canHold && (c.status === 'on_hold' || c.escalatedAt) && (
+        <Button key="resume" onClick={() => askNote(c, 'resume')}>
+          Back to work
+        </Button>
+      ),
+      canHold && c.status === 'in_progress' && (
+        <Button key="hold" onClick={() => askNote(c, 'hold')}>
+          Put on hold
+        </Button>
+      ),
+      // Engineers escalate; the HOD, who would receive it, puts it on hold instead.
+      !canHold && c.status === 'in_progress' && !c.escalatedAt && can('complaint.start') && (
+        <Button key="escalate" onClick={() => askNote(c, 'escalate')}>
+          Escalate
+        </Button>
+      ),
+      (c.status === 'in_progress' || c.status === 'on_hold') && can('complaint.resolve') && (
         <Button
           key="resolve"
           type="primary"
@@ -134,6 +219,28 @@ export function useComplaintWork(onChanged: () => void) {
         </Form>
       </Modal>
       <Modal
+        open={!!noting}
+        title={noting ? `${NOTE_STEPS[noting.step].title} · ${noting.c.complaintNo}` : ''}
+        okText={noting ? NOTE_STEPS[noting.step].ok : 'Save'}
+        confirmLoading={saving}
+        onOk={() => single(saveNote)}
+        onCancel={() => setNoting(null)}
+        destroyOnHidden
+      >
+        {noting && (
+          <>
+            <Typography.Paragraph type="secondary">
+              {noting.c.assetCode} · {noting.c.assetName}. {NOTE_STEPS[noting.step].intro}
+            </Typography.Paragraph>
+            <Form form={noteForm} layout="vertical" requiredMark>
+              <Form.Item label={NOTE_STEPS[noting.step].label} name="note" rules={NOTE_STEPS[noting.step].required ? [{ required: true, message: 'Say why in a few words' }] : []}>
+                <Input.TextArea rows={3} maxLength={1000} showCount placeholder={NOTE_STEPS[noting.step].placeholder || undefined} />
+              </Form.Item>
+            </Form>
+          </>
+        )}
+      </Modal>
+      <Modal
         open={!!assigning}
         title={`Assign ${assigning?.complaintNo ?? ''}`}
         okText="Save"
@@ -162,6 +269,15 @@ export function useComplaintWork(onChanged: () => void) {
   );
 
   return { actions, dialogs };
+}
+
+// Where it stands when it is waiting on someone other than the engineer: escalated to the HOD, or on hold.
+export function StepNote({ c }: { c: ComplaintRow }) {
+  if (c.status === 'on_hold')
+    return <Alert style={{ marginTop: 10 }} type="info" showIcon message="On hold" description={c.holdNote} />;
+  if (c.escalatedAt)
+    return <Alert style={{ marginTop: 10 }} type="warning" showIcon message={`Escalated to the HOD · ${formatDateTime(c.escalatedAt)}`} description={c.escalationNote} />;
+  return null;
 }
 
 // Who has it: the assignee, or "Unassigned" (quiet, so a board of unassigned work is not a wall of warnings).
@@ -204,7 +320,8 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
         {c.departmentName} · raised by {c.raisedByName}
       </div>
       <div style={muted} className="num">{formatDateTime(c.raisedAt)}</div>
-      {c.status !== 'resolved' && <AssigneeLine c={c} />}
+      {!c.resolvedAt && <AssigneeLine c={c} />}
+      <StepNote c={c} />
       {waiting && <div style={clock} className="num">Waiting {waiting}</div>}
       {c.startedAt && (
         <div style={{ ...clock, ...(c.resolvedAt ? { background: 'transparent', padding: 0, color: COLORS.text, fontWeight: 600 } : {}) }} className="num">
@@ -216,6 +333,9 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
         <>
           <div style={{ ...clock, background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.good.bg, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.good.fg }} className="num">Downtime {formatDuration(c.downtimeSeconds)}</div>
           <div style={{ ...muted, marginTop: 6 }}>{c.resolutionNotes}</div>
+          <div style={{ ...muted, marginTop: 6 }}>
+            {c.status === 'resolved' ? `Waiting for ${c.raisedByName} to close` : c.closedByName ? `Closed by ${c.closedByName}` : 'Closed automatically'}
+          </div>
         </>
       )}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLORS.lineSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -226,6 +346,45 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
           {actions}
         </Space>
       </div>
+    </Card>
+  );
+}
+
+// The complaints this person raised that are fixed and waiting for them to close (decision B). Shown above the
+// complaints list for anyone who raises complaints; nothing at all when there are none.
+export function ToClose({ version, onChanged, onOpen }: { version: number; onChanged: () => void; onOpen?: (id: string) => void }) {
+  const { can } = useAuth();
+  const list = useFetch<Paged<ComplaintRow>>(can('complaint.create') ? `/complaints?status=resolved&raisedBy=me&pageSize=50&k=${version}` : null, { fresh: true });
+  const { actions, dialogs } = useComplaintWork(onChanged);
+  const items = list.data?.items ?? [];
+  if (!items.length) return null;
+  return (
+    <Card style={{ marginBottom: 20, borderColor: COLORS.good.dot }} styles={{ body: { padding: '14px 18px' } }}>
+      <div style={{ fontWeight: 700, color: COLORS.ink, fontSize: 15 }}>Fixed: please check and close ({items.length})</div>
+      <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 6 }}>
+        You raised these. Close each one once the equipment works again; any not closed close by themselves after a few days.
+      </div>
+      {items.map((c) => (
+        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+            {onOpen ? (
+              <Button type="link" className="code" style={{ padding: 0, height: 'auto' }} onClick={() => onOpen(c.id)}>
+                {c.complaintNo}
+              </Button>
+            ) : (
+              <span className="code">{c.complaintNo}</span>
+            )}
+            <span style={{ color: COLORS.ink, fontWeight: 600 }}> · {c.assetName}</span>
+            <div style={{ color: COLORS.muted, fontSize: 12.5 }}>
+              Resolved {c.resolvedAt ? formatDateTime(c.resolvedAt) : ''}
+              {c.resolvedByName && ` by ${c.resolvedByName}`}
+              {c.resolutionNotes && `: ${c.resolutionNotes}`}
+            </div>
+          </div>
+          {actions(c)}
+        </div>
+      ))}
+      {dialogs}
     </Card>
   );
 }

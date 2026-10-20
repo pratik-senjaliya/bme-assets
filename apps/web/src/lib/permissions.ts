@@ -12,6 +12,7 @@ export const PERMISSION_TEXT: Record<PermissionCode, { label: string; hint: stri
   'complaint.create': { label: 'Raise complaints', hint: 'Report a fault on equipment they can see' },
   'complaint.start': { label: 'Start work on complaints', hint: 'Marks the response time' },
   'complaint.resolve': { label: 'Resolve complaints', hint: 'Marks the end of the downtime' },
+  'complaint.hold': { label: 'Put complaints on hold', hint: 'Hold a complaint while waiting for the OEM engineer or a part, answer escalations, and put it back to work' },
   'complaint.assign': { label: 'Assign complaints', hint: 'Give a complaint to an engineer, or move it to another. Engineers can always take an unassigned one themselves' },
   'expense.manage': { label: 'Record and see service costs', hint: 'Repairs, spare parts and their bills' },
   'pms.perform': { label: 'Do PMS and see due lists', hint: 'Fill the checklist, record corrections' },

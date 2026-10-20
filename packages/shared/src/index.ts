@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   'complaint.start',
   'complaint.resolve',
   'complaint.assign',
+  'complaint.hold',
   'expense.manage',
   'pms.perform',
   'calibration.manage',
@@ -190,6 +191,7 @@ export const updateSettingsSchema = z.object({
   shortCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,10}$/).optional(),
   reminderDays: z.array(z.number().int().positive().max(365)).min(1).max(6).optional(),
   criticalDowntimeHours: z.number().int().min(1).max(720).optional(),
+  complaintCloseDays: z.number().int().min(1).max(30).optional(),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
   // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
   smtpHost: optionalText(200),
@@ -207,6 +209,7 @@ export type SettingsResponse = {
   patternLocked: boolean;
   reminderDays: number[];
   criticalDowntimeHours: number;
+  complaintCloseDays: number;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpUser: string | null;
@@ -393,8 +396,12 @@ export type ImportResult = { ok: boolean; dryRun: boolean; total: number; create
 
 // ---------- Complaints ----------
 
-export const COMPLAINT_STATUSES = ['open', 'in_progress', 'resolved'] as const;
+// Open → In progress (⇄ On hold, set and lifted by the HOD) → Resolved (downtime stops) → Closed (by whoever raised
+// it, or by itself after the hospital's number of days). Escalating to the HOD is a flag on an in-progress complaint.
+export const COMPLAINT_STATUSES = ['open', 'in_progress', 'on_hold', 'resolved', 'closed'] as const;
 export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
+export const UNRESOLVED_STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'on_hold'];
+export const COMPLAINT_STATUS_LABEL: Record<ComplaintStatus, string> = { open: 'Open', in_progress: 'In progress', on_hold: 'On hold', resolved: 'Resolved', closed: 'Closed' };
 
 // The department and the time are set by the server; the browser only says which asset and what is wrong.
 export const createComplaintSchema = z.object({
@@ -408,9 +415,20 @@ export const resolveComplaintSchema = z.object({
 });
 export type ResolveComplaintInput = z.infer<typeof resolveComplaintSchema>;
 
+// Escalating to the HOD and putting on hold both say why (e.g. "Needs OEM support", "OEM engineer visits Monday").
+export const complaintNoteSchema = z.object({ note: z.string().trim().min(3, 'Say why in a few words').max(1000) });
+export type ComplaintNoteInput = z.infer<typeof complaintNoteSchema>;
+// Back to work after a hold, or closing by whoever raised it: a note is optional.
+export const optionalNoteSchema = z.object({ note: z.string().trim().max(1000).optional().transform((v) => v || undefined) }).default({});
+export type OptionalNoteInput = z.infer<typeof optionalNoteSchema>;
+
 export const complaintListQuerySchema = z.object({
-  // 'unresolved' = open and in progress together (someone's work list).
-  status: z.enum([...COMPLAINT_STATUSES, 'unresolved']).optional(),
+  // 'unresolved' = open, in progress and on hold (someone's work list); 'done' = resolved and closed.
+  status: z.enum([...COMPLAINT_STATUSES, 'unresolved', 'done']).optional(),
+  // 'me' = raised by whoever is asking (their own complaints, e.g. the ones waiting for them to close).
+  raisedBy: z.enum(['me']).optional(),
+  // 'true' = escalated to the HOD and still waiting for them.
+  escalated: z.enum(['true']).optional(),
   // 'me' = assigned to whoever is asking, 'none' = nobody yet, or one person's id.
   assignedTo: z.union([z.enum(['me', 'none']), z.string().uuid()]).optional(),
   assetId: z.string().uuid().optional(),
@@ -441,9 +459,17 @@ export type ComplaintRow = {
   criticality: Criticality;
   departmentId: string;
   departmentName: string;
+  raisedById: string;
   raisedByName: string;
   description: string;
   status: ComplaintStatus;
+  // Escalated to the HOD and waiting for them (cleared once they put it on hold or back to work), with the reason.
+  escalatedAt: string | null;
+  escalationNote: string | null;
+  holdNote: string | null; // why it is on hold now
+  closedAt: string | null;
+  closedByName: string | null; // null when it closed by itself
+  closeNote: string | null;
   raisedAt: string;
   startedAt: string | null;
   startedByName: string | null;
@@ -464,7 +490,7 @@ export type ComplaintRow = {
 
 export type ComplaintEvent = {
   at: string; // ISO date-time
-  kind: 'raised' | 'assigned' | 'started' | 'resolved' | 'document' | 'expense';
+  kind: 'raised' | 'assigned' | 'started' | 'escalated' | 'held' | 'resumed' | 'resolved' | 'closed' | 'document' | 'expense';
   title: string;
   detail?: string | null;
   by?: string | null;

@@ -1,6 +1,7 @@
 import PgBoss from 'pg-boss';
 import { config } from './lib/config';
 import { todayISO } from './lib/dates';
+import { followUpResolvedComplaints } from './modules/complaints/complaints.service';
 import { generateReminders } from './modules/reminders/reminders.service';
 import { MONTHLY_TIME, lastMonth, saveMonthlyReport } from './modules/reports/monthly.service';
 
@@ -10,6 +11,9 @@ const MONTHLY_QUEUE = 'monthly-report';
 async function runReminders() {
   const result = await generateReminders(todayISO());
   console.log(`Reminders: ${result.created} created, ${result.emailed} emailed`);
+  // Resolved complaints: close the ones whose time is up, remind their raisers of the rest.
+  const complaints = await followUpResolvedComplaints(todayISO());
+  if (complaints.closed || complaints.reminded) console.log(`Complaints: ${complaints.closed} closed automatically, ${complaints.reminded} raisers reminded`);
 }
 
 // Last month's management report, saved once (see saveMonthlyReport).

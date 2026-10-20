@@ -112,7 +112,9 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
               { value: 'all', label: 'All' },
               { value: 'open', label: 'Open' },
               { value: 'in_progress', label: 'In progress' },
+              { value: 'on_hold', label: 'On hold' },
               { value: 'resolved', label: 'Resolved' },
+              { value: 'closed', label: 'Closed' },
             ]}
             onChange={(v) => (setStatus(v as StatusFilter), setPage(1))}
           />

@@ -50,6 +50,7 @@ function MyWork() {
   const { actions, dialogs } = useComplaintWork(changed);
   const until = addDaysISO(todayIST(), 7);
 
+  const escalated = useFetch<Paged<ComplaintRow>>(can('complaint.hold') ? `/complaints?escalated=true&pageSize=100&k=${version}` : null, { fresh: true });
   const mine = useFetch<Paged<ComplaintRow>>(`/complaints?assignedTo=me&status=unresolved&pageSize=100&k=${version}`, { fresh: true });
   const free = useFetch<Paged<ComplaintRow>>(`/complaints?assignedTo=none&status=unresolved&pageSize=100&k=${version}`, { fresh: true });
   const pms = useFetch<DueRow[]>(can('pms.perform') ? `/pms/due?until=${until}` : null);
@@ -80,6 +81,11 @@ function MyWork() {
   return (
     <>
       <PageHeader title="My work" subtitle={`${formatDate(todayIST())} · your complaints first, then what is waiting and what is due`} />
+      {can('complaint.hold') && (escalated.data?.total ?? 0) > 0 && (
+        <Section title="Escalated to you" count={escalated.data?.total} hint="Put on hold for the OEM, or send back to work">
+          {cards(escalated, '')}
+        </Section>
+      )}
       <Section title="Assigned to me" count={mine.data?.total} hint="Longest waiting first">
         {cards(mine, 'Nothing assigned to you right now.')}
       </Section>

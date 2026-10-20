@@ -36,6 +36,13 @@ export async function auditMany(db: Db, req: Request, entries: Entry[]) {
 
 export const audit = (db: Db, req: Request, e: Entry) => auditMany(db, req, [e]);
 
+// A change made by the system itself (a scheduled job): no signed-in person and no IP address.
+export async function auditSystem(db: Db, entries: Omit<Entry, 'actorId'>[]) {
+  await db.auditLog.createMany({
+    data: entries.map((e) => ({ actorId: null, action: e.action, entityType: e.entityType, entityId: e.entityId ?? null, before: toJson(e.before), after: toJson(e.after), ip: null })),
+  });
+}
+
 // Runs a change and its audit entry in one transaction, so there is never a change without a log
 // (or a log without a change). For `*.delete` actions the removed row is stored as `before` only.
 export function audited<T extends { id: string }>(

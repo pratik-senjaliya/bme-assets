@@ -118,6 +118,12 @@ async function main() {
     const downH = critical && rand() < 0.2 ? between(20, 40) : between(1, 14);
     const resolvedAt = open || inProgress ? null : new Date(raisedAt.getTime() + Math.max(downH, (startedAt!.getTime() - raisedAt.getTime()) / HOUR + 0.5) * HOUR);
     const raiser = a.departmentId === nursing.departmentId ? nursing : biomed;
+    // Resolved more than three days ago: closed, mostly by whoever raised it within the day, now and then by itself
+    // after three days (the default). Recent ones still wait for the raiser.
+    const old = resolvedAt && Date.now() - resolvedAt.getTime() > 3 * 24 * HOUR;
+    const byItself = old && rand() < 0.12;
+    const closedAt = old ? new Date(resolvedAt!.getTime() + (byItself ? 3 * 24 : between(1, 20)) * HOUR) : null;
+    const closeNote = byItself ? 'Closed automatically: not closed within 3 days of being resolved.' : null;
     const row = await prisma.complaint.create({
       data: {
         complaintNo: complaintNo(seqBefore + k + 1),
@@ -125,16 +131,20 @@ async function main() {
         raisedById: raiser.id,
         departmentId: a.departmentId,
         description: pick(PROBLEMS[type] ?? ['Not working properly']),
-        status: open ? 'open' : inProgress ? 'in_progress' : 'resolved',
+        status: open ? 'open' : inProgress ? 'in_progress' : closedAt ? 'closed' : 'resolved',
         raisedAt: open ? new Date(Date.now() - 30 * HOUR) : inProgress ? new Date(Date.now() - 21 * HOUR) : raisedAt,
         startedAt: open ? null : inProgress ? new Date(Date.now() - 20 * HOUR) : startedAt,
         startedBy: open ? null : biomed.id,
         resolvedAt,
         resolvedBy: resolvedAt ? biomed.id : null,
         resolutionNotes: resolvedAt ? pick(FIXES) : null,
+        closedAt,
+        closedBy: closedAt && !byItself ? raiser.id : null,
+        closeNote,
         createdBy: raiser.id,
       },
     });
+    if (closedAt) await prisma.complaintStep.create({ data: { complaintId: row.id, kind: 'closed', note: closeNote, at: closedAt, by: byItself ? null : raiser.id } });
     if (resolvedAt && rand() < 0.55) {
       const spare = rand() < 0.5;
       await prisma.serviceExpense.create({

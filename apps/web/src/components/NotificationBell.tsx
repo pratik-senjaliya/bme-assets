@@ -39,6 +39,7 @@ export function NotificationBell() {
     if (n.type === 'approval') router.push('/approvals');
     else if (n.type === 'report') router.push(`/reports/monthly${n.dueDate ? `?month=${n.dueDate.slice(0, 7)}` : ''}`);
     else if (n.assetId) router.push(`/assets/${n.assetId}?tab=${TAB[n.type]}`);
+    else if (n.type === 'complaint') router.push('/complaints'); // e.g. the daily "waiting for you to close" list
   }
 
   async function readAll() {

@@ -191,7 +191,9 @@ describe('12. Condemned equipment is closed', () => {
     await generateReminders(todayISO());
     await condemn(a.id);
     const closed = await prisma.complaint.findUniqueOrThrow({ where: { id: c.id } });
-    assert.equal(closed.status, 'resolved');
+    // Closed outright: nobody is asked to close a complaint on condemned equipment.
+    assert.equal(closed.status, 'closed');
+    assert.ok(closed.resolvedAt && closed.closedAt);
     assert.equal(closed.startedAt, null);
     assert.match(closed.resolutionNotes ?? '', /condemned/);
     assert.equal(await unread(ids.biomedUser, a.id, 'pms'), 0);

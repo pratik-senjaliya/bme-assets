@@ -52,10 +52,14 @@ enum ServiceKind {
   other
 }
 
+// Open → In progress (⇄ On hold, by the HOD) → Resolved (downtime stops) → Closed (by whoever raised it, or
+// automatically after the hospital's number of days).
 enum ComplaintStatus {
   open
   in_progress
+  on_hold
   resolved
+  closed
 }
 
 enum ExpenseType {
@@ -87,6 +91,8 @@ model HospitalSettings {
   reminderDays     Int[]    @default([30, 15, 5])
   // Critical equipment down for longer than this many hours is flagged on complaints and reports.
   criticalDowntimeHours Int   @default(24)
+  // A resolved complaint its raiser has not closed closes by itself after this many days (decision B).
+  complaintCloseDays    Int   @default(3)
   // Counters incremented inside the creating transaction (asset IDs / complaint numbers are never reused).
   assetSeq         Int      @default(0)
   complaintSeq     Int      @default(0)
@@ -392,6 +398,15 @@ model Complaint {
   assignedToId    String?
   assignedAt      DateTime?
   assignedBy      String?
+  // Escalated to the HOD and not yet acted on (put on hold or back to work): set by escalating, cleared by the HOD.
+  escalatedAt     DateTime?
+  escalatedBy     String?
+  // Why it is on hold now (e.g. the OEM engineer's visit); the history of holds is in complaint_steps.
+  holdNote        String?
+  // Closed by whoever raised it; closedBy is null when it closed by itself or with a condemnation.
+  closedAt        DateTime?
+  closedBy        String?
+  closeNote       String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   createdBy       String?
@@ -401,11 +416,28 @@ model Complaint {
   assignedTo User?            @relation("ComplaintAssignedTo", fields: [assignedToId], references: [id])
   department Department       @relation(fields: [departmentId], references: [id])
   expenses   ServiceExpense[]
+  steps      ComplaintStep[]
 
   @@index([assetId])
   @@index([departmentId])
   @@index([assignedToId])
   @@map("complaints")
+}
+
+// The steps of a complaint that carry a note and can happen more than once: started, escalated, held, resumed,
+// closed. Raised, assigned and resolved live on the complaint itself. Append-only, like the audit log.
+model ComplaintStep {
+  id          String   @id @default(uuid())
+  complaintId String
+  kind        String // started | escalated | held | resumed | closed
+  note        String?
+  at          DateTime @default(now())
+  by          String? // null: done by the system (closed automatically, condemnation)
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@map("complaint_steps")
 }
 
 model ServiceExpense {

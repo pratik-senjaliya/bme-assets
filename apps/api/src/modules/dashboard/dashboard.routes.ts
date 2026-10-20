@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { isCritical, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
+import { isCritical, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
@@ -43,7 +43,7 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   const showDue = can('pms.perform') || can('calibration.manage');
   const [activeAssets, openComplaints, pmsDue, calDue, pendingApprovals, complaints, openRows, department] = await Promise.all([
     prisma.asset.count({ where: { status: 'active', ...scope } }),
-    prisma.complaint.count({ where: { status: { in: ['open', 'in_progress'] }, ...scope } }),
+    prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope } }),
     can('pms.perform') ? dueAssets('nextPmsDue', 'pms') : [],
     can('calibration.manage') ? dueAssets('nextCalibrationDue', 'calibration') : [],
     can('approval.decide') ? prisma.approvalRequest.count({ where: { status: 'pending' } }) : null,
@@ -51,7 +51,7 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
       ? prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${firstMonth}-01`) }, ...scope }, select: { raisedAt: true, resolvedAt: true } })
       : [],
     can('complaint.view')
-      ? prisma.complaint.findMany({ where: { status: { in: ['open', 'in_progress'] }, ...scope }, include: complaintInclude, orderBy: { raisedAt: 'asc' }, take: 8 })
+      ? prisma.complaint.findMany({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude, orderBy: { raisedAt: 'asc' }, take: 8 })
       : [],
     scope.departmentId ? prisma.department.findUnique({ where: { id: scope.departmentId } }) : null,
   ]);

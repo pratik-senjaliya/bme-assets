@@ -153,7 +153,8 @@ await step('The complaint drawer tells the whole story in order', async () => {
   await bp.locator('tbody tr', { hasText: made.cmp.complaintNo }).first().click();
   const d = bp.locator('.ant-drawer-body'); await d.waitFor(); await bp.waitForTimeout(800);
   const t = await d.innerText();
-  const i = ['Complaint raised', 'Work started', 'Resolved'].map((s) => t.indexOf(s));
+  const steps = await d.locator('.ant-timeline').innerText(); // the order is the history's, not the notes above it
+  const i = ['Complaint raised', 'Work started', 'Resolved'].map((s) => steps.indexOf(s));
   expect(i.every((x) => x >= 0) && i[0] < i[1] && i[1] < i[2], `order ${i}`);
   expect(/Response time/i.test(t) && /Downtime/i.test(t), 'metrics missing');
   await bp.keyboard.press('Escape');

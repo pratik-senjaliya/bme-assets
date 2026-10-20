@@ -5,8 +5,8 @@ import { Button, Card, Col, Row, Space, Tabs, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { ComplaintRow, ComplaintStatus, Paged } from '@bme/shared';
-import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
+import type { ComplaintRow, Paged } from '@bme/shared';
+import { CardSkeleton, ComplaintCard, ToClose, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/Skeletons';
 import { api, useFetch } from '@/lib/api';
@@ -18,10 +18,13 @@ const ComplaintDrawer = dynamic(() => import('@/components/ComplaintDrawer').the
 const ComplaintsHistory = dynamic(() => import('@/components/ComplaintsHistory').then((m) => m.ComplaintsHistory));
 const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
 
-const COLUMNS: { status: ComplaintStatus; title: string; empty: string }[] = [
+// "done" = resolved (waiting for whoever raised it to close) and closed, latest first.
+type Column = 'open' | 'in_progress' | 'on_hold' | 'done';
+const COLUMNS: { status: Column; title: string; empty: string }[] = [
   { status: 'open', title: 'Open', empty: 'Nothing waiting.' },
   { status: 'in_progress', title: 'In progress', empty: 'Nothing being worked on.' },
-  { status: 'resolved', title: 'Recently resolved', empty: 'No resolved complaints yet.' },
+  { status: 'on_hold', title: 'On hold', empty: 'Nothing on hold.' },
+  { status: 'done', title: 'Recently resolved', empty: 'No resolved complaints yet.' },
 ];
 
 export default function ComplaintsPage() {
@@ -39,6 +42,7 @@ export default function ComplaintsPage() {
         crumbs={['Complaints']}
         action={can('complaint.create') && <Button type="primary" onClick={() => setRaising(true)}>Raise complaint</Button>}
       />
+      <ToClose version={version} onChanged={() => setVersion((v) => v + 1)} onOpen={setOpenId} />
       {canWork ? (
         <Tabs
           defaultActiveKey="board"
@@ -72,7 +76,7 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
     <>
       <Row gutter={16}>
         {COLUMNS.map((col) => (
-          <Col key={col.status} xs={24} lg={8}>
+          <Col key={col.status} xs={24} md={12} xl={6}>
             <BoardColumn {...col} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
           </Col>
         ))}
@@ -82,7 +86,7 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
   );
 }
 
-const DOT: Record<ComplaintStatus, string> = { open: COLORS.bad.dot, in_progress: COLORS.warn.dot, resolved: COLORS.good.dot };
+const DOT: Record<Column, string> = { open: COLORS.bad.dot, in_progress: COLORS.warn.dot, on_hold: COLORS.info.dot, done: COLORS.good.dot };
 
 function BoardColumn({
   status,
@@ -92,14 +96,14 @@ function BoardColumn({
   onOpen,
   actions,
 }: {
-  status: ComplaintStatus;
+  status: Column;
   title: string;
   empty: string;
   version: number;
   onOpen: (id: string) => void;
   actions: (c: ComplaintRow) => ReactNode;
 }) {
-  const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=${status === 'resolved' ? 10 : 50}&k=${version}`);
+  const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=${status === 'done' ? 10 : 50}&k=${version}`);
   // Open and in-progress columns show 50 at a time; "Show more" loads the next 50, so every complaint can be worked on.
   const [more, setMore] = useState<ComplaintRow[]>([]);
   const [page, setPage] = useState(1);
@@ -129,7 +133,7 @@ function BoardColumn({
           <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: DOT[status], display: 'inline-block' }} />
           <span style={{ fontWeight: 700, fontSize: 14.5 }}>{title}</span>
           {/* Resolved shows the latest few, so its badge says so instead of an all-time total. */}
-          <span className="num" style={{ color: COLORS.muted, fontWeight: 600, fontSize: 12.5, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 4, padding: '0 7px' }}>{status === 'resolved' ? `Latest ${first.length}` : total}</span>
+          <span className="num" style={{ color: COLORS.muted, fontWeight: 600, fontSize: 12.5, background: COLORS.surface, border: `1px solid ${COLORS.line}`, borderRadius: 4, padding: '0 7px' }}>{status === 'done' ? `Latest ${first.length}` : total}</span>
         </Space>
       }
       style={{ marginBottom: 16, background: COLORS.surfaceAlt, borderColor: COLORS.line, borderRadius: 8 }}
@@ -145,7 +149,7 @@ function BoardColumn({
       {shown.map((c) => (
         <ComplaintCard key={c.id} c={c} actions={actions(c)} onOpen={() => onOpen(c.id)} />
       ))}
-      {status !== 'resolved' && list.data && shown.length < total && (
+      {status !== 'done' && list.data && shown.length < total && (
         <Button block loading={loadingMore} onClick={() => void showMore()}>
           Show more ({total - shown.length} more)
         </Button>
