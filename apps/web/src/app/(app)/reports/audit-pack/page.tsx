@@ -22,6 +22,7 @@ const CONTENTS: { key: keyof AuditPackSummary; label: string }[] = [
   { key: 'assets', label: 'Equipment in the inventory' },
   { key: 'pmsRecords', label: 'PMS checklists' },
   { key: 'calibrations', label: 'Calibrations' },
+  { key: 'oemReports', label: 'OEM PMS reports' },
   { key: 'certificates', label: 'Calibration certificates' },
   { key: 'complaints', label: 'Breakdowns' },
   { key: 'condemnations', label: 'Equipment condemned' },

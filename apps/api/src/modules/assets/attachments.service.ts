@@ -28,22 +28,28 @@ export const toAttachmentRow = (a: Prisma.AttachmentGetPayload<object>): Attachm
   createdAt: a.createdAt.toISOString(),
 });
 
-// Stores the uploaded file (req.file) privately and records it against an owner (an asset, a calibration
-// record, ...). Files live under the asset's folder so removing an asset's data is one prefix.
+// Checks the uploaded file (req.file) and puts it in private storage under the asset's folder (so removing an
+// asset's data is one prefix). Returns what the attachment row needs; whoever saves the row removes the file again
+// (storage.remove) if that fails.
+export async function stageUpload(req: Request, assetId: string) {
+  if (!req.file) throw new HttpError(400, 'Choose a file to upload');
+  const type = sniff(req.file.buffer);
+  if (!type) throw new HttpError(415, 'Only PDF, JPG and PNG files are allowed');
+  // multer reads names as latin1; keep it readable and free of path characters.
+  const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8').replace(/[\\/\x00-\x1f]/g, '_').slice(0, 150);
+  const key = `assets/${assetId}/${randomUUID()}.${type.ext}`;
+  await getStorage().put(key, req.file.buffer, type.mime);
+  return { fileName, filePath: key, mime: type.mime, size: req.file.size };
+}
+
+// Stores the uploaded file privately and records it against an owner (an asset, a calibration record, ...).
 export async function storeAttachment(
   req: Request,
   owner: { assetId: string; ownerType: string; ownerId: string; kind: DbAttachmentKind },
 ) {
-  if (!req.file) throw new HttpError(400, 'Choose a file to upload');
-  const type = sniff(req.file.buffer);
-  if (!type) throw new HttpError(415, 'Only PDF, JPG and PNG files are allowed');
-
-  // multer reads names as latin1; keep it readable and free of path characters.
-  const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8').replace(/[\\/\x00-\x1f]/g, '_').slice(0, 150);
-  const key = `assets/${owner.assetId}/${randomUUID()}.${type.ext}`;
-
+  const staged = await stageUpload(req, owner.assetId);
+  const key = staged.filePath;
   const storage = getStorage();
-  await storage.put(key, req.file.buffer, type.mime);
   try {
     return await audited(req, { action: 'attachment.create', entityType: 'attachment' }, (tx) =>
       tx.attachment.create({
@@ -51,10 +57,7 @@ export async function storeAttachment(
           ownerType: owner.ownerType,
           ownerId: owner.ownerId,
           kind: owner.kind,
-          fileName,
-          filePath: key,
-          mime: type.mime,
-          size: req.file!.size,
+          ...staged,
           createdBy: currentUser(req).id,
         },
       }),
@@ -85,6 +88,8 @@ export async function assetIdOfOwner(ownerType: string, ownerId: string): Promis
       return (await prisma.purchaseOrder.findUnique(id))?.assetId;
     case 'calibration_record':
       return (await prisma.calibrationRecord.findUnique(id))?.assetId;
+    case 'pms_record':
+      return (await prisma.pmsRecord.findUnique(id))?.assetId;
     default:
       return undefined;
   }

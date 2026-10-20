@@ -41,7 +41,7 @@ export default function PmsRecordPage() {
           crumbs={['Assets', r.assetCode, 'PMS record']}
           action={
             <Space>
-              <Link href={`/assets/${r.assetId}/pms/new?corrects=${r.id}`}>
+              <Link href={`/assets/${r.assetId}/pms/${r.kind === 'oem' ? 'oem' : 'new'}?corrects=${r.id}`}>
                 <Button>Record a correction</Button>
               </Link>
               {can('asset.edit') && (
@@ -90,6 +90,7 @@ export default function PmsRecordPage() {
         </Typography.Title>
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           Preventive maintenance report · {r.equipmentTypeName}
+          {r.kind === 'oem' && ' · done by the OEM engineer'}
         </Typography.Title>
 
         <Descriptions size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
@@ -101,48 +102,64 @@ export default function PmsRecordPage() {
           <Descriptions.Item label="Result">
             <StatusTag status={r.result} />
           </Descriptions.Item>
-          <Descriptions.Item label="Performed on">
-            <Tooltip title="Recorded by the system. It cannot be changed.">
+          <Descriptions.Item label={r.kind === 'oem' ? 'Date of the visit' : 'Performed on'}>
+            <Tooltip title={r.kind === 'oem' ? 'From the OEM report, checked by the system. It cannot be changed.' : 'Recorded by the system. It cannot be changed.'}>
               <span>
                 {formatDate(r.performedOn)} <LockOutlined aria-label="Locked" style={{ color: COLORS.muted }} />
               </span>
             </Tooltip>
           </Descriptions.Item>
-          <Descriptions.Item label="Performed by">{r.performedByName}</Descriptions.Item>
+          {r.kind === 'oem' ? (
+            <>
+              <Descriptions.Item label="Done by">{r.serviceBy}</Descriptions.Item>
+              <Descriptions.Item label="Entered by">{r.performedByName}</Descriptions.Item>
+            </>
+          ) : (
+            <Descriptions.Item label="Performed by">{r.performedByName}</Descriptions.Item>
+          )}
           <Descriptions.Item label="Submitted">{formatDateTime(r.submittedAt)}</Descriptions.Item>
-          <Descriptions.Item label="Checklist">Version {r.templateVersion}</Descriptions.Item>
+          <Descriptions.Item label="Checklist">{r.templateVersion ? `Version ${r.templateVersion}` : 'Not filled (OEM report only)'}</Descriptions.Item>
+          {r.report && (
+            <Descriptions.Item label="OEM service report">
+              <a href={`/api/v1/attachments/${r.report.id}/download`} target="_blank" rel="noreferrer">
+                {r.report.fileName || 'Report'}
+              </a>
+            </Descriptions.Item>
+          )}
         </Descriptions>
 
-        <Table<PmsItem>
-          size="small"
-          rowKey="id"
-          pagination={false}
-          dataSource={r.items}
-          columns={[
-            { title: 'Check', dataIndex: 'label' },
-            {
-              title: 'Recorded',
-              key: 'answer',
-              render: (_: unknown, i) => {
-                const v = r.answers[i.id];
-                if (v === undefined) return '—';
-                if (i.type === 'check') return v === 'pass' ? 'Pass' : 'Fail';
-                return i.type === 'reading' ? `${v} ${i.unit ?? ''}` : String(v);
+        {r.items.length > 0 && (
+          <Table<PmsItem>
+            size="small"
+            rowKey="id"
+            pagination={false}
+            dataSource={r.items}
+            columns={[
+              { title: 'Check', dataIndex: 'label' },
+              {
+                title: 'Recorded',
+                key: 'answer',
+                render: (_: unknown, i) => {
+                  const v = r.answers[i.id];
+                  if (v === undefined) return '—';
+                  if (i.type === 'check') return v === 'pass' ? 'Pass' : 'Fail';
+                  return i.type === 'reading' ? `${v} ${i.unit ?? ''}` : String(v);
+                },
               },
-            },
-            {
-              title: 'Allowed',
-              key: 'range',
-              render: (_: unknown, i) => (i.type === 'reading' && (i.min != null || i.max != null) ? `${i.min ?? '…'} – ${i.max ?? '…'} ${i.unit ?? ''}` : ''),
-            },
-            {
-              title: <span className="sr-only">Actions</span>,
-              key: 'ok',
-              width: 90,
-              render: (_: unknown, i) => (i.type === 'text' || r.answers[i.id] === undefined ? '' : <StatusTag status={itemOk(i, r.answers[i.id]) ? 'pass' : 'fail'} />),
-            },
-          ]}
-        />
+              {
+                title: 'Allowed',
+                key: 'range',
+                render: (_: unknown, i) => (i.type === 'reading' && (i.min != null || i.max != null) ? `${i.min ?? '…'} – ${i.max ?? '…'} ${i.unit ?? ''}` : ''),
+              },
+              {
+                title: <span className="sr-only">Actions</span>,
+                key: 'ok',
+                width: 90,
+                render: (_: unknown, i) => (i.type === 'text' || r.answers[i.id] === undefined ? '' : <StatusTag status={itemOk(i, r.answers[i.id]) ? 'pass' : 'fail'} />),
+              },
+            ]}
+          />
+        )}
 
         <div style={{ display: 'flex', gap: 48, marginTop: 48, flexWrap: 'wrap' }}>
           {['Performed by (signature)', 'Verified by (Biomedical HOD)'].map((label) => (

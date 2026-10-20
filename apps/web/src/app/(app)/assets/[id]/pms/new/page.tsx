@@ -1,23 +1,19 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Input, InputNumber, Radio, Space, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Input, Space, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { submitPmsSchema, type AssetDetail, type PmsAnswer, type PmsItem, type PmsRecordRow, type PmsTemplateRow } from '@bme/shared';
+import { submitPmsSchema, type AssetDetail, type PmsAnswer, type PmsRecordRow, type PmsTemplateRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
+import { outOfRange, PmsChecklist } from '@/components/PmsChecklist';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { useLeaveGuard } from '@/lib/forms';
 import { useAuth } from '@/lib/auth';
 import { StatusResult } from '@/components/StatusResult';
-import { COLORS } from '@/theme';
 import { FormPageSkeleton } from '@/components/Skeletons';
 
-const rangeText = (i: PmsItem) =>
-  i.min != null && i.max != null ? `${i.min}–${i.max}` : i.min != null ? `at least ${i.min}` : i.max != null ? `at most ${i.max}` : '';
-const outOfRange = (i: PmsItem, v: PmsAnswer | undefined) =>
-  i.type === 'reading' && typeof v === 'number' && ((i.min != null && v < i.min) || (i.max != null && v > i.max));
 
 export default function PerformPmsPage() {
   const { id } = useParams<{ id: string }>();
@@ -52,7 +48,6 @@ export default function PerformPmsPage() {
   const items = corrects && original.data ? original.data.items : (template.data?.items ?? []);
   const version = corrects && original.data ? original.data.templateVersion : template.data?.version;
 
-  const answered = items.filter((i) => answers[i.id] !== undefined).length;
   const willFail = items.some((i) => (i.type === 'check' && answers[i.id] === 'fail') || outOfRange(i, answers[i.id]));
   const set = (itemId: string, value: PmsAnswer | undefined) => {
     setAnswers((prev) => {
@@ -149,65 +144,7 @@ export default function PerformPmsPage() {
               }
             />
           )}
-          <Card
-            title={`Checklist · version ${version ?? ''}`}
-            extra={
-              <span className="num" style={{ color: answered === items.length ? COLORS.good.fg : COLORS.muted, fontWeight: 700, fontSize: 13 }}>
-                {answered} of {items.length} answered
-              </span>
-            }
-          >
-            {items.map((item) => {
-              const value = answers[item.id];
-              const bad = outOfRange(item, value);
-              return (
-                <div key={item.id} id={`pms-item-${item.id}`} style={{ padding: '14px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ flex: '1 1 320px', fontWeight: 600, color: COLORS.ink }}>
-                      {item.label}
-                      {!item.required && <Typography.Text type="secondary"> (optional)</Typography.Text>}
-                      {item.type === 'reading' && (
-                        <div style={{ color: COLORS.muted, fontSize: 12 }}>
-                          {rangeText(item) ? `Allowed: ${rangeText(item)}` : ''} {item.unit ?? ''}
-                        </div>
-                      )}
-                    </div>
-                    {item.type === 'check' && (
-                      // Nothing is pre-selected: an unanswered item must look unanswered.
-                      <Radio.Group
-                        aria-label={item.label}
-                        optionType="button"
-                        buttonStyle="solid"
-                        size="large"
-                        value={typeof value === 'string' ? value : null}
-                        options={[
-                          { label: 'Pass', value: 'pass', className: 'pf-pass' },
-                          { label: 'Fail', value: 'fail', className: 'pf-fail' },
-                        ]}
-                        onChange={(e) => set(item.id, e.target.value as PmsAnswer)}
-                      />
-                    )}
-                    {item.type === 'reading' && (
-                      <InputNumber
-                        aria-label={item.label}
-                        size="large"
-                        style={{ width: 180 }}
-                        suffix={item.unit}
-                        status={bad || errors[item.id] ? 'error' : undefined}
-                        value={typeof value === 'number' ? value : null}
-                        onChange={(v) => set(item.id, v ?? undefined)}
-                      />
-                    )}
-                  </div>
-                  {item.type === 'text' && (
-                    <Input.TextArea aria-label={item.label} rows={2} maxLength={1000} style={{ marginTop: 8 }} value={typeof value === 'string' ? value : ''} onChange={(e) => set(item.id, e.target.value)} />
-                  )}
-                  {bad && <div className="field-error">Outside the allowed range ({rangeText(item)} {item.unit}). This will be recorded as a fail.</div>}
-                  {errors[item.id] && <div className="field-error">{errors[item.id]}</div>}
-                </div>
-              );
-            })}
-          </Card>
+          <PmsChecklist items={items} version={version} answers={answers} errors={errors} onChange={set} />
           {willFail && <Alert type="warning" showIcon message="This PMS will be recorded as FAIL" description="At least one check failed or a reading is outside its allowed range." />}
           <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
             <Link href={`/assets/${id}?tab=pms`}>

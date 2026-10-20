@@ -384,6 +384,7 @@ const READ_PERMISSION: Record<AttachmentOwnerType, PermissionCode> = {
   service_contract: 'expense.manage',
   purchase_order: 'expense.manage',
   calibration_record: 'calibration.manage',
+  pms_record: 'pms.perform',
 };
 const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   asset: ['asset.edit'],
@@ -393,6 +394,7 @@ const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   service_contract: ['asset.edit'],
   purchase_order: ['asset.edit'],
   calibration_record: ['calibration.manage'],
+  pms_record: [], // the OEM's report is saved with the PMS record, which is read-only afterwards
 };
 
 // The owner's asset, loaded with the department scope: a foreign record looks like a missing one.

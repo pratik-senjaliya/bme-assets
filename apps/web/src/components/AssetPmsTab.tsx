@@ -36,9 +36,14 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
             </div>
           </Space>
           {active && (
-            <Link href={`/assets/${asset.id}/pms/new`}>
-              <Button>Perform PMS</Button>
-            </Link>
+            <Space wrap>
+              <Link href={`/assets/${asset.id}/pms/oem`}>
+                <Button>Record OEM PMS</Button>
+              </Link>
+              <Link href={`/assets/${asset.id}/pms/new`}>
+                <Button>Perform PMS</Button>
+              </Link>
+            </Space>
           )}
         </Space>
       </Card>
@@ -53,7 +58,7 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
             title: 'Date',
             dataIndex: 'performedOn',
             render: (d: string) => (
-              <Tooltip title="Recorded by the system. It cannot be changed.">
+              <Tooltip title="Recorded by the system (an OEM PMS: from their report, checked by the system). It cannot be changed.">
                 <span>
                   {formatDate(d)} <LockOutlined aria-label="Locked" style={{ color: COLORS.muted }} />
                 </span>
@@ -61,8 +66,8 @@ export function AssetPmsTab({ asset }: { asset: AssetDetail }) {
             ),
           },
           { title: 'Result', dataIndex: 'result', render: (r: PmsRecordRow['result']) => <StatusTag status={r} /> },
-          { title: 'Done by', dataIndex: 'performedByName' },
-          { title: 'Checklist', dataIndex: 'templateVersion', render: (v: number) => `v${v}` },
+          { title: 'Done by', key: 'by', render: (_: unknown, r) => (r.kind === 'oem' ? `OEM: ${r.serviceBy}` : r.performedByName) },
+          { title: 'Checklist', dataIndex: 'templateVersion', render: (v: number | null) => (v ? `v${v}` : '—') },
           {
             title: 'Note',
             key: 'note',

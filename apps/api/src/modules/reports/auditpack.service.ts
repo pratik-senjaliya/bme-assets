@@ -60,7 +60,7 @@ async function gather(q: AuditPackQuery, scope: Ctx['scope']) {
     const asset = condemnedAssets.find((a) => a.id === r.targetId);
     return asset ? [{ request: r, asset }] : [];
   });
-  const [certificates, letters] = await Promise.all([
+  const [certificates, letters, oemReports] = await Promise.all([
     prisma.attachment.findMany({ where: { ownerType: 'calibration_record', ownerId: { in: calibrations.map((c) => c.id) }, kind: 'certificate' }, orderBy: { createdAt: 'asc' } }),
     prisma.attachment.findMany({
       where: {
@@ -71,8 +71,10 @@ async function gather(q: AuditPackQuery, scope: Ctx['scope']) {
       },
       orderBy: { createdAt: 'asc' },
     }),
+    // The OEM engineer's report for each PMS they did in the period.
+    prisma.attachment.findMany({ where: { ownerType: 'pms_record', ownerId: { in: pms.filter((r) => r.kind === 'oem').map((r) => r.id) }, kind: 'service_report' }, orderBy: { createdAt: 'asc' } }),
   ]);
-  return { assets, pms, calibrations, complaints, condemnations, certificates, letters };
+  return { assets, pms, calibrations, complaints, condemnations, certificates, letters, oemReports };
 }
 
 export async function auditPackSummary(q: AuditPackQuery, scope: Ctx['scope']): Promise<AuditPackSummary> {
@@ -82,6 +84,7 @@ export async function auditPackSummary(q: AuditPackQuery, scope: Ctx['scope']): 
     pmsRecords: g.pms.length,
     calibrations: g.calibrations.length,
     certificates: g.certificates.length,
+    oemReports: g.oemReports.length,
     complaints: g.complaints,
     condemnations: g.condemnations.length,
     documents: g.letters.length,
@@ -98,10 +101,11 @@ function checklistsPdf(g: Awaited<ReturnType<typeof gather>>, names: Map<string,
   const show = (v: PmsAnswer | undefined, unit?: string | null) => (v === undefined || v === '' ? '' : v === 'pass' ? 'Pass' : v === 'fail' ? 'Fail' : typeof v === 'number' ? `${v}${unit ? ` ${unit}` : ''}` : String(v));
   for (const r of g.pms) {
     const answers = r.answers as Record<string, PmsAnswer>;
-    const title = `${r.asset.assetCode} ${r.asset.name} | ${prettyDate(r.performedOn)} | ${r.result.toUpperCase()} | by ${names.get(r.performedBy) ?? 'unknown'} | checklist v${r.template.version}${r.correctsRecordId ? ' | CORRECTION' : ''}`;
+    const by = r.kind === 'oem' ? `OEM: ${r.serviceBy ?? ''} (entered by ${names.get(r.performedBy) ?? 'unknown'})` : `by ${names.get(r.performedBy) ?? 'unknown'}`;
+    const title = `${r.asset.assetCode} ${r.asset.name} | ${prettyDate(r.performedOn)} | ${r.result.toUpperCase()} | ${by}${r.template ? ` | checklist v${r.template.version}` : ''}${r.correctsRecordId ? ' | CORRECTION' : ''}`;
     addSheet(out, title, [
       { header: 'Check', key: 'label', width: 50 }, { header: 'Recorded', key: 'value', width: 20 }, { header: 'Allowed', key: 'allowed', width: 18 }, { header: 'Within limits', key: 'ok', width: 14 },
-    ], Object.keys(answers).length === 0 ? [{ label: 'No answers were stored with this PMS (it was entered as past history).', value: '', allowed: '', ok: '' }] : [
+    ], Object.keys(answers).length === 0 || !r.template ? [{ label: r.kind === 'oem' ? 'Done by the OEM engineer: their report is in the folder "PMS reports (OEM)".' : 'No answers were stored with this PMS (it was entered as past history).', value: '', allowed: '', ok: '' }] : [
       ...templateItems(r.template.schema).map((item) => {
         const v = answers[item.id];
         const ranged = item.type === 'reading' && (item.min != null || item.max != null);
@@ -121,7 +125,7 @@ function checklistsPdf(g: Awaited<ReturnType<typeof gather>>, names: Map<string,
     type: 'pms-checklists',
     title: 'PMS checklists',
     group: null,
-    note: 'Each PMS is dated by the system on the day it was submitted and cannot be changed afterwards. A mistake is put right by a correction: a new record that points to the original. Both are shown.',
+    note: 'An in-house PMS is dated by the system on the day it was submitted. A PMS done by the OEM engineer carries the visit date from their report (checked by the system: not in the future, not before the previous PMS) and the report itself. No record can be changed afterwards; a mistake is put right by a correction, a new record that points to the original. Both are shown.',
     ...out,
   });
 }
@@ -182,6 +186,11 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
     const cal = calById.get(a.ownerId)!;
     await addFile('Calibration certificates', `${cal.asset.assetCode} ${isoDate(cal.doneOn)} ${a.fileName || `certificate${extension(a.mime)}`}`, a.filePath);
   }
+  const pmsById = new Map(g.pms.map((r) => [r.id, r]));
+  for (const a of g.oemReports) {
+    const r = pmsById.get(a.ownerId)!;
+    await addFile('PMS reports (OEM)', `${r.asset.assetCode} ${isoDate(r.performedOn)} ${a.fileName || `report${extension(a.mime)}`}`, a.filePath);
+  }
   const assetOf = (id: string) => g.condemnations.find((c) => c.asset.id === id || (c.request.payload as { attachmentId?: string | null }).attachmentId === id)?.asset;
   for (const a of g.letters) {
     const asset = assetOf(a.ownerId) ?? assetOf(a.id);
@@ -209,6 +218,7 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
     ...reports.slice(0, 2).map((r) => ({ file: r.file, what: r.what })),
     { file: '03 PMS checklists.pdf', what: 'Every PMS in the period with each answer as recorded (records are read-only once submitted)' },
     ...reports.slice(2).map((r) => ({ file: r.file, what: r.what })),
+    { file: 'PMS reports (OEM)/', what: `${g.oemReports.length - missing.filter((m) => m.file.startsWith('PMS reports')).length} service reports of PMS done by the OEM engineer` },
     { file: 'Calibration certificates/', what: `${g.certificates.length - missing.filter((m) => m.file.startsWith('Calibration')).length} certificates of calibrations done in the period` },
     { file: 'Condemnation/', what: `${g.letters.length - missing.filter((m) => m.file.startsWith('Condemnation')).length} end-of-life letters and condemnation forms` },
   ]);

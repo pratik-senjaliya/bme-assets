@@ -336,9 +336,13 @@ model PmsTemplate {
 model PmsRecord {
   id               String    @id @default(uuid())
   assetId          String
-  templateId       String
-  performedOn      DateTime  @db.Date // stamped by the server in APP_TIMEZONE, never from the client
-  performedBy      String
+  // In-house: the hospital's checklist, dated today by the server (rule 1). OEM: done by the manufacturer's engineer,
+  // dated from their report within the limits of decision A, with the report attached; our checklist is optional.
+  kind             String    @default("in_house") // in_house | oem
+  serviceBy        String? // OEM: the engineer and company, as on the report
+  templateId       String? // null: an OEM PMS without our checklist
+  performedOn      DateTime  @db.Date // in-house: stamped by the server; OEM: the visit date, checked by the server
+  performedBy      String // who entered it
   answers          Json
   result           String
   submittedAt      DateTime  @default(now())
@@ -350,7 +354,7 @@ model PmsRecord {
   createdBy        String?
 
   asset      Asset       @relation(fields: [assetId], references: [id])
-  template   PmsTemplate @relation(fields: [templateId], references: [id])
+  template   PmsTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict) // records keep their checklist
   corrects   PmsRecord?  @relation("PmsCorrection", fields: [correctsRecordId], references: [id])
   corrections PmsRecord[] @relation("PmsCorrection")
 
