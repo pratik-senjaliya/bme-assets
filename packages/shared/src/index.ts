@@ -263,6 +263,9 @@ const assetFields = {
   // Existing equipment: when PMS / calibration was last done before this system. The first due dates run from these.
   openingPmsOn: isoDateSchema.nullish(),
   openingCalibrationOn: isoDateSchema.nullish(),
+  // From the suppliers directory: who sold it, and who services it.
+  supplierId: z.string().uuid().nullish(),
+  serviceVendorId: z.string().uuid().nullish(),
 };
 
 export const createAssetSchema = z.object(assetFields);
@@ -338,7 +341,34 @@ export type AssetDetail = AssetRow & {
   openingPmsOn: string | null;
   openingCalibrationOn: string | null;
   createdAt: string;
+  supplier: VendorCard | null;
+  serviceVendor: VendorCard | null;
 };
+
+// ---------- Suppliers ----------
+
+// A company that sells or services equipment (manufacturer, distributor, service agency), with the people to call.
+const optionalPhone = optionalText(30);
+const optionalEmail = z.string().trim().max(150).email('Enter a valid email address').nullish().or(z.literal('').transform(() => null));
+export const vendorContactSchema = z.object({
+  name: z.string().trim().min(1, 'Enter the name').max(120),
+  role: optionalText(80),
+  phone: optionalPhone,
+  email: optionalEmail,
+});
+export const vendorSchema = z.object({
+  name: z.string().trim().min(2, 'Enter the company name').max(150),
+  phone: optionalPhone,
+  email: optionalEmail,
+  address: optionalText(300),
+  notes: optionalText(1000),
+  contacts: z.array(vendorContactSchema).max(30, 'At most 30 contacts').default([]),
+});
+export type VendorInput = z.infer<typeof vendorSchema>;
+export type VendorContactRow = { id: string; name: string; role: string | null; phone: string | null; email: string | null };
+// What the asset page shows about its supplier / service vendor.
+export type VendorCard = { id: string; name: string; phone: string | null; email: string | null; contacts: VendorContactRow[] };
+export type VendorRow = VendorCard & { address: string | null; notes: string | null; suppliedCount: number; servicedCount: number };
 
 // Returned by PATCH /assets/:id. pendingApproval = key-field changes were sent to the HOD, not applied.
 export type UpdateAssetResponse = { asset: AssetDetail; pendingApproval: boolean };

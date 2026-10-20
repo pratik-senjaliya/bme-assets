@@ -18,7 +18,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 type ColumnKey =
   | 'equipmentTypeCode' | 'name' | 'make' | 'model' | 'serialNo' | 'departmentCode' | 'locationCode'
-  | 'criticality' | 'installationDate' | 'warrantyMonths' | 'pmsFrequencyMonths' | 'openingPmsOn' | 'openingCalibrationOn';
+  | 'criticality' | 'installationDate' | 'warrantyMonths' | 'pmsFrequencyMonths' | 'openingPmsOn' | 'openingCalibrationOn'
+  | 'supplier' | 'serviceVendor';
 
 // Template columns: header text → key. Headers are matched case-insensitively, so users can reorder columns.
 const COLUMNS: { key: ColumnKey; header: string; required?: boolean; width: number }[] = [
@@ -35,16 +36,19 @@ const COLUMNS: { key: ColumnKey; header: string; required?: boolean; width: numb
   { key: 'pmsFrequencyMonths', header: 'PMS frequency months', width: 20 },
   { key: 'openingPmsOn', header: 'Last PMS done', width: 18 },
   { key: 'openingCalibrationOn', header: 'Last calibration done', width: 22 },
+  { key: 'supplier', header: 'Supplier', width: 24 },
+  { key: 'serviceVendor', header: 'Service vendor', width: 24 },
 ];
 const headerOf = Object.fromEntries(COLUMNS.map((c) => [c.key, c.header])) as Record<ColumnKey, string>;
 
 // ---------- Template ----------
 
 importRouter.get('/template', async (_req, res) => {
-  const [types, departments, locations] = await Promise.all([
+  const [types, departments, locations, vendors] = await Promise.all([
     prisma.equipmentType.findMany({ orderBy: { code: 'asc' } }),
     prisma.department.findMany({ orderBy: { code: 'asc' } }),
     prisma.location.findMany({ include: { department: true }, orderBy: [{ departmentId: 'asc' }, { code: 'asc' }] }),
+    prisma.vendor.findMany({ orderBy: { name: 'asc' }, select: { name: true } }),
   ]);
 
   const wb = new ExcelJS.Workbook();
@@ -62,15 +66,16 @@ importRouter.get('/template', async (_req, res) => {
 
   // Reference lists, used by the dropdowns and as a quick lookup for the person filling the sheet.
   const lists = wb.addWorksheet('Lists');
-  lists.addRow(['Equipment type code', 'Equipment type', 'Department code', 'Department', 'Location code', 'Location', 'Location department', 'Criticality']);
+  lists.addRow(['Equipment type code', 'Equipment type', 'Department code', 'Department', 'Location code', 'Location', 'Location department', 'Criticality', 'Suppliers']);
   lists.getRow(1).font = { bold: true };
-  const rows = Math.max(types.length, departments.length, locations.length, CRITICALITIES.length);
+  const rows = Math.max(types.length, departments.length, locations.length, CRITICALITIES.length, vendors.length);
   for (let i = 0; i < rows; i++) {
     lists.addRow([
       types[i]?.code, types[i]?.name,
       departments[i]?.code, departments[i]?.name,
       locations[i]?.code, locations[i]?.name, locations[i]?.department.code,
       CRITICALITIES[i] && CRITICALITY_LABEL[CRITICALITIES[i]],
+      vendors[i]?.name,
     ]);
   }
   lists.columns.forEach((c) => (c.width = 24));
@@ -85,6 +90,10 @@ importRouter.get('/template', async (_req, res) => {
   dropdown('departmentCode', 'C', departments.length);
   dropdown('locationCode', 'E', locations.length);
   dropdown('criticality', 'H', CRITICALITIES.length);
+  if (vendors.length) {
+    dropdown('supplier', 'I', vendors.length);
+    dropdown('serviceVendor', 'I', vendors.length);
+  }
 
   const buf = await wb.xlsx.writeBuffer();
   res.set({
@@ -134,6 +143,8 @@ const rowSchema = z.object({
   pmsFrequencyMonths: number(120, 1),
   openingPmsOn: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
   openingCalibrationOn: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
+  supplier: text(150),
+  serviceVendor: text(150),
 });
 
 importRouter.post('/assets', upload.single('file'), async (req, res) => {
@@ -166,11 +177,14 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
   if (rawRows.length === 0) throw new HttpError(400, 'The file has no data rows');
   if (rawRows.length > MAX_ROWS) throw new HttpError(400, `Too many rows (${rawRows.length}). Import up to ${MAX_ROWS} at a time.`);
 
-  const [types, departments, locations] = await Promise.all([
+  const [types, departments, locations, vendors] = await Promise.all([
     prisma.equipmentType.findMany(),
     prisma.department.findMany(),
     prisma.location.findMany(),
+    prisma.vendor.findMany({ select: { id: true, name: true } }),
   ]);
+  // Suppliers by name, whatever the capitals (names are unique that way).
+  const vendorByName = new Map(vendors.map((x) => [x.name.trim().toLowerCase(), x]));
   const typeByCode = new Map(types.map((t) => [t.code, t]));
   const deptByCode = new Map(departments.map((d) => [d.code, d]));
   const locationOf = (departmentId: string, code: string) => locations.find((l) => l.departmentId === departmentId && l.code === code);
@@ -194,6 +208,14 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
     if (!type) errors.push({ row, field: headerOf.equipmentTypeCode, message: `Unknown equipment type "${v.equipmentTypeCode}"` });
     if (!dept) errors.push({ row, field: headerOf.departmentCode, message: `Unknown department "${v.departmentCode}"` });
     else if (!loc) errors.push({ row, field: headerOf.locationCode, message: `No location "${v.locationCode}" in department ${dept.code}` });
+    const company = (key: 'supplier' | 'serviceVendor') => {
+      if (!v[key]) return null;
+      const found = vendorByName.get(v[key].trim().toLowerCase());
+      if (!found) errors.push({ row, field: headerOf[key], message: `No company "${v[key]}" in the suppliers list. Add it under Suppliers first.` });
+      return found ?? null;
+    };
+    const supplier = company('supplier');
+    const serviceVendor = company('serviceVendor');
     if (v.serialNo) {
       const first = serialRows.get(v.serialNo);
       if (first) errors.push({ row, field: headerOf.serialNo, message: `Serial number repeated from row ${first}` });
@@ -221,6 +243,8 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
         pmsFrequencyMonths: v.pmsFrequencyMonths,
         openingPmsOn: v.openingPmsOn,
         openingCalibrationOn: v.openingCalibrationOn,
+        supplierId: supplier?.id ?? null,
+        serviceVendorId: serviceVendor?.id ?? null,
       });
     }
   }

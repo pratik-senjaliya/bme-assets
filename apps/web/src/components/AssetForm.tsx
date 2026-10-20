@@ -7,12 +7,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   CRITICALITIES,
+  CRITICALITY_LABEL,
   createAssetSchema,
   isGone,
   updateAssetSchema,
   type AssetDetail,
   type AssetStatus,
   type UpdateAssetResponse,
+  type VendorRow,
 } from '@bme/shared';
 import { FilePicker } from '@/components/FilePicker';
 import { api, useFetch } from '@/lib/api';
@@ -39,6 +41,8 @@ type Values = {
   pmsFrequencyMonths?: number | null;
   openingPmsOn?: dayjs.Dayjs | null;
   openingCalibrationOn?: dayjs.Dayjs | null;
+  supplierId?: string | null;
+  serviceVendorId?: string | null;
 };
 
 const toForm = (a: AssetDetail): Values => ({
@@ -56,6 +60,8 @@ const toForm = (a: AssetDetail): Values => ({
   pmsFrequencyMonths: a.pmsFrequencyMonths,
   openingPmsOn: a.openingPmsOn ? dayjs(a.openingPmsOn) : null,
   openingCalibrationOn: a.openingCalibrationOn ? dayjs(a.openingCalibrationOn) : null,
+  supplierId: a.supplier?.id ?? null,
+  serviceVendorId: a.serviceVendor?.id ?? null,
 });
 
 // Form values → API body (dates as YYYY-MM-DD, empty numbers as null).
@@ -66,6 +72,8 @@ const toBody = (v: Values) => ({
   pmsFrequencyMonths: v.pmsFrequencyMonths ?? null,
   openingPmsOn: v.openingPmsOn ? v.openingPmsOn.format('YYYY-MM-DD') : null,
   openingCalibrationOn: v.openingCalibrationOn ? v.openingCalibrationOn.format('YYYY-MM-DD') : null,
+  supplierId: v.supplierId ?? null,
+  serviceVendorId: v.serviceVendorId ?? null,
 });
 
 // A titled card for one group of fields, so a long form reads as a few clear steps.
@@ -100,6 +108,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const types = useFetch<EquipmentType[]>('/equipment-types');
   const departments = useFetch<Department[]>('/departments');
   const locations = useFetch<Location[]>('/locations');
+  const vendors = useFetch<VendorRow[]>('/vendors');
   const departmentId = Form.useWatch('departmentId', form);
   const typeId = Form.useWatch('equipmentTypeId', form);
   const installed = Form.useWatch('installationDate', form);
@@ -239,7 +248,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         </Col>
         <Col {...half}>
           <Form.Item label="Criticality" name="criticality" extra="How badly patient care suffers if this equipment is down.">
-            <Select options={CRITICALITIES.map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }))} />
+            <Select options={CRITICALITIES.map((c) => ({ value: c, label: CRITICALITY_LABEL[c] }))} />
           </Form.Item>
         </Col>
       </Row>
@@ -297,6 +306,31 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
             </Form.Item>
           </Col>
         )}
+      </Row>
+      </FormSection>
+
+      <FormSection title="Supplier & service" hint="Who sold it and who services it, from the suppliers list. Their contacts show on the asset page.">
+      <Row gutter={16}>
+        {(['supplierId', 'serviceVendorId'] as const).map((name) => (
+          <Col {...half} key={name}>
+            <Form.Item
+              label={name === 'supplierId' ? 'Supplier' : 'Service vendor'}
+              name={name}
+              extra={name === 'supplierId' ? 'The company it was bought from.' : 'The company that services it, if not the supplier.'}
+            >
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="Choose a company"
+                loading={vendors.loading}
+                onOpenChange={(open) => open && void vendors.reload()}
+                options={vendors.data?.map((v) => ({ value: v.id, label: v.name }))}
+                notFoundContent={<span>Not in the list? <Link href="/vendors" target="_blank">Add it under Suppliers</Link></span>}
+              />
+            </Form.Item>
+          </Col>
+        ))}
       </Row>
       </FormSection>
 

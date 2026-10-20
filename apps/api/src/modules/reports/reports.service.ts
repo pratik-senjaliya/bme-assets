@@ -124,12 +124,14 @@ async function assetMaster(wb: Collector, c: Ctx) {
     { header: 'Status', key: 'status' }, { header: 'Installed', key: 'installed', fmt: 'date' }, { header: 'Age (years)', pdf: false, key: 'age', fmt: 'years' },
     { header: 'Warranty ends', key: 'warranty', fmt: 'date' }, { header: 'PMS every (months)', pdf: false, key: 'pmsMonths', fmt: 'int' },
     { header: 'Next PMS due', key: 'pms', fmt: 'date' }, { header: 'Next calibration due', key: 'cal', fmt: 'date' },
+    { header: 'Supplier', pdf: false, key: 'supplier', width: 22 }, { header: 'Service vendor', pdf: false, key: 'servicer', width: 22 },
   ], assets.map((a) => {
     const r = toAssetRow(a);
     return {
       code: a.assetCode, name: a.name, type: a.equipmentType.name, make: a.make, model: a.model, serial: a.serialNo, dept: a.department.name, loc: a.location.name,
       crit: CRITICALITY_LABEL[a.criticality], status: STATUS_LABEL[a.status], installed: a.installationDate, age: r.ageMonths == null ? null : Math.round((r.ageMonths / 12) * 10) / 10,
       warranty: a.warrantyEnd, pmsMonths: a.pmsFrequencyMonths, pms: a.status === 'active' ? a.nextPmsDue : null, cal: a.status === 'active' ? a.nextCalibrationDue : null,
+      supplier: a.supplier?.name ?? null, servicer: a.serviceVendor?.name ?? null,
     };
   }));
 }

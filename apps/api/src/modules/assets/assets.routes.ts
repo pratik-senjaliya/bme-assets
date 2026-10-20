@@ -46,6 +46,7 @@ import {
   assertLocationInDepartment,
   assertOpeningDate,
   assertSerialFree,
+  assertVendors,
   assetInclude,
   createAssets,
   findScopedAsset,
@@ -107,6 +108,7 @@ assetsRouter.post('/', requirePermission('asset.create'), validate(createAssetSc
   const input = req.body as CreateAssetInput;
   await assertLocationInDepartment(input.departmentId, input.locationId);
   await assertSerialFree(input.serialNo);
+  await assertVendors(input);
   const [row] = await prisma.$transaction((tx) => createAssets(tx, req, [input]), CREATE_TX_OPTIONS);
   res.status(201).json(await detail(row.id));
 });
@@ -157,6 +159,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   const input = req.body as UpdateAssetInput;
   const before = await findScoped(req);
   if (isGone(before.status)) throw new HttpError(409, `A ${before.status} asset can no longer be edited`);
+  await assertVendors(input);
 
   const changes: Record<string, unknown> = {};
   const keyChanges: Record<string, unknown> = {};
