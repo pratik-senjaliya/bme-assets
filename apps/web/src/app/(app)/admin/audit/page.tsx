@@ -15,7 +15,7 @@ import { COLORS } from '@/theme';
 
 const ENTITY_TYPES = [
   'asset', 'complaint', 'pms_record', 'pms_template', 'calibration_record', 'approval_request', 'purchase_order', 'service_contract', 'service_expense', 'service_log', 'attachment',
-  'user', 'role', 'department', 'location', 'equipment_type', 'hospital_settings', 'report', 'notification',
+  'user', 'role', 'department', 'location', 'equipment_type', 'vendor', 'hospital_settings', 'report', 'notification',
 ];
 
 const Json = ({ value }: { value: unknown }) => (

@@ -19,6 +19,7 @@ import { settingsRouter } from './modules/settings/settings.routes';
 import { setupRouter } from './modules/setup/setup.routes';
 import { serviceLogRouter } from './modules/service-log/service-log.routes';
 import { usersRouter } from './modules/users/users.routes';
+import { vendorsRouter } from './modules/vendors/vendors.routes';
 
 export const v1 = Router();
 
@@ -50,6 +51,7 @@ v1.use(calibrationRouter); // /assets/:id/calibrations, /calibration/due
 v1.use('/attachments', attachmentsRouter);
 v1.use('/import', importRouter);
 v1.use('/users', usersRouter);
+v1.use('/vendors', vendorsRouter);
 v1.use(notificationsRouter); // /notifications, /reminders/run, /settings/smtp-test
 v1.use('/roles', rolesRouter);
 v1.use('/settings', settingsRouter);

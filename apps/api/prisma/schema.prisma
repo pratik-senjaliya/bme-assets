@@ -248,10 +248,15 @@ model Asset {
   // the first due date runs from it. Never a PMS record, so the PMS date lock is untouched.
   openingPmsOn         DateTime?   @db.Date
   openingCalibrationOn DateTime?   @db.Date
+  // Who sold it (often a distributor) and who services it, from the suppliers directory. The make stays as text.
+  supplierId           String?
+  serviceVendorId      String?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   createdBy            String?
 
+  supplier           Vendor?             @relation("AssetSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
+  serviceVendor      Vendor?             @relation("AssetServiceVendor", fields: [serviceVendorId], references: [id], onDelete: Restrict)
   equipmentType      EquipmentType       @relation(fields: [equipmentTypeId], references: [id])
   department         Department          @relation(fields: [departmentId], references: [id])
   location           Location            @relation(fields: [locationId], references: [id])
@@ -562,4 +567,38 @@ model MonthlyReport {
   createdAt DateTime @default(now())
 
   @@map("monthly_reports")
+}
+
+// Suppliers directory: the companies that sell and service equipment (manufacturers, distributors, service
+// agencies), each with the people to call. A company in use by equipment cannot be deleted.
+model Vendor {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  contacts VendorContact[]
+  supplied Asset[]         @relation("AssetSupplier")
+  serviced Asset[]         @relation("AssetServiceVendor")
+
+  @@map("vendors")
+}
+
+model VendorContact {
+  id       String  @id @default(uuid())
+  vendorId String
+  name     String
+  role     String? // e.g. Service engineer, Sales
+  phone    String?
+  email    String?
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@map("vendor_contacts")
 }

@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { AssetDetail, AssetRow, Criticality, WarrantyStatus } from '@bme/shared';
+import type { AssetDetail, AssetRow, Criticality, VendorCard, WarrantyStatus } from '@bme/shared';
 import { auditMany } from '../../lib/audit';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { formatAssetCode } from '../../lib/assetCode';
@@ -11,7 +11,8 @@ import { idOf } from '../../lib/validate';
 
 type Db = Prisma.TransactionClient;
 
-export const assetInclude = { equipmentType: true, department: true, location: true } satisfies Prisma.AssetInclude;
+const vendorCard = { include: { contacts: { orderBy: { name: 'asc' } } } } as const;
+export const assetInclude = { equipmentType: true, department: true, location: true, supplier: vendorCard, serviceVendor: vendorCard } satisfies Prisma.AssetInclude;
 export type AssetWithRefs = Prisma.AssetGetPayload<{ include: typeof assetInclude }>;
 
 const WARRANTY_EXPIRING_DAYS = 30;
@@ -62,7 +63,23 @@ export const toAssetDetail = (a: AssetWithRefs): AssetDetail => ({
   openingPmsOn: isoDateOrNull(a.openingPmsOn),
   openingCalibrationOn: isoDateOrNull(a.openingCalibrationOn),
   createdAt: a.createdAt.toISOString(),
+  supplier: toVendorCard(a.supplier),
+  serviceVendor: toVendorCard(a.serviceVendor),
 });
+
+type VendorWithContacts = NonNullable<AssetWithRefs['supplier']>;
+export const toVendorCard = (v: VendorWithContacts | null): VendorCard | null =>
+  v ? { id: v.id, name: v.name, phone: v.phone, email: v.email, contacts: v.contacts.map((c) => ({ id: c.id, name: c.name, role: c.role, phone: c.phone, email: c.email })) } : null;
+
+// A supplier or service vendor must be in the suppliers directory (a field error, not a database error).
+export async function assertVendors(input: { supplierId?: string | null; serviceVendorId?: string | null }) {
+  for (const field of ['supplierId', 'serviceVendorId'] as const) {
+    const id = input[field];
+    if (id && !(await prisma.vendor.findUnique({ where: { id }, select: { id: true } }))) {
+      throw new HttpError(400, 'That company is not in the suppliers list', { fieldErrors: { [field]: ['Choose a company from the suppliers list'] } });
+    }
+  }
+}
 
 export const warrantyEndFor = (installationDate: Date | null | undefined, months: number | null | undefined) =>
   installationDate && months != null ? addMonths(installationDate, months) : null;
@@ -101,6 +118,8 @@ export type NewAsset = {
   pmsFrequencyMonths?: number | null;
   openingPmsOn?: string | null;
   openingCalibrationOn?: string | null;
+  supplierId?: string | null;
+  serviceVendorId?: string | null;
 };
 
 // "Last done before this system" dates for existing equipment: a real past date, not before installation.
@@ -168,6 +187,8 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       pmsFrequencyMonths,
       openingPmsOn,
       openingCalibrationOn,
+      supplierId: i.supplierId ?? null,
+      serviceVendorId: i.serviceVendorId ?? null,
       // First due dates run from the last PMS / calibration done before this system (existing equipment), else from
       // installation; after that PMS and calibration records move them on.
       nextPmsDue: firstDue(openingPmsOn ?? installationDate, pmsFrequencyMonths),

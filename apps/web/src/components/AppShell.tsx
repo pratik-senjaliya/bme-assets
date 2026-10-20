@@ -20,6 +20,7 @@ import {
   SafetyOutlined,
   ScheduleOutlined,
   SettingOutlined,
+  ShopOutlined,
   TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
@@ -55,6 +56,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
       { href: '/due', label: 'Due & overdue', short: 'Due', icon: <CalendarOutlined />, permission: 'pms.perform' },
+      { href: '/vendors', label: 'Suppliers', icon: <ShopOutlined />, permission: 'asset.edit' },
     ],
   },
   {
