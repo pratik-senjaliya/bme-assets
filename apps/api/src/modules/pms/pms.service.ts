@@ -55,10 +55,11 @@ type RecordWithRefs = Prisma.PmsRecordGetPayload<{ include: { template: true; as
 export const pmsRecordInclude = { template: true, asset: { include: { equipmentType: true } } } satisfies Prisma.PmsRecordInclude;
 
 export async function toPmsRows(records: RecordWithRefs[]): Promise<PmsRecordRow[]> {
-  const [users, corrections, settings] = await Promise.all([
+  const [users, corrections, settings, reports] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(records.map((r) => r.performedBy))] } }, select: { id: true, name: true } }),
     prisma.pmsRecord.findMany({ where: { correctsRecordId: { in: records.map((r) => r.id) } }, orderBy: { submittedAt: 'asc' }, select: { id: true, correctsRecordId: true } }),
     prisma.hospitalSettings.findFirstOrThrow({ select: { name: true } }),
+    prisma.attachment.findMany({ where: { ownerType: 'pms_record', ownerId: { in: records.map((r) => r.id) }, kind: 'service_report' }, orderBy: { createdAt: 'asc' } }),
   ]);
   const correctedBy = new Map(corrections.map((c) => [c.correctsRecordId!, c.id])); // latest wins
   return records.map((r) => ({
@@ -67,8 +68,11 @@ export async function toPmsRows(records: RecordWithRefs[]): Promise<PmsRecordRow
     assetCode: r.asset.assetCode,
     assetName: r.asset.name,
     equipmentTypeName: r.asset.equipmentType.name,
-    templateVersion: r.template.version,
-    items: templateItems(r.template.schema),
+    kind: r.kind === 'oem' ? 'oem' : 'in_house',
+    serviceBy: r.serviceBy,
+    report: ((f) => (f ? { id: f.id, fileName: f.fileName } : null))(reports.find((f) => f.ownerId === r.id)),
+    templateVersion: r.template?.version ?? null,
+    items: r.template ? templateItems(r.template.schema) : [],
     answers: r.answers as Record<string, PmsAnswer>,
     performedOn: isoDate(r.performedOn),
     performedByName: users.find((u) => u.id === r.performedBy)?.name ?? 'Unknown',

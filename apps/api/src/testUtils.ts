@@ -80,3 +80,6 @@ export function fakeSmtp() {
   });
   return { messages, server };
 }
+
+// A 1 × 1 PNG: the smallest file the upload checks accept.
+export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');

@@ -368,7 +368,7 @@ export type ServiceContractRow = {
 export const attachmentUploadSchema = z.object({ kind: z.enum(ATTACHMENT_KINDS) });
 
 // Documents can hang off the asset or off one of its records (a complaint photo, a service report, an invoice).
-export const ATTACHMENT_OWNER_TYPES = ['asset', 'complaint', 'service_log', 'service_expense', 'service_contract', 'purchase_order', 'calibration_record'] as const;
+export const ATTACHMENT_OWNER_TYPES = ['asset', 'complaint', 'service_log', 'service_expense', 'service_contract', 'purchase_order', 'calibration_record', 'pms_record'] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 export const attachmentOwnerSchema = z.object({ ownerType: z.enum(ATTACHMENT_OWNER_TYPES), ownerId: z.string().uuid() });
 export const attachmentCreateSchema = attachmentOwnerSchema.extend({ kind: z.enum(ATTACHMENT_KINDS) });
@@ -589,14 +589,34 @@ export type PmsTemplateRow = {
 export type PmsAnswer = 'pass' | 'fail' | number | string;
 
 // The client sends answers only. The date, the person, the template version and the result are the server's.
+const pmsAnswersSchema = z.record(z.string(), z.union([z.enum(['pass', 'fail']), z.number(), z.string().max(1000)]));
 export const submitPmsSchema = z
   .object({
-    answers: z.record(z.string(), z.union([z.enum(['pass', 'fail']), z.number(), z.string().max(1000)])),
+    answers: pmsAnswersSchema,
     correctsRecordId: z.string().uuid().nullish(),
     correctionReason: z.string().trim().min(5, 'Say why this correction is needed').max(500).nullish(),
   })
   .refine((v) => !v.correctsRecordId || !!v.correctionReason, { message: 'Say why this correction is needed', path: ['correctionReason'] });
 export type SubmitPmsInput = z.infer<typeof submitPmsSchema>;
+
+// PMS done by the OEM engineer (decision A). Sent as the `data` field of a form upload whose `file` is their
+// report (required). The date is the visit date from the report: the server refuses one after today, more than
+// OEM_PMS_MAX_DAYS_BACK days back, or before the asset's last PMS. Our checklist is optional: with answers the
+// result is worked out from them, without answers the result is the one on the report. A correction keeps the
+// original's date.
+export const OEM_PMS_MAX_DAYS_BACK = 30;
+export const oemPmsSchema = z
+  .object({
+    performedOn: isoDateSchema,
+    serviceBy: z.string().trim().min(3, 'Enter the engineer and company, as on the report').max(150),
+    result: z.enum(['pass', 'fail']).optional(),
+    answers: pmsAnswersSchema.default({}),
+    correctsRecordId: z.string().uuid().nullish(),
+    correctionReason: z.string().trim().min(5, 'Say why this correction is needed').max(500).nullish(),
+  })
+  .refine((v) => !v.correctsRecordId || !!v.correctionReason, { message: 'Say why this correction is needed', path: ['correctionReason'] })
+  .refine((v) => Object.keys(v.answers).length > 0 || !!v.result, { message: 'Choose the result on the report', path: ['result'] });
+export type OemPmsInput = z.infer<typeof oemPmsSchema>;
 
 export type PmsResult = 'pass' | 'fail';
 
@@ -606,11 +626,14 @@ export type PmsRecordRow = {
   assetCode: string;
   assetName: string;
   equipmentTypeName: string;
-  templateVersion: number;
+  kind: 'in_house' | 'oem';
+  serviceBy: string | null; // OEM: the engineer and company, as on the report
+  report: { id: string; fileName: string } | null; // OEM: their service report
+  templateVersion: number | null; // null: an OEM PMS without our checklist
   items: PmsItem[];
   answers: Record<string, PmsAnswer>;
-  performedOn: string; // set by the server in the hospital's timezone
-  performedByName: string;
+  performedOn: string; // in-house: set by the server in the hospital's timezone; OEM: the visit date from the report
+  performedByName: string; // who entered it
   submittedAt: string;
   result: PmsResult;
   locked: true;
@@ -869,6 +892,7 @@ export type AuditPackSummary = {
   pmsRecords: number;
   calibrations: number;
   certificates: number;
+  oemReports: number; // the OEM engineer's report for each PMS they did
   complaints: number;
   condemnations: number;
   documents: number; // condemnation letters and forms

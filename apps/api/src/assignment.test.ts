@@ -3,7 +3,7 @@
 // to me" lists exactly that. Needs a migrated + seeded database.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import type { Assignee, ComplaintDetail, ComplaintRow, Paged } from '@bme/shared';
+import { UNRESOLVED_STATUSES, type Assignee, type ComplaintDetail, type ComplaintRow, type Paged } from '@bme/shared';
 import { prisma } from './lib/prisma';
 import { call, login, startServer } from './testUtils';
 
@@ -123,7 +123,7 @@ describe('Work lists', () => {
     assert.equal(res.status, 200);
     const list = (await res.json()) as Assignee[];
     assert.ok(list.some((a) => a.id === users.biomed) && !list.some((a) => a.id === users.nurse));
-    const load = await prisma.complaint.count({ where: { assignedToId: users.biomed, status: { in: ['open', 'in_progress'] } } });
+    const load = await prisma.complaint.count({ where: { assignedToId: users.biomed, status: { in: UNRESOLVED_STATUSES } } });
     assert.equal(list.find((a) => a.id === users.biomed)!.openCount, load);
     assert.equal((await call(base, biomed, 'GET', '/complaints/assignees')).status, 403);
   });

@@ -161,11 +161,14 @@ async function pms(wb: Collector, c: Ctx) {
   const users = await prisma.user.findMany({ where: { id: { in: [...new Set(records.map((r) => r.performedBy))] } }, select: { id: true, name: true } });
   addSheet(wb, 'PMS records', [
     { header: 'Date', key: 'date', fmt: 'date' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Equipment type', key: 'type', width: 18 },
-    { header: 'Department', key: 'dept', width: 22 }, { header: 'Asset status', pdf: false, key: 'status' }, { header: 'Result', key: 'result' }, { header: 'Done by', key: 'by', width: 20 },
+    { header: 'Department', key: 'dept', width: 22 }, { header: 'Asset status', pdf: false, key: 'status' }, { header: 'Result', key: 'result' }, { header: 'Done by', key: 'doneBy', width: 26 },
+    { header: 'Entered by', pdf: false, key: 'by', width: 20 },
     { header: 'Checklist version', pdf: false, key: 'version', fmt: 'int' }, { header: 'Correction', key: 'correction' }, { header: 'Correction reason', pdf: false, key: 'reason', width: 30 },
   ], records.map((r) => ({
     date: r.performedOn, code: r.asset.assetCode, name: r.asset.name, type: r.asset.equipmentType.name, dept: r.asset.department.name, status: STATUS_LABEL[r.asset.status],
-    result: r.result.toUpperCase(), by: users.find((u) => u.id === r.performedBy)?.name ?? '', version: r.template.version, correction: r.correctsRecordId ? 'Yes' : 'No', reason: r.correctionReason,
+    result: r.result.toUpperCase(), by: users.find((u) => u.id === r.performedBy)?.name ?? '', version: r.template?.version ?? null,
+    // In-house: the engineer who did and entered it. OEM: the engineer and company from their report.
+    doneBy: r.kind === 'oem' ? `OEM: ${r.serviceBy ?? ''}` : (users.find((u) => u.id === r.performedBy)?.name ?? ''), correction: r.correctsRecordId ? 'Yes' : 'No', reason: r.correctionReason,
   })));
   const done = await pmsDone(records);
   const byType = new Map<string, { count: number; pass: number }>();

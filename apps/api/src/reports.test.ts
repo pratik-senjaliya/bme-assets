@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import ExcelJS from 'exceljs';
-import { REPORTS } from '@bme/shared';
+import { REPORTS, UNRESOLVED_STATUSES } from '@bme/shared';
 import { addDaysISO, isoDate, parseDate, todayISO } from './lib/dates';
 import { prisma } from './lib/prisma';
 import { call, login, startServer } from './testUtils';
@@ -182,7 +182,7 @@ describe('dashboard', () => {
     const dash = await (await call(base, biomed, 'GET', '/dashboard')).json();
     assert.equal(dash.scope, 'hospital');
     assert.equal(dash.activeAssets, await prisma.asset.count({ where: { status: 'active' } }));
-    assert.equal(dash.openComplaints, await prisma.complaint.count({ where: { status: { in: ['open', 'in_progress'] } } }));
+    assert.equal(dash.openComplaints, await prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES } } })); // on hold counts as open
     assert.equal(dash.months.length, 6);
     assert.equal(dash.months[5].month, today.slice(0, 7));
     assert.ok(dash.months[5].breakdowns >= 1);
