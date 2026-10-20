@@ -5,6 +5,8 @@
 import { prisma } from './lib/prisma';
 import { addMonths, isoDate, parseDate, todayISO } from './lib/dates';
 import { complaintNo } from './modules/complaints/complaints.service';
+import { evaluateAnswers, templateItems } from './modules/pms/pms.service';
+import type { PmsAnswer, PmsItem } from '@bme/shared';
 
 // A small fixed-seed random generator, so the demo looks the same every time.
 function rng(seed: number) {
@@ -73,8 +75,12 @@ async function main() {
     let latest: Date | null = null;
     while (last.getTime() > today.getTime() - 365 * DAY) {
       latest ??= last;
+      // A filled-in checklist, like an engineer's: readings near the middle of the allowed range, and now and then
+      // one item that fails (the result is worked out from the answers, as for a real PMS).
+      const items = templateItems(template.schema);
+      const answers = demoAnswers(items, rand() < 0.07, rand);
       await prisma.pmsRecord.create({
-        data: { assetId: a.id, templateId: template.id, performedOn: parseDate(isoDate(last)), performedBy: biomed.id, answers: {}, result: rand() < 0.93 ? 'pass' : 'fail', submittedAt: new Date(last.getTime() + 11 * HOUR), createdBy: biomed.id },
+        data: { assetId: a.id, templateId: template.id, performedOn: parseDate(isoDate(last)), performedBy: biomed.id, answers, result: evaluateAnswers(items, answers).result, submittedAt: new Date(last.getTime() + 11 * HOUR), createdBy: biomed.id },
       });
       pmsCount++;
       last = addMonths(last, -months);
@@ -171,3 +177,19 @@ main()
     process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());
+
+function demoAnswers(items: PmsItem[], fail: boolean, rand: () => number): Record<string, PmsAnswer> {
+  const out: Record<string, PmsAnswer> = {};
+  const failing = fail ? items.filter((i) => i.type !== 'text')[Math.floor(rand() * items.filter((i) => i.type !== 'text').length)]?.id : undefined;
+  for (const item of items) {
+    if (item.type === 'check') out[item.id] = item.id === failing ? 'fail' : 'pass';
+    else if (item.type === 'reading') {
+      const lo = item.min ?? 0;
+      const hi = item.max ?? lo + 10;
+      const mid = (lo + hi) / 2;
+      const value = item.id === failing ? hi + (hi - lo) * 0.2 : mid + (rand() - 0.5) * (hi - lo) * 0.6;
+      out[item.id] = Math.round(value * 10) / 10;
+    } else out[item.id] = item.id === 'remarks' && failing ? 'Reported to the HOD; part ordered.' : '';
+  }
+  return out;
+}

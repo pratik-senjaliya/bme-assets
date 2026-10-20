@@ -629,7 +629,7 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint'] as const;
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -811,6 +811,36 @@ export const reportQuerySchema = z
     format: z.enum(['json', 'xlsx', 'pdf']).default('xlsx'),
   })
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'The start date is after the end date', path: ['from'] });
+
+// ---------- Monthly management report ----------
+
+// One calendar month, YYYY-MM, between 2000 and 2100. A month that has not started yet has nothing to report.
+export const monthSchema = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use a month like 2026-10')
+  .refine((m) => m >= '2000-01' && m <= '2100-12', 'Use a month between 2000 and 2100');
+export const monthlyReportQuerySchema = z.object({ month: monthSchema, format: z.enum(['json', 'xlsx', 'pdf']).default('json') });
+// A month whose report was saved on the 1st of the next month (what management was sent), newest first.
+export type SavedMonthlyReport = { month: string; savedAt: string };
+
+// ---------- Audit pack ----------
+
+// Evidence for an inspection (NABH and similar), for a period and optionally one department: one ZIP file.
+export const auditPackQuerySchema = z
+  .object({ from: reportDateSchema, to: reportDateSchema, departmentId: z.string().uuid().optional() })
+  .refine((q) => q.from <= q.to, { message: 'The start date is after the end date', path: ['from'] })
+  .refine((q) => q.to.slice(0, 4) <= String(Number(q.from.slice(0, 4)) + 5), { message: 'Choose a period of five years or less', path: ['to'] });
+export type AuditPackQuery = z.infer<typeof auditPackQuerySchema>;
+// What the pack will hold, shown before downloading.
+export type AuditPackSummary = {
+  assets: number;
+  pmsRecords: number;
+  calibrations: number;
+  certificates: number;
+  complaints: number;
+  condemnations: number;
+  documents: number; // condemnation letters and forms
+};
 export type ReportQuery = z.infer<typeof reportQuerySchema>;
 
 // ---------- Audit log viewer ----------

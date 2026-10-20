@@ -2,6 +2,7 @@
 
 import { InboxOutlined } from '@ant-design/icons';
 import { Card, Table, Tabs } from 'antd';
+import type { TdHTMLAttributes } from 'react';
 import type { ReportData, ReportSheetData } from '@bme/shared';
 import { ChartGrid } from '@/components/charts/LazyCharts';
 import { KpiGrid } from '@/components/KpiTile';
@@ -21,9 +22,12 @@ function SheetTable({ sheet }: { sheet: ReportSheetData }) {
       scroll={{ x: 'max-content' }}
       locale={{ emptyText: <EmptyState compact icon={<InboxOutlined />} title="Nothing in this table for the period." /> }}
       pagination={{ pageSize: 25, showSizeChanger: false, hideOnSinglePage: true, showTotal: (t) => `${t.toLocaleString('en-IN')} rows` }}
-      columns={sheet.columns.map((c) => ({
+      // On phones a row reads as a short list (see globals.css): the first column leads, the others carry their names.
+      columns={sheet.columns.map((c, i) => ({
         title: c.header,
         dataIndex: c.key,
+        className: i === 0 ? 'm-title' : undefined,
+        onCell: () => (i === 0 ? {} : { 'data-label': c.header }) as TdHTMLAttributes<HTMLElement>,
         align: c.fmt && NUMERIC.has(c.fmt) ? ('right' as const) : ('left' as const),
         render: (v: unknown) => (c.fmt === 'date' || c.fmt === 'text' || !c.fmt ? (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v) : (v ?? '—')) : formatValue(v, c.fmt)) as string,
       }))}
@@ -58,6 +62,7 @@ export function ReportView({ data }: { data: ReportData }) {
       {data.sheets.length > 0 && (
         <Card styles={{ body: { padding: '4px 20px 20px' } }}>
           <Tabs
+            className="report-tabs"
             items={data.sheets.map((s, i) => ({ key: `sheet-${i}`, label: `${s.name}${s.rows.length ? ` (${s.rows.length.toLocaleString('en-IN')})` : ''}`, children: <SheetTable sheet={s} /> }))}
           />
         </Card>

@@ -511,3 +511,15 @@ model ServiceLog {
   @@index([assetId])
   @@map("service_logs")
 }
+
+// The monthly management report as it was on the 1st of the next month: what the HOD was sent. Kept as the report's
+// data (figures, charts, tables), so it reads the same later even if records are corrected meanwhile, and can be
+// downloaded again as PDF or Excel. One per month; the unique month makes a second save impossible.
+model MonthlyReport {
+  id        String   @id @default(uuid())
+  month     String   @unique // YYYY-MM
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@map("monthly_reports")
+}
