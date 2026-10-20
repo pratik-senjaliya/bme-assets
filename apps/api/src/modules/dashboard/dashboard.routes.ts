@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { ChartSpec, DashboardDueItem, DashboardExpiry, DashboardMonth, DashboardResponse, DashboardTopAsset, Kpi } from '@bme/shared';
+import { isCritical, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
@@ -87,7 +87,7 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   const recent = history.filter((c) => c.raisedAt >= win30);
   const respH = mean(recent.filter((c) => c.startedAt).map((c) => (c.startedAt!.getTime() - c.raisedAt.getTime()) / 3_600_000));
   const downH = mean(recent.filter((c) => c.resolvedAt).map((c) => (c.resolvedAt!.getTime() - c.raisedAt.getTime()) / 3_600_000));
-  const critical = liveAssets.filter((a) => a.criticality === 'critical');
+  const critical = liveAssets.filter((a) => isCritical(a.criticality));
 
   const kpis: Kpi[] = [];
   if (can('complaint.view')) {

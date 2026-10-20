@@ -239,7 +239,7 @@ describe('Excel import', () => {
     return fetch(`${base}/import/assets${query}`, { method: 'POST', headers: { cookie }, body: f });
   };
 
-  const good = (i: number) => ['VENT', `${PREFIX}imp-${i}`, 'Drager', 'V300', `${PREFIX}IMP-SN-${i}`, 'ICU', 'ICU1', 'high', '2025-01-15', 24, 3];
+  const good = (i: number) => ['VENT', `${PREFIX}imp-${i}`, 'Drager', 'V300', `${PREFIX}IMP-SN-${i}`, 'ICU', 'ICU1', 'Critical', '2025-01-15', 24, 3];
 
   it('50 rows with 3 bad ones inserts nothing and reports exactly those 3', async () => {
     const rows = Array.from({ length: 50 }, (_, i) => good(i + 1));
@@ -272,6 +272,7 @@ describe('Excel import', () => {
     assert.equal(rows.length, 5);
     assert.equal(rows[4].sequenceNo - rows[0].sequenceNo, 4);
     assert.equal(rows[0].warrantyEnd?.toISOString().slice(0, 10), '2027-01-15');
+    assert.ok(rows.every((r) => r.criticality === 'critical'), 'criticality written as on screen ("Critical") was not read');
 
     // Importing the same file again is refused: the serial numbers now exist.
     const again = await send(admin, file);

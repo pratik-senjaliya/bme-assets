@@ -90,7 +90,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   // Documents to attach once the asset exists (new assets only): the installation report, photos, the manual.
-  const [docs, setDocsState] = useState<{ report: File[]; photos: File[]; manual: File[] }>({ report: [], photos: [], manual: [] });
+  const [docs, setDocsState] = useState<{ report: File[]; po: File[]; photos: File[]; manual: File[] }>({ report: [], po: [], photos: [], manual: [] });
   const setDocs: typeof setDocsState = (v) => {
     setDocsState(v);
     setDirty(true);
@@ -106,7 +106,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const lastPms = Form.useWatch('openingPmsOn', form);
   const lastCal = Form.useWatch('openingCalibrationOn', form);
 
-  const initial = asset ? toForm(asset) : { criticality: 'medium' };
+  const initial = asset ? toForm(asset) : { criticality: 'minor' };
   useEffect(() => {
     form.setFieldsValue(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,6 +147,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         const owner = { ownerType: 'asset' as const, ownerId: created.id };
         const failed = [
           ...(await uploadAll(docs.report, owner, () => 'installation_report')),
+          ...(await uploadAll(docs.po, owner, () => 'po')),
           ...(await uploadAll(docs.photos, owner, () => 'photo')),
           ...(await uploadAll(docs.manual, owner, () => 'manual')),
         ];
@@ -331,6 +332,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         <FormSection title="Documents" hint="Optional. Attach now, or add them later from the asset's Documents tab. PDF, JPG or PNG, up to 10 MB each.">
           <div className="file-tiles">
             <FilePicker files={docs.report} onChange={(f) => setDocs((d) => ({ ...d, report: f }))} label="Installation report" max={3} />
+            <FilePicker files={docs.po} onChange={(f) => setDocs((d) => ({ ...d, po: f }))} label="Purchase order (with its terms)" max={3} />
             <FilePicker files={docs.photos} onChange={(f) => setDocs((d) => ({ ...d, photos: f }))} label="Photos (with the serial number)" max={5} />
             <FilePicker files={docs.manual} onChange={(f) => setDocs((d) => ({ ...d, manual: f }))} label="Manual" max={3} />
           </div>

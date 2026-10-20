@@ -44,6 +44,11 @@ export default function PmsRecordPage() {
               <Link href={`/assets/${r.assetId}/pms/new?corrects=${r.id}`}>
                 <Button>Record a correction</Button>
               </Link>
+              {can('asset.edit') && (
+                <Link href={`/assets/labels?kind=pms&ids=${r.assetId}`}>
+                  <Button>Print PMS sticker</Button>
+                </Link>
+              )}
               <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
                 Print
               </Button>

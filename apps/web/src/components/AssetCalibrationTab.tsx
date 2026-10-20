@@ -17,7 +17,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
   const records = useFetch<CalibrationRow[]>(`/assets/${asset.id}/calibrations`);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [certificate, setCertificate] = useState<File | null>(null);
+  const [certificates, setCertificates] = useState<File[]>([]);
   const [form] = Form.useForm();
   const active = asset.status === 'active';
 
@@ -41,7 +41,9 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
     setSaving(true);
     try {
       const created = await api<CalibrationRow>(`/assets/${asset.id}/calibrations`, { body: input });
-      if (certificate) await uploadCertificate(created.id, certificate).catch(() => message.warning('Saved, but the certificate could not be uploaded. Add it from the list.'));
+      const failed: string[] = [];
+      for (const f of certificates) await uploadCertificate(created.id, f).catch(() => failed.push(f.name));
+      if (failed.length) message.warning(`Saved, but ${failed.join(', ')} could not be uploaded. Add ${failed.length === 1 ? 'it' : 'them'} from the list.`);
       message.success('Calibration recorded');
       setOpen(false);
       records.reload();
@@ -83,7 +85,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
               onClick={() => {
                 form.resetFields();
                 form.setFieldsValue({ doneOn: dayjs(), result: 'pass' });
-                setCertificate(null);
+                setCertificates([]);
                 setOpen(true);
               }}
             >
@@ -107,11 +109,12 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
             title: 'Certificate',
             key: 'certificate',
             render: (_: unknown, row) =>
-              row.certificate ? (
-                <a href={`/api/v1/attachments/${row.certificate.id}/download`} target="_blank" rel="noreferrer">
-                  {row.certificate.fileName}
-                </a>
-              ) : (
+              <Space direction="vertical" size={4}>
+                {row.certificates.map((c) => (
+                  <a key={c.id} href={`/api/v1/attachments/${c.id}/download`} target="_blank" rel="noreferrer">
+                    {c.fileName}
+                  </a>
+                ))}
                 <Upload
                   accept=".pdf,.jpg,.jpeg,.png"
                   showUploadList={false}
@@ -121,9 +124,9 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
                     return false;
                   }}
                 >
-                  <Button size="small">Upload certificate</Button>
+                  <Button size="small">{row.certificates.length ? 'Add another' : 'Upload certificate'}</Button>
                 </Upload>
-              ),
+              </Space>,
           },
         ]}
       />
@@ -141,20 +144,21 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
           <Form.Item label="Result" name="result" rules={[{ required: true }]}>
             <Select options={[{ value: 'pass', label: 'Pass' }, { value: 'fail', label: 'Fail' }]} />
           </Form.Item>
-          <Form.Item label="Certificate (optional)">
+          <Form.Item label="Certificates (optional)">
             <Upload.Dragger
               accept=".pdf,.jpg,.jpeg,.png"
-              maxCount={1}
-              fileList={certificate ? [{ uid: '1', name: certificate.name, status: 'done' }] : []}
-              onRemove={() => setCertificate(null)}
+              multiple
+              maxCount={5}
+              fileList={certificates.map((f, i) => ({ uid: String(i), name: f.name, status: 'done' as const }))}
+              onRemove={(f) => setCertificates((all) => all.filter((_, i) => String(i) !== f.uid))}
               beforeUpload={(f) => {
-                if (f.size > MAX_UPLOAD_BYTES) message.error('That file is over 10 MB');
-                else setCertificate(f);
+                if (f.size > MAX_UPLOAD_BYTES) message.error(`${f.name} is over 10 MB`);
+                else setCertificates((all) => (all.length < 5 ? [...all, f] : all));
                 return false;
               }}
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Drop the certificate here or click to choose</p>
+              <p className="ant-upload-text">Drop the certificates here or click to choose</p>
               <p className="ant-upload-hint">PDF, JPG or PNG, up to 10 MB</p>
             </Upload.Dragger>
           </Form.Item>

@@ -98,7 +98,7 @@ async function xlsx(rows, file) {
   rows.forEach((r) => ws.addRow(r)); await wb.xlsx.writeFile(file); return file;
 }
 await step('Import: a bad row is reported by row and column and nothing is imported', async () => {
-  const f = await xlsx([['VENT', 'E2E-Imp-1', 'Drager', 'X', '', 'ICU', 'ICU1', 'high', '2019-03-01', 24, 6, '15/09/2026', ''], ['VENT', 'E2E-Imp-2', '', '', '', 'ICU', 'NOPE', 'high', '2019-03-01', 24, 6, '', '']], path.join(OUT, 'imp-bad.xlsx'));
+  const f = await xlsx([['VENT', 'E2E-Imp-1', 'Drager', 'X', '', 'ICU', 'ICU1', 'Critical', '2019-03-01', 24, 6, '15/09/2026', ''], ['VENT', 'E2E-Imp-2', '', '', '', 'ICU', 'NOPE', 'Critical', '2019-03-01', 24, 6, '', '']], path.join(OUT, 'imp-bad.xlsx'));
   await bp.goto(BASE + '/assets/import'); await bp.waitForLoadState('networkidle');
   await bp.setInputFiles('input[type=file]', f); await bp.waitForTimeout(2500);
   const t = await bp.locator('body').innerText();
@@ -107,7 +107,7 @@ await step('Import: a bad row is reported by row and column and nothing is impor
   expect((await biomed.api('GET', '/assets?search=E2E-Imp&status=all')).body.items.length === 0, 'rows imported anyway');
 }, bp);
 await step('Import: a clean file imports, and "Last PMS done" sets the first due date', async () => {
-  const f = await xlsx([['VENT', 'E2E-Imp-1', 'Drager', 'X', '', 'ICU', 'ICU1', 'high', '2019-03-01', 24, 6, '15/09/2026', '']], path.join(OUT, 'imp-ok.xlsx'));
+  const f = await xlsx([['VENT', 'E2E-Imp-1', 'Drager', 'X', '', 'ICU', 'ICU1', 'Critical', '2019-03-01', 24, 6, '15/09/2026', '']], path.join(OUT, 'imp-ok.xlsx'));
   await bp.goto(BASE + '/assets/import'); await bp.waitForLoadState('networkidle');
   await bp.setInputFiles('input[type=file]', f); await bp.getByRole('button', { name: /^Import 1/ }).click();
   await bp.getByText(/imported|View assets/i).first().waitFor();

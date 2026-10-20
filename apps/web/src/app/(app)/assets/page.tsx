@@ -5,7 +5,7 @@ import { Button, Dropdown, Grid, Input, Segmented, Select, Space } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { CRITICALITIES, type AssetRow, type Paged } from '@bme/shared';
+import { CRITICALITIES, CRITICALITY_LABEL, type AssetRow, type Paged } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { ExportMenu } from '@/components/ExportMenu';
 import { PageHeader } from '@/components/PageHeader';
@@ -131,7 +131,7 @@ function AssetList() {
         <PhoneFilters active={[q.departmentId, q.equipmentTypeId, q.criticality].filter(Boolean).length}>
           {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
           {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
-          {select('criticality', 'Criticality', CRITICALITIES.map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) })))}
+          {select('criticality', 'Criticality', [...CRITICALITIES].reverse().map((c) => ({ value: c, label: CRITICALITY_LABEL[c] })))}
         </PhoneFilters>
         {filtered && (
           <Button

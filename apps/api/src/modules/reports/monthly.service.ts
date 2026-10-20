@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { Kpi, ReportData } from '@bme/shared';
+import { CRITICALITY_LABEL, isCritical, type Kpi, type ReportData } from '@bme/shared';
 import { addDaysISO, addMonths, daysBetween, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { sendMail, smtpConfigured } from '../../lib/mail';
@@ -108,7 +108,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   kpi(out, 'Average downtime', down, 'hours', 'Raised to resolved');
   const limit = settings.criticalDowntimeHours;
   const lengthH = (x: { raisedAt: Date; resolvedAt: Date | null }) => hours((x.resolvedAt ?? now).getTime() - x.raisedAt.getTime());
-  const overLimit = raised.filter(({ x }) => x.asset.criticality === 'critical' && lengthH(x) > limit);
+  const overLimit = raised.filter(({ x }) => isCritical(x.asset.criticality) && lengthH(x) > limit);
   kpi(out, `Critical down over ${limit} h`, overLimit.length, 'int', overLimit.length ? 'Longer than the hospital limit' : 'None', overLimit.length ? 'bad' : 'good');
 
   // ---- PMS and calibration ----
@@ -169,7 +169,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   addSheet(out, `Overdue PMS and calibration (as at ${stampDay(asAt)})`, [
     { header: 'What', key: 'what' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 },
     { header: 'Criticality', key: 'crit' }, { header: 'Was due', key: 'due', fmt: 'date' }, { header: 'Days overdue', key: 'days', fmt: 'int' },
-  ], late.map(({ a, what, due }) => ({ what, code: a.assetCode, name: a.name, dept: a.department.name, crit: a.criticality, due, days: daysBetween(due, parseDate(asAt)) })));
+  ], late.map(({ a, what, due }) => ({ what, code: a.assetCode, name: a.name, dept: a.department.name, crit: CRITICALITY_LABEL[a.criticality], due, days: daysBetween(due, parseDate(asAt)) })));
 
   // Replacement: as things stand at the end of the month, over the 12 months up to it.
   const yearAgo = zonedDayStart(isoDate(addMonths(parseDate(addDaysISO(to, 1)), -12)));

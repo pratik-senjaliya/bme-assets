@@ -161,7 +161,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       serialNo: i.serialNo ?? null,
       departmentId: i.departmentId,
       locationId: i.locationId,
-      criticality: i.criticality ?? 'medium',
+      criticality: i.criticality ?? 'minor',
       installationDate,
       warrantyMonths: i.warrantyMonths ?? null,
       warrantyEnd: warrantyEndFor(installationDate, i.warrantyMonths),

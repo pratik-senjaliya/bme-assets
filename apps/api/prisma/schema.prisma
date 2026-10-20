@@ -11,10 +11,10 @@ datasource db {
 }
 
 enum Criticality {
-  low
-  medium
-  high
+  general
+  minor
   critical
+  most_critical
 }
 
 enum AssetStatus {
@@ -226,7 +226,7 @@ model Asset {
   serialNo             String?
   departmentId         String
   locationId           String
-  criticality          Criticality @default(medium)
+  criticality          Criticality @default(minor)
   status               AssetStatus @default(active)
   installationDate     DateTime?   @db.Date
   warrantyMonths       Int?

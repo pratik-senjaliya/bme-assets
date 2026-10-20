@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { CRITICALITY_LABEL, isCritical, type Criticality } from '@bme/shared';
 import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 
@@ -50,12 +51,13 @@ export function WarrantyTag({ status }: { status: 'none' | 'active' | 'expiring'
 }
 
 // Criticality is a property of the asset, not a status, so it stays neutral (colour is reserved for status).
-// Only "critical" is marked; the other levels are quiet text so a long list is not a wall of badges.
+// Only the two critical levels are marked; the others are quiet text so a long list is not a wall of badges.
 export function CriticalityTag({ value }: { value: string }) {
-  const label = value[0].toUpperCase() + value.slice(1);
-  return value === 'critical' ? (
+  const label = CRITICALITY_LABEL[value as Criticality] ?? value;
+  return isCritical(value) ? (
     <span style={{ fontWeight: 600, color: COLORS.ink, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span aria-hidden style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.ink }} />
+      {/* Most critical: a filled mark; critical: an outlined one. */}
+      <span aria-hidden style={{ width: 8, height: 8, borderRadius: 2, boxSizing: 'border-box', border: `1.5px solid ${COLORS.ink}`, background: value === 'most_critical' ? COLORS.ink : 'transparent' }} />
       {label}
     </span>
   ) : (

@@ -21,16 +21,14 @@ async function toRows(records: Row[]): Promise<CalibrationRow[]> {
     where: { ownerType: 'calibration_record', ownerId: { in: records.map((r) => r.id) }, kind: 'certificate' },
     orderBy: { createdAt: 'asc' },
   });
-  const latest = new Map(certs.map((c) => [c.ownerId, c])); // newest wins
   return records.map((r) => {
-    const cert = latest.get(r.id);
     return {
       id: r.id,
       doneOn: isoDate(r.doneOn),
       dueOn: isoDate(r.dueOn),
       agency: r.agency,
       result: r.result as PmsResult,
-      certificate: cert ? { id: cert.id, fileName: cert.fileName } : null,
+      certificates: certs.filter((c) => c.ownerId === r.id).map((c) => ({ id: c.id, fileName: c.fileName })),
     };
   });
 }

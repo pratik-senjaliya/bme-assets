@@ -1,6 +1,6 @@
 import { Typography } from 'antd';
 import Link from 'next/link';
-import type { ComplaintRow } from '@bme/shared';
+import { CRITICALITY_LABEL, isCritical, type ComplaintRow } from '@bme/shared';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { EmptyState } from '@/components/Skeletons';
 import { StatusTag } from '@/components/StatusTag';
@@ -19,7 +19,7 @@ export function ComplaintsMiniList({ rows }: { rows: ComplaintRow[] }) {
             <Link href={`/assets/${c.assetId}`} className="code">
               {c.assetCode}
             </Link>
-            {c.criticality === 'critical' && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COLORS.ink }}>Critical</span>}
+            {isCritical(c.criticality) && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COLORS.ink }}>{CRITICALITY_LABEL[c.criticality]}</span>}
             <Typography.Paragraph ellipsis={{ rows: 1, tooltip: c.description }} style={{ margin: '3px 0 0', color: COLORS.text, fontSize: 13 }}>
               {c.description}
             </Typography.Paragraph>
