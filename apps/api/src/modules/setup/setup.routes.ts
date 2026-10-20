@@ -5,6 +5,7 @@ import {
   locationSchema,
   type DepartmentInput,
   type EquipmentTypeInput,
+  type HospitalInfo,
   type LocationInput,
 } from '@bme/shared';
 import { audited } from '../../lib/audit';
@@ -19,6 +20,14 @@ const actor = (req: Request) => ({ createdBy: currentUser(req).id });
 
 // Reads: any role that can view assets, but nursing only gets its own department's data.
 // Writes: setup.manage (admin).
+
+// ---------- The install ----------
+
+// Its name and the optional parts it has turned on, for every signed-in person (the full settings are the admin's).
+setupRouter.get('/hospital', requirePermission('asset.view'), async (_req, res) => {
+  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true } });
+  res.json({ name: s.name, transfersEnabled: s.transfersEnabled } satisfies HospitalInfo);
+});
 
 // ---------- Departments ----------
 

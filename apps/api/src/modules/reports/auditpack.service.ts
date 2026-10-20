@@ -32,6 +32,7 @@ const REPORT_FILES: { file: string; type: ReportType; what: string; extra?: Part
   { file: '06 Critical equipment downtime.xlsx', type: 'critical-downtime', what: 'Uptime of critical equipment and every downtime event' },
   { file: '07 Warranty and contracts.xlsx', type: 'warranty-contracts', what: 'Warranties and AMC / CMC contracts: running, ending, ended' },
   { file: '08 Equipment age.xlsx', type: 'equipment-age', what: 'Age of every piece of equipment' },
+  { file: '09 Condemnation register.xlsx', type: 'condemnation', what: 'Equipment condemned in the period by committee date: reason, purchase cost, estimated value and approval' },
 ];
 
 const DOC_KIND: Record<string, string> = { eol_letter: 'End-of-life letter', condemnation_form: 'Condemnation form' };

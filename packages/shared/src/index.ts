@@ -192,6 +192,7 @@ export const updateSettingsSchema = z.object({
   reminderDays: z.array(z.number().int().positive().max(365)).min(1).max(6).optional(),
   criticalDowntimeHours: z.number().int().min(1).max(720).optional(),
   complaintCloseDays: z.number().int().min(1).max(30).optional(),
+  transfersEnabled: z.boolean().optional(),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
   // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
   smtpHost: optionalText(200),
@@ -210,6 +211,7 @@ export type SettingsResponse = {
   reminderDays: number[];
   criticalDowntimeHours: number;
   complaintCloseDays: number;
+  transfersEnabled: boolean;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpUser: string | null;
@@ -225,8 +227,13 @@ export type Criticality = (typeof CRITICALITIES)[number];
 export const CRITICALITY_LABEL: Record<Criticality, string> = { general: 'General', minor: 'Minor', critical: 'Critical', most_critical: 'Most critical' };
 export const CRITICAL_LEVELS: Criticality[] = ['critical', 'most_critical'];
 export const isCritical = (c: string) => (CRITICAL_LEVELS as string[]).includes(c);
-export const ASSET_STATUSES = ['active', 'not_in_use', 'condemned'] as const;
+export const ASSET_STATUSES = ['active', 'not_in_use', 'condemned', 'transferred'] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
+// Gone from the hospital: condemned, or transferred to another unit (both with HOD approval). The record and its
+// history stay, labelled, but nothing new can be added or changed (business rule 7).
+export const GONE_STATUSES: AssetStatus[] = ['condemned', 'transferred'];
+export const isGone = (status: string) => (GONE_STATUSES as string[]).includes(status);
+export const ASSET_STATUS_LABEL: Record<AssetStatus, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'Condemned', transferred: 'Transferred' };
 export const ATTACHMENT_KINDS = ['po', 'installation_report', 'photo', 'manual', 'certificate', 'contract', 'service_report', 'invoice', 'condemnation_form', 'other'] as const;
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export const CONTRACT_TYPES = ['warranty', 'cmc', 'amc', 'in_house'] as const;
@@ -386,7 +393,7 @@ export type AttachmentRow = {
 
 export type TimelineEvent = {
   date: string; // ISO date or date-time
-  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint' | 'service' | 'opening';
+  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint' | 'service' | 'opening' | 'condemned' | 'transferred';
   title: string;
   detail?: string | null;
 };
@@ -704,7 +711,7 @@ export type RunRemindersResult = { created: number; emailed: number };
 
 // ---------- Approvals (business rule 3) ----------
 
-export const APPROVAL_TYPES = ['condemn', 'delete', 'edit_key_field'] as const;
+export const APPROVAL_TYPES = ['condemn', 'delete', 'edit_key_field', 'transfer'] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
@@ -713,8 +720,36 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 export const DELETABLE_TARGETS = ['asset', 'purchase_order', 'service_contract', 'service_expense', 'service_log', 'complaint'] as const;
 export type DeletableTarget = (typeof DELETABLE_TARGETS)[number];
 
-export const condemnRequestSchema = z.object({ reason: z.string().trim().min(5, 'Say why it should be condemned').max(1000) });
+// The condemnation committee's form: why (one of the usual reasons, and in words), what the equipment is worth
+// today, and the date the committee met. Sent as a form upload (with the optional end-of-life letter), so numbers
+// arrive as text. The server refuses a committee date after today.
+export const CONDEMN_REASONS = ['end_of_support', 'repair_cost', 'damaged', 'other'] as const;
+export type CondemnReason = (typeof CONDEMN_REASONS)[number];
+export const CONDEMN_REASON_LABEL: Record<CondemnReason, string> = {
+  end_of_support: 'End of support: no spares or service from the OEM',
+  repair_cost: 'Repair costs more than half its price',
+  damaged: 'Damaged beyond repair',
+  other: 'Other',
+};
+export const condemnRequestSchema = z.object({
+  reasonCategory: z.enum(CONDEMN_REASONS, { message: 'Choose the reason' }),
+  reason: z.string().trim().min(5, 'Say why it should be condemned').max(1000),
+  estimatedValue: z.coerce.number({ message: 'Enter the estimated value today (0 if it has none)' }).min(0, 'Enter 0 or more').max(1_000_000_000),
+  committeeDate: isoDateSchema,
+});
 export type CondemnRequestInput = z.infer<typeof condemnRequestSchema>;
+
+// Permanently moved to another unit of the hospital group (e.g. "Indore unit"). Its record and history stay here,
+// marked transferred; the other unit registers it afresh. Only where the hospital turns transfers on.
+export const transferRequestSchema = z.object({
+  toUnit: z.string().trim().min(2, 'Name the unit it goes to').max(150),
+  reason: z.string().trim().min(5, 'Say why it is being transferred').max(1000),
+});
+export type TransferRequestInput = z.infer<typeof transferRequestSchema>;
+export type TransferInfo = { toUnit: string; reason: string; requestedByName: string; approvedByName: string; approvedAt: string };
+
+// What every signed-in person may know about the install: its name, and the optional parts it has turned on.
+export type HospitalInfo = { name: string; transfersEnabled: boolean };
 
 export const deleteRequestSchema = z.object({
   targetType: z.enum(DELETABLE_TARGETS),
@@ -752,6 +787,10 @@ export type ApprovalRow = {
 export type CondemnationInfo = {
   hospitalName: string;
   reason: string;
+  // The committee's form (null on requests made before it existed).
+  reasonCategory: CondemnReason | null;
+  estimatedValue: number | null;
+  committeeDate: string | null;
   requestedByName: string;
   requestedAt: string;
   approvedByName: string;
@@ -839,9 +878,10 @@ export const REPORTS = [
   { type: 'calibration', title: 'Calibration', description: 'Calibrations done in the period, and every active asset’s next calibration due date.', range: true },
   { type: 'breakdowns', title: 'Breakdowns', description: 'Complaints raised in the period with response time and downtime, summarised by month or year.', range: true, group: true },
   { type: 'uptime', title: 'Equipment uptime', description: 'Uptime per asset over the period, from complaint downtime (24 hours a day).', range: true },
-  { type: 'critical-downtime', title: 'Downtime of critical equipment', description: 'Uptime and every downtime event for assets marked Critical.', range: true },
+  { type: 'critical-downtime', title: 'Downtime of critical equipment', description: 'Uptime and every downtime event for assets marked Critical or Most critical.', range: true },
   { type: 'equipment-age', title: 'Equipment age', description: 'Age of every asset, grouped into age bands and by equipment type.', range: false },
   { type: 'expenses', title: 'Service expenses', description: 'Repair and spare-part costs in the period, per asset and per month.', range: true },
+  { type: 'condemnation', title: 'Condemnation register', description: 'Equipment condemned in the period, by committee date: reason, purchase cost, estimated value today and who approved it. The PDF is the committee’s form.', range: true },
   { type: 'warranty-contracts', title: 'Warranty and contracts', description: 'Warranties and AMC / CMC / in-house contracts: what is running, what ends soon and what has ended.', range: false },
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];

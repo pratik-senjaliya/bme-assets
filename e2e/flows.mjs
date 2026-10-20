@@ -53,10 +53,13 @@ await step('Rejecting a request leaves the asset as it was', async () => {
 }, ap);
 
 // ---------- Condemnation (rules 3, 7, 2) ----------
-await step('Biomedical staff request condemnation with a reason; nothing changes until approval', async () => {
+await step('Biomedical staff fill the committee form (reason, details, value, date); nothing changes until approval', async () => {
   await bp.goto(`${BASE}/assets/${A.id}`); await bp.waitForLoadState('networkidle');
   await bp.getByRole('button', { name: 'More' }).click(); await bp.getByText('Request condemnation').click();
-  await bp.locator('.ant-modal textarea').fill('E2E: beyond economical repair, end of support');
+  const dlg = bp.locator('.ant-modal:visible');
+  await dlg.locator('.ant-select').first().click(); await bp.locator('.ant-select-item-option', { hasText: 'End of support' }).click();
+  await dlg.locator('textarea').fill('E2E: beyond economical repair, end of support');
+  await dlg.getByLabel('Estimated value today').fill('25000');
   await bp.getByRole('button', { name: 'Send request' }).click(); await bp.locator('.ant-message-success').first().waitFor();
   expect((await biomed.api('GET', `/assets/${A.id}`)).body.status === 'active', 'status changed before approval');
 }, bp);

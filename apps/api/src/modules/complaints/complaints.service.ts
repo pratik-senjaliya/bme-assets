@@ -137,9 +137,9 @@ export async function moveOpenComplaints(db: Db, assetId: string, departmentId: 
 
 // Condemned equipment will not be repaired: its complaints are closed with a note, without waiting for whoever raised
 // them. No start time is invented, so response-time figures are not distorted; downtime runs until condemnation.
-export async function closeComplaintsOnCondemnation(db: Db, assetId: string, decidedBy: string) {
-  const now = new Date();
-  const note = 'Closed: the equipment was condemned.';
+// `at` is the HOD's decision, so the closing reads at the same moment as the condemnation or transfer itself.
+export async function closeComplaintsOnCondemnation(db: Db, assetId: string, decidedBy: string, note = 'Closed: the equipment was condemned.', at = new Date()) {
+  const now = at;
   const affected = await db.complaint.findMany({ where: { assetId, status: { in: [...UNRESOLVED_STATUSES, 'resolved'] } }, select: { id: true } });
   await db.complaint.updateMany({
     where: { assetId, status: { in: UNRESOLVED_STATUSES } },

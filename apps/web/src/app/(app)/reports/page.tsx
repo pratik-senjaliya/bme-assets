@@ -23,7 +23,7 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
       { href: '/reports/audit-pack', title: 'Audit pack', description: 'One ZIP for an auditor: inventory, PMS checklists, calibration certificates, breakdowns, downtime, cover and condemnation letters for a period.' },
     ],
   },
-  { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts'] as ReportType[]).map(entry) },
+  { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts', 'condemnation'] as ReportType[]).map(entry) },
   { title: 'Maintenance', entries: (['pms', 'calibration'] as ReportType[]).map(entry) },
   { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime'] as ReportType[]).map(entry) },
   { title: 'Cost', entries: (['expenses'] as ReportType[]).map(entry) },

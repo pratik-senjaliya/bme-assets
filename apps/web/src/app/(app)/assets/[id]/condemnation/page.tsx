@@ -4,10 +4,10 @@ import { PrinterOutlined } from '@ant-design/icons';
 import { Button, Card, Descriptions, Typography } from 'antd';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { AssetDetail, CondemnationInfo } from '@bme/shared';
+import { CONDEMN_REASON_LABEL, type AssetDetail, type CondemnationInfo } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useFetch } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { COLORS } from '@/theme';
 import { DetailPageSkeleton } from '@/components/Skeletons';
@@ -47,7 +47,14 @@ export default function CondemnationCertificatePage() {
           <Descriptions.Item label="Age at condemnation">{a.installationDate ? `${Math.floor((a.ageMonths ?? 0) / 12)} years` : '—'}</Descriptions.Item>
         </Descriptions>
         <Typography.Paragraph strong style={{ marginBottom: 4 }}>Reason</Typography.Paragraph>
+        {c.reasonCategory && <Typography.Paragraph style={{ marginBottom: 4 }}>{CONDEMN_REASON_LABEL[c.reasonCategory]}</Typography.Paragraph>}
         <Typography.Paragraph>{c.reason}</Typography.Paragraph>
+        {(c.estimatedValue != null || c.committeeDate) && (
+          <Descriptions size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+            {c.estimatedValue != null && <Descriptions.Item label="Estimated value today">{formatMoney(c.estimatedValue)}</Descriptions.Item>}
+            {c.committeeDate && <Descriptions.Item label="Condemnation committee">{formatDate(c.committeeDate)}</Descriptions.Item>}
+          </Descriptions>
+        )}
         <Descriptions size="small" column={{ xs: 1, sm: 2 }}>
           <Descriptions.Item label="Requested by">{c.requestedByName}, {formatDate(c.requestedAt)}</Descriptions.Item>
           <Descriptions.Item label="Approved by">{c.approvedByName}, {formatDate(c.approvedAt)}</Descriptions.Item>

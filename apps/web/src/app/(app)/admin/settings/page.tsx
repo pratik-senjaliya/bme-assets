@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
@@ -38,6 +38,7 @@ function SettingsPageScreen() {
       reminderDays: values.reminderDays,
       criticalDowntimeHours: values.criticalDowntimeHours,
       complaintCloseDays: values.complaintCloseDays,
+      transfersEnabled: values.transfersEnabled,
       smtpHost: values.smtpHost ?? null,
       smtpPort: values.smtpPort ?? null,
       smtpUser: values.smtpUser ?? null,
@@ -150,6 +151,14 @@ function SettingsPageScreen() {
               extra="Whoever raised a complaint closes it once the equipment works again. If they have not after this many days, it closes by itself. Downtime is not affected."
             >
               <InputNumber min={1} max={30} style={{ width: 160 }} />
+            </Form.Item>
+            <Form.Item
+              label="Transfers to other units"
+              name="transfersEnabled"
+              valuePropName="checked"
+              extra="For hospitals with other units. Equipment can then be transferred to another unit with the HOD's approval; it keeps its history here, marked transferred."
+            >
+              <Switch aria-label="Allow transfers to other units" />
             </Form.Item>
             </Card>
           <Card title="Email for reminders (optional)">

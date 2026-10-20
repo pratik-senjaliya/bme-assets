@@ -14,7 +14,7 @@ import { addDaysISO, todayISO, zonedDayStart } from './lib/dates';
 import { prisma } from './lib/prisma';
 import { getStorage } from './lib/storage';
 import { buildMonthlyReport, lastMonth, monthEnd, monthStart, previousMonth, saveMonthlyReport } from './modules/reports/monthly.service';
-import { call, fakeSmtp, login, pdfTextOf, startServer } from './testUtils';
+import { call, condemnForm, fakeSmtp, login, pdfTextOf, startServer } from './testUtils';
 
 process.env.STORAGE_DRIVER = 'local';
 
@@ -239,8 +239,7 @@ describe('Audit pack', () => {
     const lost = await (await call(base, biomed, 'POST', `/assets/${A.mid.id}/calibrations`, { doneOn: addDaysISO(to, -1), agency: 'NABL Lab', result: 'pass' })).json();
     await prisma.attachment.create({ data: { ownerType: 'calibration_record', ownerId: lost.id, kind: 'certificate', fileName: `${PREFIX}lost.pdf`, filePath: 'gone/never-stored.pdf', mime: 'application/pdf', size: 10 } });
     // The often-broken one is condemned with an end-of-life letter.
-    const letter = new FormData();
-    letter.set('reason', 'Beyond economical repair');
+    const letter = condemnForm('Beyond economical repair');
     letter.set('file', new Blob([new Uint8Array(PNG)]), `${PREFIX}eol.png`);
     const req = await fetch(`${base}/assets/${A.old.id}/condemn`, { method: 'POST', headers: { cookie: biomed }, body: letter });
     assert.equal(req.status, 201, await req.clone().text());
