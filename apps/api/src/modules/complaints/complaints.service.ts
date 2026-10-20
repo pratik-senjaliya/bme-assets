@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { ComplaintDetail, ComplaintEvent, ComplaintRow, Criticality } from '@bme/shared';
+import { isCritical, type ComplaintDetail, type ComplaintEvent, type ComplaintRow, type Criticality } from '@bme/shared';
 import { prisma } from '../../lib/prisma';
 import { toAttachmentRow } from '../assets/attachments.service';
 
@@ -55,7 +55,7 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
       assignedToName: c.assignedTo?.name ?? null,
       assignedAt: c.assignedAt?.toISOString() ?? null,
       ...metrics,
-      overDowntimeLimit: c.asset.criticality === 'critical' && downSeconds > criticalDowntimeHours * 3600,
+      overDowntimeLimit: isCritical(c.asset.criticality) && downSeconds > criticalDowntimeHours * 3600,
       attachmentCount: files.find((f) => f.ownerId === c.id)?._count ?? 0,
     };
   });

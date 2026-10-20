@@ -120,8 +120,8 @@ describe('Sorting and filtered exports', () => {
     const ventsOnly = await rows('assetStatus=all&search=Ventilator');
     assert.ok(ventsOnly.length > 0 && ventsOnly.length < all.length, `${ventsOnly.length} of ${all.length}`);
     assert.ok(ventsOnly.every((r) => /Ventilator|VENT/i.test(`${r.name}${r.type}${r.code}`)));
-    const criticalOnly = await rows('assetStatus=all&criticality=critical');
-    assert.ok(criticalOnly.every((r) => r.crit === 'critical'));
+    const criticalOnly = await rows('assetStatus=all&criticality=most_critical');
+    assert.ok(criticalOnly.every((r) => r.crit === 'Most critical'));
     // Nursing still only gets its own department, whatever it asks for.
     const nurse = ((await (await call(base, nursing, 'GET', '/assets?pageSize=100')).json()) as Paged<{ departmentName: string }>).items;
     assert.ok(nurse.every((a) => a.departmentName === 'Intensive Care Unit'));

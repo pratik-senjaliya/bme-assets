@@ -122,10 +122,17 @@ assetsRouter.get('/labels', requirePermission('asset.edit'), async (req, res) =>
     prisma.asset.findMany({ where, include: { department: true, location: true }, orderBy: { assetCode: 'asc' }, take: MAX_LABELS }),
     prisma.hospitalSettings.findFirstOrThrow(),
   ]);
+  // The day the PMS was done: a correction is filed later but is about the same PMS, so only originals count.
+  const done = await prisma.pmsRecord.groupBy({ by: ['assetId'], where: { assetId: { in: rows.map((a) => a.id) }, correctsRecordId: null }, _max: { performedOn: true } });
+  const lastPms = new Map(done.map((d) => [d.assetId, d._max.performedOn]));
+  const day = (d: Date | null | undefined) => (d ? isoDate(d) : null);
   const body: AssetLabelsResponse = {
     hospitalName: settings.name,
     total,
-    items: rows.map((a) => ({ id: a.id, assetCode: a.assetCode, name: a.name, departmentName: a.department.name, locationName: a.location.name })),
+    items: rows.map((a) => ({
+      id: a.id, assetCode: a.assetCode, name: a.name, departmentName: a.department.name, locationName: a.location.name,
+      lastPmsOn: day(lastPms.get(a.id) ?? a.openingPmsOn), nextPmsDue: day(a.nextPmsDue),
+    })),
   };
   res.json(body);
 });

@@ -224,7 +224,7 @@ describe('calibration', () => {
     assert.equal((await call(base, nursing, 'GET', `/assets/${a.id}/calibrations`)).status, 403);
   });
 
-  it('keeps the certificate private and serves it to the asset’s staff', async () => {
+  it('keeps certificates private, serves them to the asset’s staff, and keeps more than one', async () => {
     const a = await makeAsset();
     const c = await (await call(base, biomed, 'POST', `/assets/${a.id}/calibrations`, { doneOn: todayISO(), agency: 'NABL Lab', result: 'pass' })).json();
     const form = new FormData();
@@ -233,7 +233,13 @@ describe('calibration', () => {
     assert.equal(up.status, 201);
     const cert = await up.json();
     const list = await (await call(base, biomed, 'GET', `/assets/${a.id}/calibrations`)).json();
-    assert.equal(list[0].certificate.fileName, 'certificate.png');
+    assert.deepEqual(list[0].certificates.map((x: { fileName: string }) => x.fileName), ['certificate.png']);
+    // An agency may send more than one: each is kept, oldest first.
+    const second = new FormData();
+    second.set('file', new Blob([new Uint8Array(PNG)]), 'traceability.png');
+    assert.equal((await fetch(`${base}/calibration/records/${c.id}/certificate`, { method: 'POST', headers: { cookie: biomed }, body: second })).status, 201);
+    const again = await (await call(base, biomed, 'GET', `/assets/${a.id}/calibrations`)).json();
+    assert.deepEqual(again[0].certificates.map((x: { fileName: string }) => x.fileName), ['certificate.png', 'traceability.png']);
     const dl = await fetch(`${base}/attachments/${cert.id}/download`, { headers: { cookie: biomed } });
     assert.equal(dl.status, 200);
     assert.deepEqual(Buffer.from(await dl.arrayBuffer()), PNG);

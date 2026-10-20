@@ -6,7 +6,7 @@ import { prisma } from './lib/prisma';
 import { addMonths, isoDate, parseDate, todayISO } from './lib/dates';
 import { complaintNo } from './modules/complaints/complaints.service';
 import { evaluateAnswers, templateItems } from './modules/pms/pms.service';
-import type { PmsAnswer, PmsItem } from '@bme/shared';
+import { isCritical, type PmsAnswer, type PmsItem } from '@bme/shared';
 
 // A small fixed-seed random generator, so the demo looks the same every time.
 function rng(seed: number) {
@@ -109,11 +109,11 @@ async function main() {
   let expenseCount = 0;
   for (let k = 0; k < total; k++) {
     const open = k === total - 1;
-    const a = open ? (live.find((x) => x.criticality === 'critical') ?? pick(bag)) : pick(bag);
+    const a = open ? (live.find((x) => isCritical(x.criticality)) ?? pick(bag)) : pick(bag);
     const type = a.equipmentType.code;
     const raisedAt = raised[k];
     const inProgress = k === total - 2;
-    const critical = a.criticality === 'critical';
+    const critical = isCritical(a.criticality);
     const startedAt = open ? null : new Date(raisedAt.getTime() + between(0.2, 5) * HOUR);
     const downH = critical && rand() < 0.2 ? between(20, 40) : between(1, 14);
     const resolvedAt = open || inProgress ? null : new Date(raisedAt.getTime() + Math.max(downH, (startedAt!.getTime() - raisedAt.getTime()) / HOUR + 0.5) * HOUR);

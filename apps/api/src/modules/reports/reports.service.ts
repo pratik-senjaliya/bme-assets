@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
+import { CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
@@ -108,12 +108,12 @@ async function assetMaster(wb: Collector, c: Ctx) {
   kpi(wb, 'Active', active.length, 'int');
   kpi(wb, 'Not in use', assets.filter((a) => a.status === 'not_in_use').length, 'int');
   kpi(wb, 'Condemned', assets.filter((a) => a.status === 'condemned').length, 'int');
-  kpi(wb, 'Critical (active)', active.filter((a) => a.criticality === 'critical').length, 'int');
+  kpi(wb, 'Critical (active)', active.filter((a) => isCritical(a.criticality)).length, 'int');
   const expiring = rowsOf.filter((r, i) => assets[i].status === 'active' && r.warrantyStatus === 'expiring').length;
   kpi(wb, 'Warranty ending in 30 days', expiring, 'int', expiring ? 'Plan a contract' : 'None', expiring ? 'warn' : 'good');
   wb.charts.push(oneSeries('by-department', 'Active equipment by department', 'bar', 'Assets', tally(active, (a) => a.department.name), 'int'));
   wb.charts.push(oneSeries('by-type', 'Active equipment by type', 'bar', 'Assets', top(tally(active, (a) => a.equipmentType.name), 10), 'int'));
-  wb.charts.push(oneSeries('by-criticality', 'Active equipment by criticality', 'column', 'Assets', ['low', 'medium', 'high', 'critical'].map((c) => [c[0].toUpperCase() + c.slice(1), active.filter((a) => a.criticality === c).length] as [string, number]), 'int'));
+  wb.charts.push(oneSeries('by-criticality', 'Active equipment by criticality', 'column', 'Assets', CRITICALITIES.map((c) => [CRITICALITY_LABEL[c], active.filter((a) => a.criticality === c).length] as [string, number]), 'int'));
   wb.charts.push(oneSeries('by-status', 'Equipment by status', 'column', 'Assets', [['Active', active.length], ['Not in use', assets.filter((a) => a.status === 'not_in_use').length], ['Condemned', assets.filter((a) => a.status === 'condemned').length]], 'int'));
   addSheet(wb, 'Asset master', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Name', key: 'name', width: 28 }, { header: 'Equipment type', key: 'type', width: 18 },
@@ -126,7 +126,7 @@ async function assetMaster(wb: Collector, c: Ctx) {
     const r = toAssetRow(a);
     return {
       code: a.assetCode, name: a.name, type: a.equipmentType.name, make: a.make, model: a.model, serial: a.serialNo, dept: a.department.name, loc: a.location.name,
-      crit: a.criticality, status: STATUS_LABEL[a.status], installed: a.installationDate, age: r.ageMonths == null ? null : Math.round((r.ageMonths / 12) * 10) / 10,
+      crit: CRITICALITY_LABEL[a.criticality], status: STATUS_LABEL[a.status], installed: a.installationDate, age: r.ageMonths == null ? null : Math.round((r.ageMonths / 12) * 10) / 10,
       warranty: a.warrantyEnd, pmsMonths: a.pmsFrequencyMonths, pms: a.status === 'active' ? a.nextPmsDue : null, cal: a.status === 'active' ? a.nextCalibrationDue : null,
     };
   }));
@@ -232,7 +232,7 @@ async function breakdowns(wb: Collector, c: Ctx) {
     { header: 'Resolved', pdf: false, key: 'resolved', width: 20 }, { header: 'Resolved by', pdf: false, key: 'resolvedBy', width: 20 }, { header: 'Response time (h)', key: 'resp', fmt: 'hours', width: 18 },
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'Resolution', key: 'notes', width: 40 },
   ], rows.map(({ x, m }) => ({
-    no: x.complaintNo, raised: stamp(x.raisedAt), code: x.asset.assetCode, asset: x.asset.name, dept: x.department.name, crit: x.asset.criticality, astatus: STATUS_LABEL[x.asset.status], desc: x.description,
+    no: x.complaintNo, raised: stamp(x.raisedAt), code: x.asset.assetCode, asset: x.asset.name, dept: x.department.name, crit: CRITICALITY_LABEL[x.asset.criticality], astatus: STATUS_LABEL[x.asset.status], desc: x.description,
     by: x.raisedBy.name, status: x.status.replace('_', ' '), started: stamp(x.startedAt), startedBy: name(x.startedBy), resolved: stamp(x.resolvedAt), resolvedBy: name(x.resolvedBy),
     resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: x.resolutionNotes,
   })));
@@ -278,7 +278,7 @@ export async function uptimeData(c: Ctx, criticalOnly: boolean) {
   const now = new Date();
   const periodEnd = new Date(Math.min(c.toAt.getTime(), now.getTime())); // the future has no uptime yet
   const assets = await prisma.asset.findMany({
-    where: { ...c.scope, ...(criticalOnly ? { criticality: 'critical' } : {}), createdAt: { lt: periodEnd } },
+    where: { ...c.scope, ...(criticalOnly ? { criticality: { in: CRITICAL_LEVELS } } : {}), createdAt: { lt: periodEnd } },
     include: assetInclude,
     orderBy: { assetCode: 'asc' },
   });
@@ -312,7 +312,7 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
     { header: 'Criticality', key: 'crit' }, { header: 'Status', key: 'status' }, { header: 'Hours in period', key: 'period', fmt: 'hours', width: 16 }, { header: 'Breakdowns', key: 'count', fmt: 'int' },
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'Uptime', key: 'uptime', fmt: 'pct' },
   ], rows.map(({ a, mine, periodMs, downMs }) => ({
-    code: a.assetCode, name: a.name, type: a.equipmentType.name, dept: a.department.name, crit: a.criticality, status: STATUS_LABEL[a.status], period: hours(periodMs),
+    code: a.assetCode, name: a.name, type: a.equipmentType.name, dept: a.department.name, crit: CRITICALITY_LABEL[a.criticality], status: STATUS_LABEL[a.status], period: hours(periodMs),
     count: mine.filter((x) => x.raisedAt >= c.fromAt).length, down: hours(downMs), uptime: 1 - downMs / periodMs,
   })).sort((x, y) => x.uptime - y.uptime || x.code.localeCompare(y.code)));
 
@@ -466,7 +466,7 @@ async function warrantyContracts(wb: Collector, c: Ctx) {
   ], contracts.map((k) => ({ type: k.type.toUpperCase().replace('_', '-'), vendor: k.vendor, code: k.asset.assetCode, name: k.asset.name, astatus: STATUS_LABEL[k.asset.status], start: k.startDate, end: k.endDate, days: left(k.endDate), state: contractState(k), cost: k.cost == null ? null : Number(k.cost) })));
   addSheet(wb, 'No cover (active)', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Criticality', key: 'crit' }, { header: 'Warranty ended', key: 'ended', fmt: 'date' },
-  ], noCover.map((a) => ({ code: a.assetCode, name: a.name, dept: a.department.name, crit: a.criticality, ended: a.warrantyEnd })).sort((x, y) => (x.crit === 'critical' ? -1 : 0) - (y.crit === 'critical' ? -1 : 0)));
+  ], noCover.map((a) => ({ code: a.assetCode, name: a.name, dept: a.department.name, crit: CRITICALITY_LABEL[a.criticality], ended: a.warrantyEnd })).sort((x, y) => (x.crit === 'critical' ? -1 : 0) - (y.crit === 'critical' ? -1 : 0)));
 }
 
 // ---------- Entry point ----------
@@ -568,7 +568,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
   addSheet(wb, 'Summary', [{ header: 'Item', key: 'k', width: 30 }, { header: 'Value', key: 'v', width: 50 }], [
     { k: 'Asset ID', v: asset.assetCode }, { k: 'Name', v: asset.name }, { k: 'Equipment type', v: asset.equipmentType.name },
     { k: 'Make / model', v: [asset.make, asset.model].filter(Boolean).join(' ') }, { k: 'Serial no', v: asset.serialNo },
-    { k: 'Department / location', v: `${asset.department.name} / ${asset.location.name}` }, { k: 'Criticality', v: asset.criticality },
+    { k: 'Department / location', v: `${asset.department.name} / ${asset.location.name}` }, { k: 'Criticality', v: CRITICALITY_LABEL[asset.criticality] },
     { k: 'Status', v: STATUS_LABEL[asset.status] }, { k: 'Installed', v: asset.installationDate ? isoDate(asset.installationDate) : '' },
     { k: 'Age (years)', v: r.ageMonths == null ? '' : Math.round((r.ageMonths / 12) * 10) / 10 }, { k: 'Warranty ends', v: asset.warrantyEnd ? isoDate(asset.warrantyEnd) : '' },
     { k: 'PMS every (months)', v: asset.pmsFrequencyMonths }, { k: 'Last PMS before this system', v: asset.openingPmsOn ? isoDate(asset.openingPmsOn) : '' },

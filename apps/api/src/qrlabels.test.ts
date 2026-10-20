@@ -14,8 +14,9 @@ let nurse = '';
 const made = { icu: { id: '', assetCode: '' }, bme: { id: '', assetCode: '' } };
 
 async function cleanUp() {
-  const assets = await prisma.asset.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } });
-  await prisma.asset.deleteMany({ where: { id: { in: assets.map((a) => a.id) } } });
+  const ids = (await prisma.asset.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } })).map((a) => a.id);
+  await prisma.$transaction([prisma.$queryRaw`select set_config('bme.allow_pms_cleanup', 'on', true)`, prisma.pmsRecord.deleteMany({ where: { assetId: { in: ids } } })]);
+  await prisma.asset.deleteMany({ where: { id: { in: ids } } });
 }
 
 before(async () => {
@@ -81,5 +82,23 @@ describe('Printing a sheet of labels', () => {
 
   it('refuses ids that are not asset ids', async () => {
     assert.equal((await call(base, admin, 'GET', '/assets/labels?ids=not-an-id')).status, 400);
+  });
+
+  it('gives the PMS sticker its dates: the opening date until a PMS is recorded, then the day it was done', async () => {
+    const type = await prisma.equipmentType.findFirstOrThrow({ where: { code: 'VENT' } });
+    const [d, l] = await Promise.all([prisma.department.findUniqueOrThrow({ where: { code: 'ICU' } }), prisma.location.findFirstOrThrow({ where: { code: 'ICU1' } })]);
+    const res = await call(base, admin, 'POST', '/assets', {
+      equipmentTypeId: type.id, name: `${PREFIX}sticker`, departmentId: d.id, locationId: l.id, installationDate: '2024-01-10', pmsFrequencyMonths: 6, openingPmsOn: '2026-08-01',
+    });
+    assert.equal(res.status, 201, await res.clone().text());
+    const a = (await res.json()) as { id: string };
+    const sticker = async () => ((await (await call(base, admin, 'GET', `/assets/labels?kind=pms&ids=${a.id}`)).json()) as AssetLabelsResponse).items[0];
+    assert.deepEqual([(await sticker()).lastPmsOn, (await sticker()).nextPmsDue], ['2026-08-01', '2027-02-01']);
+    // A correction is filed later but is about the same PMS: the sticker keeps the original's date.
+    const template = await prisma.pmsTemplate.findFirstOrThrow({ where: { equipmentTypeId: type.id }, orderBy: { version: 'desc' } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@demo.local' } });
+    const original = await prisma.pmsRecord.create({ data: { assetId: a.id, templateId: template.id, performedOn: new Date('2026-09-15'), performedBy: user.id, answers: {}, result: 'pass' } });
+    await prisma.pmsRecord.create({ data: { assetId: a.id, templateId: template.id, performedOn: new Date('2026-09-20'), performedBy: user.id, answers: {}, result: 'pass', correctsRecordId: original.id, correctionReason: 'Typo' } });
+    assert.equal((await sticker()).lastPmsOn, '2026-09-15');
   });
 });

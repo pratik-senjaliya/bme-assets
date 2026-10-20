@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { z } from 'zod';
-import { CRITICALITIES, isoDateSchema, type ImportError, type ImportResult } from '@bme/shared';
+import { CRITICALITIES, CRITICALITY_LABEL, isoDateSchema, type ImportError, type ImportResult } from '@bme/shared';
 import { audit } from '../../lib/audit';
 import { requirePermission } from '../../lib/auth';
 import { isoDate } from '../../lib/dates';
@@ -70,7 +70,7 @@ importRouter.get('/template', async (_req, res) => {
       types[i]?.code, types[i]?.name,
       departments[i]?.code, departments[i]?.name,
       locations[i]?.code, locations[i]?.name, locations[i]?.department.code,
-      CRITICALITIES[i],
+      CRITICALITIES[i] && CRITICALITY_LABEL[CRITICALITIES[i]],
     ]);
   }
   lists.columns.forEach((c) => (c.width = 24));
@@ -127,7 +127,8 @@ const rowSchema = z.object({
   serialNo: text(100),
   departmentCode: z.string().min(1, 'Required').transform((s) => s.toUpperCase()),
   locationCode: z.string().min(1, 'Required').transform((s) => s.toUpperCase()),
-  criticality: z.preprocess((v) => (typeof v === 'string' ? blank(v.toLowerCase()) : v), z.enum(CRITICALITIES).optional()),
+  // Written as on screen ("Most critical") or as the stored value (most_critical).
+  criticality: z.preprocess((v) => (typeof v === 'string' ? blank(v.trim().toLowerCase().replace(/[\s-]+/g, '_')) : v), z.enum(CRITICALITIES, { message: 'Use General, Minor, Critical or Most critical' }).optional()),
   installationDate: z.preprocess((v) => (typeof v === 'string' ? blank(normalizeDate(v)) : v), isoDateSchema.optional()),
   warrantyMonths: number(240),
   pmsFrequencyMonths: number(120, 1),

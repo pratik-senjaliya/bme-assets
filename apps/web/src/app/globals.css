@@ -861,38 +861,98 @@ a {
 }
 .qr-label-code {
   flex: none;
-  width: 27mm;
-  height: 27mm;
+  width: 25mm;
+  height: 25mm;
 }
 .qr-label-code svg {
   display: block;
   width: 100%;
   height: 100%;
 }
+/* What the hospital asked for, in order of weight: hospital name and asset ID large and bold, then the equipment
+   name and where it stands. */
 .qr-label-text {
   min-width: 0;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 .qr-label-hospital {
-  font-size: 6.5pt;
-  color: #44403c;
+  font-size: 8.5pt;
+  font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .qr-label-id {
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 7.5pt;
-  font-weight: 600;
-  margin: 1mm 0;
+  font-size: 9pt;
+  font-weight: 800;
+  margin: 1.2mm 0 1mm;
   overflow-wrap: anywhere;
 }
 .qr-label-name {
-  font-size: 8pt;
-  font-weight: 700;
+  font-size: 7.5pt;
+  font-weight: 600;
 }
 .qr-label-where {
-  font-size: 6.5pt;
-  color: #44403c;
+  font-size: 7pt;
+  color: #292524;
   margin-top: 0.5mm;
 }
+/* PMS sticker: no QR code; the two dates are the point, so they are the largest text and fill the lower half. A
+   blank date is a line to write on. */
+.pms-sticker {
+  align-items: stretch;
+}
+.pms-sticker .qr-label-text {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.pms-sticker-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  font-size: 6.5pt;
+  font-weight: 800;
+  border-bottom: 0.3mm solid #000;
+  padding-bottom: 0.6mm;
+  margin-bottom: 1.2mm;
+}
+.pms-sticker-title span:last-child {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pms-sticker .qr-label-name {
+  font-size: 9pt;
+  font-weight: 800;
+}
+.pms-sticker .qr-label-id {
+  font-size: 7.5pt;
+  font-weight: 600;
+  margin: 0.4mm 0 0;
+}
+.pms-sticker-dates {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1.6mm 2.5mm;
+  margin: auto 0 0;
+  align-items: baseline;
+}
+.pms-sticker-dates dt {
+  font-size: 7.5pt;
+  font-weight: 600;
+}
+.pms-sticker-dates dd {
+  margin: 0;
+  font-size: 12pt;
+  font-weight: 800;
+  min-height: 5mm;
+  border-bottom: 0.2mm solid #a8a29e;
+}
+
 @page labels {
   size: A4;
   margin: 15mm 7mm;

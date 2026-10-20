@@ -241,8 +241,8 @@ describe('Complaint history', () => {
 
 describe('Critical downtime limit', () => {
   it('flags critical equipment that has been down longer than the hospital’s limit, including a running breakdown', async () => {
-    const critical = await makeAsset({ criticality: 'critical' });
-    const ordinary = await makeAsset({ criticality: 'medium' });
+    const critical = await makeAsset({ criticality: 'most_critical' });
+    const ordinary = await makeAsset({ criticality: 'minor' });
     const [c1, c2] = await Promise.all([raise(nursing, critical.id), raise(nursing, ordinary.id)].map(async (p) => (await p).json()));
     const longAgo = new Date(Date.now() - 30 * 3600_000);
     await prisma.complaint.updateMany({ where: { id: { in: [c1.id, c2.id] } }, data: { raisedAt: longAgo } });

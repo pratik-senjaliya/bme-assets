@@ -144,7 +144,7 @@ describe('uptime and downtime', () => {
     // The same asset is Critical, so it is in the critical report with both events listed.
     const critical = (await report(biomed, 'critical-downtime', `?from=${from}&to=${today}`)).wb;
     assert.ok(table(critical, 'Uptime').some((r) => r['Asset ID'] === a.assetCode));
-    assert.ok(table(critical, 'Uptime').every((r) => r.Criticality === 'critical'), 'only critical equipment');
+    assert.ok(table(critical, 'Uptime').every((r) => ['Critical', 'Most critical'].includes(String(r.Criticality))), 'only critical equipment');
     const events = table(critical, 'Downtime events').filter((r) => r['Asset ID'] === a.assetCode);
     assert.equal(events.length, 2);
     assert.ok(events.some((e) => e.Resolved === 'Still open'));

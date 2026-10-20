@@ -216,8 +216,12 @@ export type SettingsResponse = {
 
 // ---------- Assets ----------
 
-export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const;
+// Least to most critical. "Critical equipment" in figures, limits and reports means the top two levels.
+export const CRITICALITIES = ['general', 'minor', 'critical', 'most_critical'] as const;
 export type Criticality = (typeof CRITICALITIES)[number];
+export const CRITICALITY_LABEL: Record<Criticality, string> = { general: 'General', minor: 'Minor', critical: 'Critical', most_critical: 'Most critical' };
+export const CRITICAL_LEVELS: Criticality[] = ['critical', 'most_critical'];
+export const isCritical = (c: string) => (CRITICAL_LEVELS as string[]).includes(c);
 export const ASSET_STATUSES = ['active', 'not_in_use', 'condemned'] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
 export const ATTACHMENT_KINDS = ['po', 'installation_report', 'photo', 'manual', 'certificate', 'contract', 'service_report', 'invoice', 'condemnation_form', 'other'] as const;
@@ -242,7 +246,7 @@ const assetFields = {
   serialNo: optionalText(100),
   departmentId: z.string().uuid(),
   locationId: z.string().uuid(),
-  criticality: z.enum(CRITICALITIES).default('medium'),
+  criticality: z.enum(CRITICALITIES).default('minor'),
   installationDate: isoDateSchema.nullish(),
   warrantyMonths: z.number().int().min(0).max(240).nullish(),
   pmsFrequencyMonths: z.number().int().min(1).max(120).nullish(),
@@ -286,7 +290,9 @@ export const assetLabelsQuerySchema = assetListQuerySchema.omit({ sortBy: true, 
     .transform((v) => (v ? v.split(',').filter(Boolean) : undefined))
     .pipe(z.array(z.string().uuid()).max(1000).optional()),
 });
-export type AssetLabel = { id: string; assetCode: string; name: string; departmentName: string; locationName: string };
+// lastPmsOn / nextPmsDue are for the PMS sticker: the date the last PMS was done (the opening date when none is
+// recorded yet) and when the next one is due.
+export type AssetLabel = { id: string; assetCode: string; name: string; departmentName: string; locationName: string; lastPmsOn: string | null; nextPmsDue: string | null };
 // At most MAX_LABELS in one print; `total` says how many matched, so the page can say when it is cut short.
 export const MAX_LABELS = 1000;
 export type AssetLabelsResponse = { hospitalName: string; items: AssetLabel[]; total: number };
@@ -608,7 +614,7 @@ export type CalibrationRow = {
   dueOn: string;
   agency: string;
   result: PmsResult;
-  certificate: { id: string; fileName: string } | null;
+  certificates: { id: string; fileName: string }[]; // oldest first; an agency may send more than one
 };
 
 // ---------- Due lists ----------

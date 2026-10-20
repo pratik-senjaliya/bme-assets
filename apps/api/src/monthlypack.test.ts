@@ -78,9 +78,9 @@ before(async () => {
     assert.equal(res.status, 201, await res.clone().text());
     return (await res.json()) as { id: string; assetCode: string };
   };
-  A.crit = await make('critical', 'critical');
-  A.mid = await make('middle', 'medium');
-  A.old = await make('often broken', 'medium');
+  A.crit = await make('critical', 'most_critical');
+  A.mid = await make('middle', 'minor');
+  A.old = await make('often broken', 'minor');
   // Registered long before the months measured, so each counts every hour of them.
   await prisma.asset.updateMany({ where: { id: { in: [A.crit.id, A.mid.id, A.old.id] } }, data: { createdAt: new Date(`${previousMonth(P)}-01T00:00:00Z`) } });
 });
