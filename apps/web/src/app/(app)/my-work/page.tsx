@@ -5,7 +5,7 @@ import { Card, Col, Row, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import type { Assignee, ComplaintRow, DueRow, Paged } from '@bme/shared';
+import type { Assignee, ComplaintRow, ConsumableRow, DueRow, Paged } from '@bme/shared';
 import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
 import { RequirePermission } from '@/components/RequirePermission';
@@ -55,6 +55,7 @@ function MyWork() {
   const free = useFetch<Paged<ComplaintRow>>(`/complaints?assignedTo=none&status=unresolved&pageSize=100&k=${version}`, { fresh: true });
   const pms = useFetch<DueRow[]>(can('pms.perform') ? `/pms/due?until=${until}` : null);
   const calibration = useFetch<DueRow[]>(can('calibration.manage') ? `/calibration/due?until=${until}` : null);
+  const low = useFetch<ConsumableRow[]>(can('consumable.manage') ? '/consumables?low=true' : null);
   const team = useFetch<Assignee[]>(can('complaint.assign') ? `/complaints/assignees?k=${version}` : null, { fresh: true });
 
   const cards = (list: typeof mine, empty: string) =>
@@ -108,6 +109,22 @@ function MyWork() {
                   </div>
                 </div>
                 <DueText daysLeft={d.daysLeft} />
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
+      {low.data && low.data.length > 0 && (
+        <Section title="Low stock" count={low.data.length} hint="At or below the reorder level">
+          <Card styles={{ body: { padding: '4px 20px' } }}>
+            {low.data.map((i) => (
+              <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
+                <Link href={`/consumables/${i.id}`} style={{ fontWeight: 600 }}>
+                  {i.name}
+                </Link>
+                <span className="num" style={{ color: i.stock === 0 ? COLORS.bad.fg : COLORS.warn.fg, fontWeight: 600 }}>
+                  {i.stock === 0 ? 'Out of stock' : `${i.stock} ${i.unit} left`}
+                </span>
               </div>
             ))}
           </Card>
