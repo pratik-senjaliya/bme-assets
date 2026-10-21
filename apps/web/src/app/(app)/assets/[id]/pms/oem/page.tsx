@@ -13,7 +13,7 @@ import { FormPageSkeleton } from '@/components/Skeletons';
 import { StatusResult } from '@/components/StatusResult';
 import { api, ApiError, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatDate } from '@/lib/format';
+import { formatDate, hospitalToday } from '@/lib/format';
 import { useLeaveGuard, useSingleFlight } from '@/lib/forms';
 
 // Pass / Fail as on the report. The form passes value, onChange, id and aria-required to its child; the aria ones
@@ -63,7 +63,7 @@ function OemPmsPage() {
   if (asset.error) return <StatusResult status="404" title="Asset not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
   if (!asset.data || !records.data || (corrects && !original.data)) return <FormPageSkeleton sections={2} fields={4} />;
   const a = asset.data;
-  const today = dayjs().startOf('day');
+  const today = hospitalToday();
   // The last PMS done (corrections are about the same PMS): a visit cannot be entered before it.
   const last = records.data.filter((r) => !r.correctsRecordId).map((r) => r.performedOn).sort().at(-1);
   const earliest = [today.subtract(OEM_PMS_MAX_DAYS_BACK, 'day'), ...(last ? [dayjs(last)] : []), ...(a.installationDate ? [dayjs(a.installationDate)] : [])].reduce((x, y) => (y.isAfter(x) ? y : x));

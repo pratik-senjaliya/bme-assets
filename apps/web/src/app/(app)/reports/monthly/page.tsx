@@ -10,7 +10,7 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatDate } from '@/lib/format';
+import { formatDate, hospitalToday, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { DashboardSkeleton } from '@/components/Skeletons';
 
@@ -23,9 +23,9 @@ function MonthlyPage() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const lastMonth = dayjs().subtract(1, 'month').format('YYYY-MM');
+  const lastMonth = hospitalToday().subtract(1, 'month').format('YYYY-MM');
   const asked = params.get('month');
-  const month = asked && monthSchema.safeParse(asked).success && asked <= dayjs().format('YYYY-MM') ? asked : lastMonth;
+  const month = asked && monthSchema.safeParse(asked).success && asked <= todayIST().slice(0, 7) ? asked : lastMonth;
   const allowed = can('report.view');
   const report = useFetch<ReportData>(allowed ? `/reports/monthly?month=${month}&format=json` : null);
   const saved = useFetch<SavedMonthlyReport[]>(allowed && user?.role !== 'nursing' ? '/reports/monthly/saved' : null);
@@ -49,7 +49,7 @@ function MonthlyPage() {
           aria-label="Month"
           style={{ width: 190 }}
           value={dayjs(`${month}-01`)}
-          disabledDate={(d) => d.isAfter(dayjs(), 'month') || d.isBefore(dayjs('2000-01-01'))}
+          disabledDate={(d) => d.isAfter(hospitalToday(), 'month') || d.isBefore(dayjs('2000-01-01'))}
           onChange={(d) => d && set(d.format('YYYY-MM'))}
         />
         {!!saved.data?.length && (

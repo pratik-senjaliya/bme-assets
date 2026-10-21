@@ -21,6 +21,7 @@ import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors, useLeaveGuard, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
+import { hospitalToday } from '@/lib/format';
 
 type Department = { id: string; name: string };
 type Location = { id: string; departmentId: string; name: string };
@@ -173,7 +174,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   }
 
   // Existing equipment registered with no "last done" date shows as overdue at once. Say so before it happens.
-  const monthsAgo = installed ? dayjs().diff(installed, 'month') : 0;
+  const monthsAgo = installed ? hospitalToday().diff(installed, 'month') : 0;
   const type = types.data?.find((t) => t.id === typeId);
   const pmsLate = !asset && !lastPms && installed && monthsAgo > (pmsEvery ?? type?.defaultPmsMonths ?? 12);
   const calLate = !asset && !lastCal && installed && !!type?.defaultCalibrationMonths && monthsAgo > type.defaultCalibrationMonths;
@@ -286,7 +287,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
       <Row gutter={16}>
         <Col {...half}>
           <Form.Item label="Installation date" name="installationDate">
-            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs().add(1, 'year'))} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday().add(1, 'year'))} />
           </Form.Item>
         </Col>
         <Col {...half}>
@@ -342,12 +343,12 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
             name="openingPmsOn"
             extra="When PMS was last done before this system. The next PMS is due from this date, not from the installation date."
           >
-            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
         </Col>
         <Col {...half}>
           <Form.Item label="Last calibration done" name="openingCalibrationOn" extra="When calibration was last done. Once a PMS or calibration is recorded in this system, these dates can no longer be changed.">
-            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" placeholder="Pick a date" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
         </Col>
         </Row>

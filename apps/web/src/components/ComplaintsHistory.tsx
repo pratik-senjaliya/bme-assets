@@ -13,7 +13,7 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { Pill, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatDateTime, formatDuration } from '@/lib/format';
+import { formatDateTime, formatDuration, hospitalToday, todayIST } from '@/lib/format';
 import { COLORS } from '@/theme';
 
 type StatusFilter = 'all' | ComplaintRow['status'];
@@ -51,7 +51,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
   // Export gives what is on screen. With no dates chosen it covers everything since the system began.
   const exportQuery = new URLSearchParams({
     from: range?.[0]?.format('YYYY-MM-DD') ?? '2000-01-01',
-    to: range?.[1]?.format('YYYY-MM-DD') ?? dayjs().format('YYYY-MM-DD'),
+    to: range?.[1]?.format('YYYY-MM-DD') ?? todayIST(),
     ...(text && { search: text }),
     ...(departmentId && { departmentId }),
     ...(status !== 'all' && { complaintStatus: status }),
@@ -84,7 +84,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
             placeholder={['Raised from', 'to']}
             value={range}
             onChange={(v) => (setRange(v), setPage(1))}
-            disabledDate={(d) => d.isAfter(dayjs())}
+            disabledDate={(d) => d.isAfter(hospitalToday(), 'day')}
           />
         </PhoneFilters>
         {filtered && (
