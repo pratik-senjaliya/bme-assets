@@ -11,6 +11,7 @@ import {
   DashboardOutlined,
   DownOutlined,
   HistoryOutlined,
+  InboxOutlined,
   KeyOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
@@ -56,6 +57,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
       { href: '/due', label: 'Due & overdue', short: 'Due', icon: <CalendarOutlined />, permission: 'pms.perform' },
+      { href: '/consumables', label: 'Consumables', icon: <InboxOutlined />, permission: 'consumable.manage' },
       { href: '/vendors', label: 'Suppliers', icon: <ShopOutlined />, permission: 'asset.edit' },
     ],
   },

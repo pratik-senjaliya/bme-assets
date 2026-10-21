@@ -67,6 +67,9 @@ Equipment type stays: PMS checklists hang off it.
    - Low-stock warning.
    - A register of everything given out (decision F).
 
+All six steps are built (PRs #14 to #18 and the consumables PR); see the Status section of `CLAUDE.md` for what each
+contains.
+
 ## Not now
 
 A shared multi-hospital cloud (SaaS) is a redesign. Until then, a hospital without its own server gets its own

@@ -43,6 +43,7 @@ import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 import { StatusResult } from '@/components/StatusResult';
 import { VendorCards } from '@/components/VendorCards';
+import { MoveModal } from '@/components/ConsumableModals';
 
 // Tab contents and dialogs load when first opened, so the asset's own page shows sooner.
 const AssetCalibrationTab = dynamic(() => import('@/components/AssetCalibrationTab').then((m) => m.AssetCalibrationTab));
@@ -58,7 +59,7 @@ const RequestTransferModal = dynamic(() => import('@/components/RequestApprovalM
 const TIMELINE_COLOR: Record<TimelineEvent['kind'], string> = {
   registered: COLORS.info.dot, purchase_order: COLORS.neutral.dot, installation: COLORS.good.dot, warranty: COLORS.neutral.dot, contract: COLORS.neutral.dot, document: COLORS.neutral.dot,
   pms: COLORS.good.dot, calibration: COLORS.good.dot, complaint: COLORS.bad.dot, service: COLORS.good.dot, opening: COLORS.neutral.dot,
-  condemned: COLORS.neutral.dot, transferred: COLORS.neutral.dot,
+  condemned: COLORS.neutral.dot, transferred: COLORS.neutral.dot, consumable: COLORS.good.dot,
 };
 
 export default function AssetDetailPage() {
@@ -71,6 +72,7 @@ export default function AssetDetailPage() {
   const [complaintsVersion, setComplaintsVersion] = useState(0);
   const [condemning, setCondemning] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [givingOut, setGivingOut] = useState(false);
   const hospital = useFetch<HospitalInfo>(can('asset.request_change') ? '/hospital' : null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const [requests, setRequests] = useState(0); // bumps to refresh the "waiting for HOD" banners
@@ -109,13 +111,14 @@ export default function AssetDetailPage() {
                 <Button type="primary">Edit asset</Button>
               </Link>
             )}
-            {(can('asset.request_change') || can('report.view') || can('asset.edit')) && (
+            {(can('asset.request_change') || can('report.view') || can('asset.edit') || can('consumable.manage')) && (
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
                     ...(can('report.view') ? [{ key: 'history', icon: <FileTextOutlined />, label: 'Full history report' }] : []),
                     ...(can('asset.edit') ? [{ key: 'label', icon: <QrcodeOutlined />, label: 'Print QR label' }, { key: 'pms-sticker', icon: <PrinterOutlined />, label: 'Print PMS sticker' }] : []),
+                    ...(can('consumable.manage') && !gone ? [{ key: 'consumable', icon: <InboxOutlined />, label: 'Give out a consumable' }] : []),
                     ...(can('asset.request_change')
                       ? [
                           // Equipment that has left keeps its record (and certificate): no condemn, transfer or delete any more.
@@ -135,6 +138,7 @@ export default function AssetDetailPage() {
                     else if (key === 'pms-sticker') router.push(`/assets/labels?kind=pms&ids=${a.id}`);
                     else if (key === 'condemn') setCondemning(true);
                     else if (key === 'transfer') setTransferring(true);
+                    else if (key === 'consumable') setGivingOut(true);
                     else setDeleting({ type: 'asset', id: a.id, label: `${a.assetCode} · ${a.name}` });
                   },
                 }}
@@ -191,6 +195,7 @@ export default function AssetDetailPage() {
       />
       <RequestCondemnModal open={condemning} asset={a} onClose={() => setCondemning(false)} onRequested={() => setRequests((v) => v + 1)} />
       <RequestTransferModal open={transferring} asset={a} onClose={() => setTransferring(false)} onRequested={() => setRequests((v) => v + 1)} />
+      <MoveModal kind={givingOut ? 'issue' : null} item={null} asset={a} onClose={() => setGivingOut(false)} onDone={() => setGivingOut(false)} />
       <RequestDeleteModal target={deleting} onClose={() => setDeleting(null)} onRequested={() => setRequests((v) => v + 1)} />
       <RaiseComplaintModal
         open={raising}

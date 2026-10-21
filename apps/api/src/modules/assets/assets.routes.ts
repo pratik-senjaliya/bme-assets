@@ -268,7 +268,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
 
 assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, res) => {
   const asset = await findScoped(req);
-  const [orders, contracts, attachments, pms, calibrations, complaints, serviceLogs, departures] = await Promise.all([
+  const [orders, contracts, attachments, pms, calibrations, complaints, serviceLogs, departures, issued] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { assetId: asset.id } }),
     prisma.serviceContract.findMany({ where: { assetId: asset.id } }),
     prisma.attachment.findMany({ where: { ownerType: 'asset', ownerId: asset.id } }),
@@ -278,6 +278,7 @@ assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, r
     prisma.serviceLog.findMany({ where: { assetId: asset.id } }),
     // The day it left the hospital: condemnation or transfer, as approved by the HOD.
     prisma.approvalRequest.findMany({ where: { targetType: 'asset', targetId: asset.id, type: { in: ['condemn', 'transfer'] }, status: 'approved' } }),
+    prisma.consumableMovement.findMany({ where: { assetId: asset.id, kind: 'out' }, include: { item: true, complaint: { select: { complaintNo: true } } } }),
   ]);
 
   const events: TimelineEvent[] = [
@@ -302,6 +303,7 @@ assetsRouter.get('/:id/timeline', requirePermission('asset.view'), async (req, r
     ...attachments.map((a): TimelineEvent => ({ date: a.createdAt.toISOString(), kind: 'document', title: `Document added: ${a.fileName || a.kind}` })),
     ...serviceLogs.map((l): TimelineEvent => ({ date: isoDate(l.serviceDate), kind: 'service', title: `Service: ${SERVICE_LABEL[l.kind]}`, detail: [l.vendor, l.description].filter(Boolean).join(' · ') })),
     ...pms.map((p): TimelineEvent => ({ date: isoDate(p.performedOn), kind: 'pms', title: 'PMS done', detail: p.result })),
+    ...issued.map((m): TimelineEvent => ({ date: isoDate(m.date), kind: 'consumable', title: `Given: ${-m.quantity} ${m.item.unit} ${m.item.name}`, detail: [m.complaint?.complaintNo, m.reason].filter(Boolean).join(' · ') })),
     ...calibrations.map((c): TimelineEvent => ({ date: isoDate(c.doneOn), kind: 'calibration', title: 'Calibration done', detail: `${c.agency} · ${c.result}` })),
     ...complaints.flatMap((c): TimelineEvent[] => [
       { date: c.raisedAt.toISOString(), kind: 'complaint', title: `Complaint ${c.complaintNo} raised`, detail: c.description },

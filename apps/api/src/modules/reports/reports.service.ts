@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
+import { COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
@@ -463,6 +463,61 @@ async function condemnationRegister(wb: Collector, c: Ctx) {
   ], rows, ['cost', 'value']);
 }
 
+// The consumables register (decision F): everything given out in the period (to whom, for which machine or complaint,
+// why, and its value where the item has a cost), what was received, and the stock today. A department-scoped reader
+// sees only what was given to their department.
+async function consumables(wb: Collector, c: Ctx) {
+  const include = { item: true, department: true, asset: true, complaint: true, supplier: true, by: { select: { name: true } } } as const;
+  const inPeriod = { date: { gte: parseDate(c.from), lte: parseDate(c.to) } };
+  const scoped = !!c.scope.departmentId;
+  const [given, received, items] = await Promise.all([
+    prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'out', ...(scoped && { departmentId: c.scope.departmentId }) }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
+    scoped ? [] : prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'in' }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
+    scoped ? [] : prisma.consumableItem.findMany({ orderBy: { name: 'asc' } }),
+  ]);
+  const value = (m: { quantity: number; unitCost: Prisma.Decimal | null }) => (m.unitCost == null ? null : Math.abs(m.quantity) * Number(m.unitCost));
+  const total = (ms: typeof given) => ms.reduce((t, m) => t + (value(m) ?? 0), 0);
+  kpi(wb, 'Times given out', given.length, 'int', span(c));
+  kpi(wb, 'Value given out', total(given), 'money', given.some((m) => m.unitCost == null) ? 'Items with no unit cost are not counted' : undefined);
+  if (!scoped) {
+    kpi(wb, 'Value received', total(received), 'money');
+    const low = items.filter((i) => i.active && isLowStock(i));
+    kpi(wb, 'Items low on stock', low.length, 'int', low.length ? 'At or below the reorder level' : 'None', low.length ? 'warn' : 'good');
+  }
+  wb.charts.push({
+    id: 'given-per-month', title: 'Value given out per month', kind: 'column', fmt: 'money', series: [{ key: 'v', label: 'Value' }],
+    data: monthKeys(c.from, c.to).map((m) => ({ label: monthLabel(m), v: total(given.filter((g) => isoDate(g.date).slice(0, 7) === m)) })),
+  });
+  wb.charts.push(oneSeries('given-by-dept', 'Times given out by department', 'bar', 'Times', tally(given, (g) => g.department?.name ?? '—'), 'int'));
+
+  addSheet(wb, 'Given out', [
+    { header: 'Date', key: 'date', fmt: 'date' }, { header: 'Item', key: 'item', width: 26 }, { header: 'Quantity', key: 'qty', fmt: 'int' }, { header: 'Unit', key: 'unit', width: 8 },
+    { header: 'Department', key: 'dept', width: 22 }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Equipment', pdf: false, key: 'asset', width: 24 }, { header: 'Complaint', key: 'complaint' },
+    { header: 'Reason', key: 'reason', width: 34 }, { header: 'Unit cost', pdf: false, key: 'cost', fmt: 'money' }, { header: 'Value', key: 'value', fmt: 'money' }, { header: 'Given by', key: 'by', width: 20 },
+  ], given.map((m) => ({ date: m.date, item: m.item.name, qty: -m.quantity, unit: m.item.unit, dept: m.department?.name, code: m.asset?.assetCode, asset: m.asset?.name, complaint: m.complaint?.complaintNo, reason: m.reason, cost: m.unitCost == null ? null : Number(m.unitCost), value: value(m), by: m.by.name })), ['qty', 'value']);
+
+  const byItem = new Map<string, { unit: string; qty: number; times: number; value: number }>();
+  for (const m of given) {
+    const t = byItem.get(m.item.name) ?? { unit: m.item.unit, qty: 0, times: 0, value: 0 };
+    byItem.set(m.item.name, { ...t, qty: t.qty - m.quantity, times: t.times + 1, value: t.value + (value(m) ?? 0) });
+  }
+  addSheet(wb, 'By item', [{ header: 'Item', key: 'item', width: 26 }, { header: 'Unit', key: 'unit', width: 8 }, { header: 'Quantity given', key: 'qty', fmt: 'int', width: 16 }, { header: 'Times', key: 'times', fmt: 'int' }, { header: 'Value', key: 'value', fmt: 'money' }],
+    [...byItem].map(([item, t]) => ({ item, ...t })).sort((a, b) => b.value - a.value || b.qty - a.qty), ['times', 'value']);
+  if (scoped) return;
+
+  addSheet(wb, 'Received', [
+    { header: 'Date', key: 'date', fmt: 'date' }, { header: 'Item', key: 'item', width: 26 }, { header: 'Quantity', key: 'qty', fmt: 'int' }, { header: 'Unit', key: 'unit', width: 8 },
+    { header: 'Supplier', key: 'supplier', width: 24 }, { header: 'Invoice / PO', key: 'ref', width: 16 }, { header: 'Unit cost', key: 'cost', fmt: 'money' }, { header: 'Value', key: 'value', fmt: 'money' }, { header: 'Entered by', pdf: false, key: 'by', width: 20 },
+  ], received.map((m) => ({ date: m.date, item: m.item.name, qty: m.quantity, unit: m.item.unit, supplier: m.supplier?.name, ref: m.reference, cost: m.unitCost == null ? null : Number(m.unitCost), value: value(m), by: m.by.name })), ['qty', 'value']);
+  addSheet(wb, 'Stock today', [
+    { header: 'Item', key: 'item', width: 26 }, { header: 'Unit', key: 'unit', width: 8 }, { header: 'In stock', key: 'stock', fmt: 'int' }, { header: 'Reorder at', key: 'reorder', fmt: 'int' },
+    { header: 'State', key: 'state' }, { header: 'Unit cost', key: 'cost', fmt: 'money' }, { header: 'Stock value', key: 'value', fmt: 'money' },
+  ], items.map((i) => ({
+    item: i.name, unit: i.unit, stock: i.stock, reorder: i.reorderLevel || null, state: !i.active ? 'Not in use' : i.stock === 0 ? 'Out of stock' : isLowStock(i) ? 'Low' : 'OK',
+    cost: i.unitCost == null ? null : Number(i.unitCost), value: i.unitCost == null ? null : i.stock * Number(i.unitCost),
+  })), ['value']);
+}
+
 async function warrantyContracts(wb: Collector, c: Ctx) {
   const today = parseDate(todayISO());
   const [assets, contracts] = await Promise.all([
@@ -543,6 +598,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     expenses: () => expenses(out, ctx),
     'warranty-contracts': () => warrantyContracts(out, ctx),
     condemnation: () => condemnationRegister(out, ctx),
+    consumables: () => consumables(out, ctx),
   };
   await builders[type]();
 
@@ -560,7 +616,9 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     note:
       type === 'condemnation'
         ? 'Condemnation committee members (name, designation, signature, date): ________________________________'
-        : 'Condemned, transferred and not-in-use assets are included and labelled in the Status column.',
+        : type === 'consumables'
+          ? 'Stock today is as at the day this report was made, not the end of the period. Value = quantity × the unit cost at the time.'
+          : 'Condemned, transferred and not-in-use assets are included and labelled in the Status column.',
     ...out,
   };
   return { data, filename: `bme-${type}-${ranged ? `${from}_to_${to}` : today}` };

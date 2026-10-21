@@ -52,6 +52,7 @@ export const PERMISSIONS = [
   'audit.view',
   'report.view',
   'notification.view',
+  'consumable.manage',
 ] as const;
 export type PermissionCode = (typeof PERMISSIONS)[number];
 
@@ -69,6 +70,7 @@ const BIOMED: PermissionCode[] = [
   'calibration.manage',
   'report.view',
   'notification.view',
+  'consumable.manage',
 ];
 
 // Defaults seeded into the DB; hospitals can adjust them later.
@@ -370,6 +372,85 @@ export type VendorContactRow = { id: string; name: string; role: string | null; 
 export type VendorCard = { id: string; name: string; phone: string | null; email: string | null; contacts: VendorContactRow[] };
 export type VendorRow = VendorCard & { address: string | null; notes: string | null; suppliedCount: number; servicedCount: number };
 
+// ---------- Consumables ----------
+
+// Things the department keeps in stock and gives out (SpO2 probes, ECG leads, batteries, fuses...), counted in a
+// unit, with an optional unit cost so spend shows in reports (decision F). Stock moves only through recorded
+// movements: stock in on purchase, issue to a department, or a counted correction. Movements are never edited.
+export const CONSUMABLE_UNITS = ['pcs', 'box', 'pack', 'pair', 'set', 'roll', 'bottle', 'metre'] as const;
+// Movements can be dated back this far (a purchase entered from last week's invoice), never ahead.
+export const CONSUMABLE_MAX_DAYS_BACK = 30;
+const quantity = z.number({ invalid_type_error: 'Enter the quantity' }).int('Whole numbers only').min(1, 'At least 1').max(100_000);
+const unitCost = z.number().min(0).max(10_000_000).nullish();
+export const consumableItemSchema = z.object({
+  name: z.string().trim().min(2, 'Enter the item name').max(150),
+  unit: z.enum(CONSUMABLE_UNITS).default('pcs'),
+  reorderLevel: z.number().int('Whole numbers only').min(0).max(100_000).default(0),
+  unitCost,
+  notes: optionalText(500),
+  active: z.boolean().default(true),
+});
+export type ConsumableItemInput = z.infer<typeof consumableItemSchema>;
+// A new item may start with what is on the shelf today.
+export const newConsumableSchema = consumableItemSchema.extend({ openingStock: z.number().int().min(0).max(100_000).default(0) });
+export const stockInSchema = z.object({
+  quantity,
+  date: isoDateSchema,
+  unitCost,
+  supplierId: z.string().uuid().nullish(),
+  reference: optionalText(80), // invoice or PO number
+  note: optionalText(300),
+});
+export type StockInInput = z.infer<typeof stockInSchema>;
+export const issueSchema = z.object({
+  quantity,
+  date: isoDateSchema,
+  departmentId: z.string({ required_error: 'Choose the department' }).uuid('Choose the department'),
+  assetId: z.string().uuid().nullish(),
+  complaintId: z.string().uuid().nullish(),
+  reason: z.string().trim().min(3, 'Say why it was given (e.g. replaced the broken one)').max(300),
+});
+export type IssueInput = z.infer<typeof issueSchema>;
+// A stock count that differs from the books: the change (plus or minus) and why.
+export const stockAdjustSchema = z.object({
+  change: z.number().int('Whole numbers only').min(-100_000).max(100_000).refine((n) => n !== 0, 'Enter how many more (+) or fewer (−) there are'),
+  reason: z.string().trim().min(5, 'Say why the count is different').max(300),
+});
+export type StockAdjustInput = z.infer<typeof stockAdjustSchema>;
+
+export type ConsumableKind = 'in' | 'out' | 'adjust';
+export type ConsumableRow = {
+  id: string;
+  name: string;
+  unit: (typeof CONSUMABLE_UNITS)[number];
+  stock: number;
+  reorderLevel: number;
+  low: boolean; // at or below its reorder level (items with no reorder level are never low)
+  unitCost: number | null;
+  notes: string | null;
+  active: boolean;
+  lastIssuedOn: string | null;
+};
+export type ConsumableMovementRow = {
+  id: string;
+  kind: ConsumableKind;
+  quantity: number; // signed: + into stock, − out of it
+  stockAfter: number;
+  date: string;
+  unitCost: number | null;
+  departmentName: string | null;
+  asset: { id: string; assetCode: string; name: string } | null;
+  complaint: { id: string; complaintNo: string } | null;
+  supplierName: string | null;
+  reference: string | null;
+  reason: string | null;
+  byName: string;
+  createdAt: string;
+};
+export type ConsumableDetail = ConsumableRow & { movements: ConsumableMovementRow[] };
+// A low or used-up item is worth a word where it is listed.
+export const isLowStock = (i: { stock: number; reorderLevel: number }) => i.reorderLevel > 0 && i.stock <= i.reorderLevel;
+
 // Returned by PATCH /assets/:id. pendingApproval = key-field changes were sent to the HOD, not applied.
 export type UpdateAssetResponse = { asset: AssetDetail; pendingApproval: boolean };
 
@@ -423,7 +504,7 @@ export type AttachmentRow = {
 
 export type TimelineEvent = {
   date: string; // ISO date or date-time
-  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint' | 'service' | 'opening' | 'condemned' | 'transferred';
+  kind: 'registered' | 'purchase_order' | 'installation' | 'warranty' | 'contract' | 'document' | 'pms' | 'calibration' | 'complaint' | 'service' | 'opening' | 'condemned' | 'transferred' | 'consumable';
   title: string;
   detail?: string | null;
 };
@@ -721,7 +802,7 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report'] as const;
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -913,6 +994,7 @@ export const REPORTS = [
   { type: 'expenses', title: 'Service expenses', description: 'Repair and spare-part costs in the period, per asset and per month.', range: true },
   { type: 'condemnation', title: 'Condemnation register', description: 'Equipment condemned in the period, by committee date: reason, purchase cost, estimated value today and who approved it. The PDF is the committee’s form.', range: true },
   { type: 'warranty-contracts', title: 'Warranty and contracts', description: 'Warranties and AMC / CMC / in-house contracts: what is running, what ends soon and what has ended.', range: false },
+  { type: 'consumables', title: 'Consumables register', description: 'Everything given out in the period (to which department, machine or complaint, and why), what was received, and the stock today with its value.', range: true },
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];
 

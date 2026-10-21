@@ -66,11 +66,11 @@ const table = (wb: ExcelJS.Workbook, sheet: string) => {
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
 describe('every report downloads as a valid Excel file', () => {
-  it('has all ten, each with data sheets and an About sheet', async () => {
+  it('has all eleven, each with data sheets and an About sheet', async () => {
     const expected: Record<string, string[]> = {
       'asset-master': ['Asset master'], pms: ['PMS records', 'Summary'], calibration: ['Calibrations done', 'Next due (active assets)'], breakdowns: ['Breakdowns', 'By month'],
       uptime: ['Uptime', 'Summary'], 'critical-downtime': ['Uptime', 'Downtime events'], 'equipment-age': ['Assets by age', 'Age bands', 'By equipment type'], expenses: ['Expenses', 'By asset', 'By month'], 'warranty-contracts': ['Warranty', 'Contracts', 'No cover (active)'],
-      condemnation: ['Condemnation register'],
+      condemnation: ['Condemnation register'], consumables: ['Given out', 'By item', 'Received', 'Stock today'],
     };
     assert.deepEqual(REPORTS.map((r) => r.type).sort(), Object.keys(expected).sort());
     for (const [type, sheets] of Object.entries(expected)) {

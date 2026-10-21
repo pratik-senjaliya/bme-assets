@@ -124,6 +124,7 @@ model Department {
   users      User[]
   assets     Asset[]
   complaints Complaint[]
+  issued     ConsumableMovement[]
 
   @@map("departments")
 }
@@ -219,6 +220,7 @@ model User {
   complaintsRaised Complaint[] @relation("ComplaintRaisedBy")
   complaintsAssigned Complaint[] @relation("ComplaintAssignedTo")
   notifications    Notification[]
+  stockMovements   ConsumableMovement[]
 
   @@map("users")
 }
@@ -268,6 +270,7 @@ model Asset {
   expenses           ServiceExpense[]
   serviceLogs        ServiceLog[]
   notifications      Notification[]
+  consumablesIssued  ConsumableMovement[]
 
   @@index([departmentId])
   @@index([status])
@@ -430,6 +433,7 @@ model Complaint {
   department Department       @relation(fields: [departmentId], references: [id])
   expenses   ServiceExpense[]
   steps      ComplaintStep[]
+  consumables ConsumableMovement[]
 
   @@index([assetId])
   @@index([departmentId])
@@ -585,6 +589,7 @@ model Vendor {
   contacts VendorContact[]
   supplied Asset[]         @relation("AssetSupplier")
   serviced Asset[]         @relation("AssetServiceVendor")
+  deliveries ConsumableMovement[]
 
   @@map("vendors")
 }
@@ -601,4 +606,64 @@ model VendorContact {
 
   @@index([vendorId])
   @@map("vendor_contacts")
+}
+
+// ---------- Consumables ----------
+
+// Something kept in stock and given out (probes, leads, batteries...). `stock` is kept in step with the movements in
+// the same transaction and never goes below zero. Item names are unique whatever the capitals (index in SQL).
+model ConsumableItem {
+  id           String   @id @default(uuid())
+  name         String
+  unit         String   @default("pcs")
+  stock        Int      @default(0)
+  reorderLevel Int      @default(0)
+  unitCost     Decimal? @db.Decimal(12, 2) // the latest price paid, or as entered
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+
+  movements ConsumableMovement[]
+
+  @@map("consumable_items")
+}
+
+enum ConsumableKind {
+  in
+  out
+  adjust
+}
+
+// One stock movement, never changed afterwards: in (a purchase), out (issued to a department, perhaps for a machine
+// or a complaint) or adjust (a count that differed from the books). quantity is signed: + into stock, - out.
+model ConsumableMovement {
+  id           String         @id @default(uuid())
+  itemId       String
+  kind         ConsumableKind
+  quantity     Int
+  stockAfter   Int
+  date         DateTime       @db.Date
+  unitCost     Decimal?       @db.Decimal(12, 2) // in: the price paid; out: the item's cost at the time
+  supplierId   String?
+  reference    String? // invoice or PO number
+  departmentId String?
+  assetId      String?
+  complaintId  String?
+  reason       String?
+  createdAt    DateTime       @default(now())
+  createdBy    String
+
+  item       ConsumableItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  supplier   Vendor?        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  department Department?    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  asset      Asset?         @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  complaint  Complaint?     @relation(fields: [complaintId], references: [id], onDelete: Restrict)
+  by         User           @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([itemId, createdAt])
+  @@index([date])
+  @@index([assetId])
+  @@map("consumable_movements")
 }

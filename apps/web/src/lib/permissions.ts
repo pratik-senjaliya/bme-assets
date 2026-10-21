@@ -25,4 +25,5 @@ export const PERMISSION_TEXT: Record<PermissionCode, { label: string; hint: stri
   'audit.view': { label: 'See the audit log', hint: 'Who did what, and when' },
   'report.view': { label: 'See and export reports', hint: 'On screen, to Excel and to PDF' },
   'notification.view': { label: 'See reminders', hint: 'The bell: PMS, calibration, warranty and contracts' },
+  'consumable.manage': { label: 'Keep the consumables stock', hint: 'Add items, stock in, give out to departments, correct counts. Told when an item runs low' },
 };

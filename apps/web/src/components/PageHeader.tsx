@@ -5,7 +5,7 @@ import { COLORS } from '@/theme';
 import { useDocumentTitle } from '@/lib/title';
 
 // Only the first crumb has a list page to go back to; the rest describe where you are.
-const PARENT: Record<string, string> = { Assets: '/assets', Complaints: '/complaints', Approvals: '/approvals' };
+const PARENT: Record<string, string> = { Assets: '/assets', Complaints: '/complaints', Approvals: '/approvals', Consumables: '/consumables' };
 
 // Breadcrumb (only when it adds a level), title, subtitle; the page's single primary action goes top right.
 export function PageHeader({

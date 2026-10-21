@@ -12,7 +12,7 @@ const types = (await admin.api('GET', '/equipment-types')).body, depts = (await 
 const A = (await biomed.api('POST', '/assets', { equipmentTypeId: types.find((x) => x.code === 'VENT').id, name: 'E2E-Journey', departmentId: depts.find((x) => x.code === 'ICU').id, locationId: locs.find((x) => x.code === 'ICU1').id, installationDate: '2026-01-01', pmsFrequencyMonths: 6 })).body;
 
 // ---------- Reports ----------
-const REPORTS = ['asset-master', 'pms', 'calibration', 'breakdowns', 'uptime', 'critical-downtime', 'equipment-age', 'expenses', 'warranty-contracts'];
+const REPORTS = ['asset-master', 'pms', 'calibration', 'breakdowns', 'uptime', 'critical-downtime', 'equipment-age', 'expenses', 'warranty-contracts', 'consumables'];
 await step('Every report opens on screen and exports to Excel and PDF', async () => {
   const bad = [];
   for (const t of REPORTS) {
