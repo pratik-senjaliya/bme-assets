@@ -139,7 +139,7 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
   const g = await gather(q, scope);
   const settings = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true } });
   const generatedAt = new Date().toISOString();
-  const base = { hospital: settings.name, from: q.from, to: q.to, generatedAt, generatedBy: viewer.name };
+  const base = { hospital: settings.name, from: q.from, to: q.to, generatedAt, generatedBy: viewer.name, filters: departmentName ? [`Department: ${departmentName}`] : [] };
 
   const reportQ = (extra?: Partial<ReportQuery>) => ({ from: q.from, to: q.to, group: 'month', format: 'xlsx', ...(q.departmentId && { departmentId: q.departmentId }), ...extra }) as ReportQuery;
   const reports = await Promise.all(

@@ -20,7 +20,6 @@ import {
   oneSeries,
   periodCtx,
   pmsDone,
-  stamp,
   tally,
   top,
   uptimeData,
@@ -138,7 +137,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   out.charts.push(oneSeries('breakdowns-12', 'Breakdowns per month', 'column', 'Breakdowns', monthKeys(firstOfYear, to).map((m) => [monthLabel(m), year.filter((x) => monthInTz(x.raisedAt) === m).length] as [string, number]), 'int', 'Last 12 months'));
   const depts = new Map<string, typeof uptime.rows>();
   for (const r of uptime.rows) depts.set(r.a.department.name, [...(depts.get(r.a.department.name) ?? []), r]);
-  out.charts.push(oneSeries('uptime-by-department', 'Uptime by department', 'bar', 'Uptime', [...depts].map(([d, rs]) => [d, uptimeOf(rs) ?? 1] as [string, number]).sort((a, b) => a[1] - b[1]), 'pct'));
+  out.charts.push({ ...oneSeries('uptime-by-department', 'Uptime by department', 'bar', 'Uptime', [...depts].map(([d, rs]) => [d, uptimeOf(rs) ?? 1] as [string, number]).sort((a, b) => a[1] - b[1]), 'pct'), print: false });
 
   // ---- Tables ----
   addSheet(out, 'Departments', [
@@ -158,9 +157,9 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   })));
 
   addSheet(out, `Critical equipment down over ${limit} h`, [
-    { header: 'Complaint no.', key: 'no' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Raised', key: 'raised', width: 20 },
-    { header: 'Resolved', key: 'resolved', width: 20 }, { header: 'Down (h)', key: 'down', fmt: 'hours' }, { header: 'Problem', key: 'desc', width: 36 },
-  ], overLimit.map(({ x }) => ({ no: x.complaintNo, code: x.asset.assetCode, name: x.asset.name, raised: stamp(x.raisedAt), resolved: x.resolvedAt ? stamp(x.resolvedAt) : 'Still open', down: lengthH(x), desc: x.description })));
+    { header: 'Complaint no.', key: 'no' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Raised', key: 'raised', fmt: 'datetime', width: 20 },
+    { header: 'Resolved', key: 'resolved', fmt: 'datetime', width: 20 }, { header: 'Down (h)', key: 'down', fmt: 'hours' }, { header: 'Problem', key: 'desc', width: 36 },
+  ], overLimit.map(({ x }) => ({ no: x.complaintNo, code: x.asset.assetCode, name: x.asset.name, raised: x.raisedAt, resolved: x.resolvedAt ?? 'Still open', down: lengthH(x), desc: x.description })));
 
   const late = [
     ...overdue('nextPmsDue').map((a) => ({ a, what: 'PMS', due: a.nextPmsDue! })),

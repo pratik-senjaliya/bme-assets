@@ -272,10 +272,10 @@ describe('Equipment history workbook', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await res.arrayBuffer()) as ArrayBuffer);
     const names = wb.worksheets.map((w) => w.name);
-    for (const sheet of ['Summary', 'Purchase orders', 'Contracts', 'PMS', 'Calibration', 'Complaints', 'Service log', 'Expenses', 'Documents', 'About']) assert.ok(names.includes(sheet), `${sheet} sheet`);
-    assert.equal(wb.getWorksheet('Complaints')!.rowCount, 2); // header + the one complaint
-    assert.equal(wb.getWorksheet('Service log')!.rowCount, 2);
-    assert.equal(wb.getWorksheet('Expenses')!.rowCount, 3); // header + row + total
+    for (const sheet of ['Summary', 'Purchase orders', 'Contracts', 'PMS', 'Calibration', 'Complaints', 'Service log', 'Expenses', 'Documents', 'Overview']) assert.ok(names.includes(sheet), `${sheet} sheet`);
+    assert.equal(wb.getWorksheet('Complaints')!.rowCount, 5); // title block (3), header, the one complaint
+    assert.equal(wb.getWorksheet('Service log')!.rowCount, 5);
+    assert.equal(wb.getWorksheet('Expenses')!.rowCount, 6); // title block (3), header, row, total
 
     assert.equal((await call(base, nursing, 'GET', `/assets/${a.id}/history`)).status, 403);
     const foreign = await makeAsset({}, 'bme');
