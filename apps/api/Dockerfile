@@ -30,6 +30,8 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --omit=dev -w apps/api -w packages/shared
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
+# The PDF font (Noto Sans, for the ₹ sign), read from apps/api/assets at run time.
+COPY apps/api/assets apps/api/assets
 RUN mkdir -p /data/uploads && chown -R node:node /data
 WORKDIR /app/apps/api
 USER node

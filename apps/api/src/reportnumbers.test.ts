@@ -66,7 +66,7 @@ describe('18. Dashboard "Cover ending in 60 days"', () => {
 });
 
 describe('19–20. PDF exports', () => {
-  it('a range longer than 2 years: a summary shows the latest 24 months and says so, the tables keep every month, Rs. instead of ₹', async () => {
+  it('a range longer than 2 years: a summary shows the latest 24 months and says so, the tables keep every month, money with the ₹ sign', async () => {
     const today = parseDate(todayISO());
     const short = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(today);
     const full = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(today);
@@ -76,7 +76,8 @@ describe('19–20. PDF exports', () => {
     assert.ok(!pms.includes('Jan 22'), 'the oldest months are the ones left out of the summary');
     const spend = await pdfText(`/reports/expenses?format=pdf&from=2022-01-01&to=${todayISO()}`);
     assert.ok(spend.includes('Jan 2022') && spend.includes(full), 'the By month table lists every month');
-    assert.ok(!/¹/.test(spend), 'no garbled rupee sign');
+    assert.match(spend, /₹ [\d,]+/, 'money prints with the ₹ sign (embedded font)');
+    assert.ok(!spend.includes('Rs.'), 'no "Rs." left');
   });
 });
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import type { ChartSpec, Kpi, ReportColumn, ReportData, ReportSheetData, ValueFmt } from '@bme/shared';
@@ -257,7 +259,10 @@ const ZEBRA = '#F6F8F9';
 const ACCENT = '#0E5C58';
 const TONE = { bad: '#B4321F', warn: '#8A4F05', good: '#0E6B4F', neutral: MUTED } as const;
 
-// The built-in PDF font has no rupee sign, so money reads "Rs. 12,500" here (Excel and the screen use ₹).
+// Noto Sans (SIL Open Font License, assets/fonts) is embedded so ₹ prints; the PDF's built-in fonts have no rupee sign.
+// Read once; the same path works from src (tsx) and dist (node). Gujarati and Hindi need their own Noto fonts.
+const FONT_DIR = path.join(__dirname, '../../../assets/fonts');
+const FONTS = { regular: readFileSync(path.join(FONT_DIR, 'NotoSans-Regular.ttf')), bold: readFileSync(path.join(FONT_DIR, 'NotoSans-Bold.ttf')) };
 const num = (n: number, digits = 0) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(n);
 export function formatValue(v: unknown, fmt: ValueFmt | undefined, unit = false): string {
   if (v == null || v === '') return '-';
@@ -269,7 +274,7 @@ export function formatValue(v: unknown, fmt: ValueFmt | undefined, unit = false)
   if (typeof v !== 'number') return String(v);
   switch (fmt) {
     case 'money':
-      return `Rs. ${num(v, 0)}`;
+      return `₹ ${num(v, 0)}`;
     case 'pct':
       return `${num(v * 100, 1)}%`;
     case 'hours':
@@ -280,7 +285,6 @@ export function formatValue(v: unknown, fmt: ValueFmt | undefined, unit = false)
       return num(v, Number.isInteger(v) ? 0 : 1);
   }
 }
-const pdfText = (s: string) => s.replace(/₹\s?/g, 'Rs. ');
 const numeric = (c: ReportColumn) => !!c.fmt && c.fmt !== 'date' && c.fmt !== 'datetime' && c.fmt !== 'text';
 
 export function toPdf(data: ReportData): Promise<Buffer> {
@@ -309,15 +313,18 @@ export function toPdf(data: ReportData): Promise<Buffer> {
     const need = (h: number) => {
       if (y + h > BOTTOM) newPage();
     };
-    const font = (size: number, bold = false) => doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+    doc.registerFont('Body', FONTS.regular);
+    doc.registerFont('Body-Bold', FONTS.bold);
+    const font = (size: number, bold = false) => doc.font(bold ? 'Body-Bold' : 'Body').fontSize(size);
+    const lineH = (size: number, bold = false) => font(size, bold).currentLineHeight(false);
     type TextOpts = { w?: number; size?: number; bold?: boolean; color?: string; align?: 'left' | 'right' | 'center'; lines?: number };
     // Text that wraps within `w`, cut with an ellipsis after `lines` lines (one line unless asked).
     const text = (s: string, x: number, at: number, o: TextOpts = {}) => {
       const size = o.size ?? 8;
-      font(size, o.bold).fillColor(o.color ?? INK).text(pdfText(s), x, at, { width: o.w, height: (o.lines ?? 1) * (size * 1.16) + 1, align: o.align, ellipsis: true, lineGap: 0 });
+      font(size, o.bold).fillColor(o.color ?? INK).text(s, x, at, { width: o.w, height: (o.lines ?? 1) * lineH(size, o.bold) + 1, align: o.align, ellipsis: true, lineGap: 0 });
     };
     const heightOf = (s: string, w: number, size: number, bold = false, lines = 6) =>
-      Math.min(font(size, bold).heightOfString(pdfText(s) || ' ', { width: w, lineGap: 0 }), lines * size * 1.16 + 1);
+      Math.min(font(size, bold).heightOfString(s || ' ', { width: w, lineGap: 0 }), lines * lineH(size, bold) + 1);
     const rule = (at: number, color = LINE, width = 0.5) => doc.moveTo(M, at).lineTo(M + USABLE, at).lineWidth(width).strokeColor(color).stroke();
 
     // ---- Report details: what, when, for whom ----
@@ -336,7 +343,7 @@ export function toPdf(data: ReportData): Promise<Buffer> {
     if (data.kpis.length) {
       const perRow = Math.min(data.kpis.length, landscape ? 6 : 4);
       const cw = USABLE / perRow;
-      const ch = 44;
+      const ch = 48;
       text('Key figures', M, y, { size: 10.5, bold: true, color: ACCENT });
       y += 16;
       for (let i = 0; i < data.kpis.length; i += perRow) {
@@ -346,7 +353,7 @@ export function toPdf(data: ReportData): Promise<Buffer> {
           doc.rect(x, y, cw, ch).lineWidth(0.6).strokeColor(LINE).stroke();
           text(k.label, x + 7, y + 6, { w: cw - 14, size: 7, color: MUTED });
           text(formatValue(k.value, k.fmt, true), x + 7, y + 16, { w: cw - 14, size: 13, bold: true });
-          if (k.hint) text(k.hint, x + 7, y + 33, { w: cw - 14, size: 6.5, color: TONE[k.tone ?? 'neutral'] });
+          if (k.hint) text(k.hint, x + 7, y + 35, { w: cw - 14, size: 6.5, color: TONE[k.tone ?? 'neutral'] });
         });
         y += ch;
       }
@@ -362,12 +369,12 @@ export function toPdf(data: ReportData): Promise<Buffer> {
       // Widths from the content: dates and numbers keep their full width, long text gives way and wraps.
       const natural = cols.map((c) => {
         const head = Math.max(...c.header.split(/\s+/).map((wd) => font(size, true).widthOfString(wd)));
-        const cells = rows.slice(0, 80).map((r) => font(size).widthOfString(pdfText(formatValue(r[c.key], c.fmt))));
+        const cells = rows.slice(0, 80).map((r) => font(size).widthOfString(formatValue(r[c.key], c.fmt)));
         return Math.min(numeric(c) || c.fmt === 'date' || c.fmt === 'datetime' ? 140 : 210, Math.max(head, ...cells, 16)) + pad * 2;
       });
       // A column never gets narrower than its longest word, so codes and IDs stay on one line.
       const longestWord = cols.map((c, i) =>
-        Math.min(natural[i], Math.max(...rows.slice(0, 80).flatMap((r) => pdfText(formatValue(r[c.key], c.fmt)).split(/\s+/).map((wd) => font(size).widthOfString(wd))), 0) + pad * 2),
+        Math.min(natural[i], Math.max(...rows.slice(0, 80).flatMap((r) => formatValue(r[c.key], c.fmt).split(/\s+/).map((wd) => font(size).widthOfString(wd))), 0) + pad * 2),
       );
       const widths = (() => {
         const total = natural.reduce((t, w) => t + w, 0);
