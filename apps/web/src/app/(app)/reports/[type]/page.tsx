@@ -11,7 +11,7 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { todayIST } from '@/lib/format';
+import { hospitalToday, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { DashboardSkeleton } from '@/components/Skeletons';
 
@@ -28,7 +28,7 @@ function ReportPage() {
   const params = useSearchParams();
   const meta = REPORTS.find((r) => r.type === type);
 
-  const today = dayjs(todayIST()); // the hospital's today, as the records are dated
+  const today = hospitalToday();
   const from = params.get('from') ?? fmt(today.subtract(12, 'month'));
   const to = params.get('to') ?? fmt(today);
   const group = params.get('group') === 'year' ? 'year' : params.get('group') === 'fy' ? 'fy' : 'month';

@@ -12,6 +12,7 @@ import { StatusResult } from '@/components/StatusResult';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { COLORS } from '@/theme';
+import { hospitalToday } from '@/lib/format';
 
 type Option = { id: string; name: string };
 const fmt = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD');
@@ -36,7 +37,7 @@ function AuditPackPage() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const today = dayjs();
+  const today = hospitalToday();
   const from = params.get('from') ?? fmt(fyStart(today).subtract(1, 'year'));
   const to = params.get('to') ?? fmt(fyStart(today).subtract(1, 'day'));
   const departmentId = params.get('departmentId') ?? '';

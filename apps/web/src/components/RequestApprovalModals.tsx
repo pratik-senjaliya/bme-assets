@@ -2,11 +2,11 @@
 
 import { App, DatePicker, Form, Input, InputNumber, Modal, Select, Typography, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
 import { CONDEMN_REASON_LABEL, CONDEMN_REASONS, MAX_UPLOAD_BYTES, condemnRequestSchema, deleteRequestSchema, transferRequestSchema, type DeletableTarget } from '@bme/shared';
 import { api } from '@/lib/api';
-import { moneyInputProps } from '@/lib/format';
+import { hospitalToday, moneyInputProps } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
 // Condemning, transferring and deleting are requests: nothing changes until the Biomedical HOD approves.
@@ -21,7 +21,7 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
   useEffect(() => {
     if (open) {
       form.resetFields();
-      form.setFieldsValue({ committeeDate: dayjs() });
+      form.setFieldsValue({ committeeDate: hospitalToday() });
       setLetter(null);
     }
   }, [open, form]);
@@ -77,7 +77,7 @@ export function RequestCondemnModal({ open, asset, onClose, onRequested }: { ope
             <InputNumber {...moneyInputProps} min={0} style={{ width: '100%' }} placeholder="e.g. 50,000" />
           </Form.Item>
           <Form.Item label="Condemnation committee date" name="committeeDate" rules={[{ required: true, message: 'Pick the date' }]} style={{ flex: '1 1 200px' }}>
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
         </div>
         <Form.Item label="End-of-life letter (optional)" extra="The manufacturer's or vendor's letter, if you have one.">

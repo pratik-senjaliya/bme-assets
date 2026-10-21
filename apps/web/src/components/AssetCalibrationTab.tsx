@@ -2,13 +2,12 @@
 
 import { InboxOutlined } from '@ant-design/icons';
 import { App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Upload } from 'antd';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { MAX_UPLOAD_BYTES, createCalibrationSchema, type AssetDetail, type CalibrationRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { DueTag, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
-import { daysFromToday, formatDate } from '@/lib/format';
+import { daysFromToday, formatDate, hospitalToday } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { COLORS } from '@/theme';
 
@@ -84,7 +83,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
             <Button
               onClick={() => {
                 form.resetFields();
-                form.setFieldsValue({ doneOn: dayjs(), result: 'pass' });
+                form.setFieldsValue({ doneOn: hospitalToday(), result: 'pass' });
                 setCertificates([]);
                 setOpen(true);
               }}
@@ -133,7 +132,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
       <Modal open={open} title="Record calibration" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Calibration date" name="doneOn" rules={[{ required: true, message: 'Pick the date' }]}>
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
           <Form.Item label="Next due date" name="dueOn" extra="Leave blank to use the equipment type's usual interval.">
             <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} />

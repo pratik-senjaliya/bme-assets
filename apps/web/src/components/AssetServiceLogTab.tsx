@@ -1,7 +1,6 @@
 'use client';
 
 import { App, Button, Card, DatePicker, Form, Input, Modal, Select } from 'antd';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { SERVICE_KINDS, createServiceLogSchema, type ServiceKind, type ServiceLogRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
@@ -9,7 +8,7 @@ import { DocumentsButton } from '@/components/DocumentList';
 import { FilePicker } from '@/components/FilePicker';
 import type { DeleteTarget } from '@/components/RequestApprovalModals';
 import { api, useFetch } from '@/lib/api';
-import { formatDate } from '@/lib/format';
+import { formatDate, hospitalToday } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
 import { COLORS } from '@/theme';
@@ -56,7 +55,7 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
           <Button
             onClick={() => {
               form.resetFields();
-              form.setFieldsValue({ kind: 'amc_visit', serviceDate: dayjs() });
+              form.setFieldsValue({ kind: 'amc_visit', serviceDate: hospitalToday() });
               setFiles([]);
               setAdding(true);
             }}
@@ -105,7 +104,7 @@ export function AssetServiceLogTab({ assetId, canEdit, canRequest, requestDelete
       <Modal open={adding} title="Log service" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setAdding(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="Date of service" name="serviceDate" rules={[{ required: true, message: 'Choose the date' }]} extra="The day it happened. It cannot be in the future.">
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
           <Form.Item label="Kind" name="kind" rules={[{ required: true }]}>
             <Select options={SERVICE_KINDS.map((k) => ({ value: k, label: SERVICE_LABEL[k] }))} />

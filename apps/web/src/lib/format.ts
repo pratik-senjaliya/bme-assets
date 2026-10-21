@@ -1,3 +1,4 @@
+import dayjs, { type Dayjs } from 'dayjs';
 import type { ValueFmt } from '@bme/shared';
 const TZ = 'Asia/Kolkata';
 
@@ -61,6 +62,9 @@ export const formatDuration = (seconds: number | null | undefined) => {
 // Today in the hospital's timezone as YYYY-MM-DD. For display and picking filters only: dates that are
 // stored (PMS date, due dates, reminders) are decided by the server.
 export const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+// The hospital's today as a date-picker value. The server dates records in hospital time, so date fields default to
+// and are limited by this, not by the device's own clock (which may be set to another time zone).
+export const hospitalToday = (): Dayjs => dayjs(todayIST());
 
 export const addDaysISO = (iso: string, days: number) => {
   const d = new Date(`${iso}T00:00:00Z`);

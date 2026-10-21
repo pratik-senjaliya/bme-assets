@@ -1,7 +1,7 @@
 'use client';
 
 import { App, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Switch } from 'antd';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
   COMPLAINT_STATUS_LABEL,
@@ -20,7 +20,7 @@ import {
 } from '@bme/shared';
 import { Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
-import { moneyInputProps, todayIST } from '@/lib/format';
+import { hospitalToday, moneyInputProps, todayIST } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
 type Department = { id: string; name: string };
@@ -36,8 +36,7 @@ export function StockPill({ item }: { item: Pick<ConsumableRow, 'stock' | 'low' 
 export type MoveKind = 'in' | 'issue' | 'adjust';
 
 // Movements are dated: never ahead of today, at most CONSUMABLE_MAX_DAYS_BACK days back (the server checks the same).
-// The hospital's today (India), as the server dates movements, whatever the device's own clock says.
-const today = () => dayjs(todayIST());
+const today = hospitalToday;
 const outsideWindow = (d: Dayjs) => d.isAfter(today(), 'day') || d.isBefore(today().subtract(CONSUMABLE_MAX_DAYS_BACK, 'day'), 'day');
 const DateField = () => (
   <Form.Item label="Date" name="date" rules={[{ required: true, message: 'Pick the date' }]} extra={`Today or up to ${CONSUMABLE_MAX_DAYS_BACK} days back.`}>

@@ -38,7 +38,7 @@ import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/Sta
 import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize, moneyInputProps } from '@/lib/format';
+import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize, hospitalToday, moneyInputProps, todayIST } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 import { StatusResult } from '@/components/StatusResult';
@@ -250,7 +250,8 @@ function TimelineTab({ id }: { id: string }) {
   const events = useFetch<TimelineEvent[]>(`/assets/${id}/timeline`);
   if (events.error) return <Alert type="error" showIcon message="Could not load the timeline" action={<Button onClick={events.reload}>Retry</Button>} />;
   if (!events.data) return <Card><Skeleton.Input active block style={{ height: 160 }} /></Card>;
-  const today = new Date().toISOString();
+  const now = new Date().toISOString();
+  const today = todayIST();
   if (events.data.length === 0) return <Card><EmptyState compact title="Nothing recorded yet" /></Card>;
   return (
     <Card styles={{ body: { padding: '24px 24px 4px' } }}>
@@ -263,7 +264,7 @@ function TimelineTab({ id }: { id: string }) {
               {e.detail && <div style={{ color: COLORS.muted, marginTop: 2 }}>{e.detail}</div>}
               <div style={{ color: COLORS.faint, fontSize: 12, marginTop: 4 }} className="num">
                 {e.date.length > 10 ? formatDateTime(e.date) : formatDate(e.date)}
-                {e.date > today && ' · upcoming'}
+                {(e.date.length > 10 ? e.date > now : e.date > today) && ' · upcoming'}
               </div>
             </div>
           ),
@@ -546,7 +547,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
         <Button
           onClick={() => {
             form.resetFields();
-            form.setFieldsValue({ type: 'repair', date: dayjs() });
+            form.setFieldsValue({ type: 'repair', date: hospitalToday() });
             setFiles([]);
             setAdding(true);
           }}
@@ -584,7 +585,7 @@ function ExpensesTab({ id, canRequest, requestDelete }: { id: string } & RowActi
             <InputNumber min={0} {...moneyInputProps} placeholder="0" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="Date" name="date" rules={[{ required: true, message: 'Pick the date' }]}>
-            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+            <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>
           <Form.Item label="Vendor" name="vendor">
             <Input maxLength={150} placeholder="Optional" />

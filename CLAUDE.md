@@ -9,7 +9,7 @@ A web app for a hospital's **biomedical engineering (BME) department** to track 
 - **Sold product:** installed **on-premise** on each hospital's own server, used over the hospital LAN. One install = one hospital (no multi-tenancy).
 - **Demo (now):** cloud-hosted for stakeholders. Vercel (web) + Render (API) + Supabase used **only as hosted Postgres and file storage**. No Supabase Auth, RLS or edge functions — all logic lives in our Express API so the same code runs on-prem.
 - **Web app only.** No mobile app, by decision: complaints must come from department logins, not anyone's phone.
-- Users are in India: timezone `Asia/Kolkata`, dates `07 Oct 2026`, money `₹` with `en-IN` grouping.
+- Users are in India: timezone `Asia/Kolkata`, dates `07 Oct 2026`, money `₹` with `en-IN` grouping. In the web app "today" is the hospital's (`todayIST()` / `hospitalToday()` in `lib/format.ts`), never the device clock (`dayjs()`, `new Date()` for a date), since the server dates records in hospital time.
 
 ## Roles (defaults; permissions are stored in DB and adjustable per hospital)
 
