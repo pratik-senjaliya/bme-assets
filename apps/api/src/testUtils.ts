@@ -28,19 +28,55 @@ export const call = (base: string, cookie: string, method: string, path: string,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-// The text drawn in a PDFKit file: inflate each content stream and decode its hex strings (WinAnsi text).
+// The text drawn in a PDFKit file. Its embedded font (Noto Sans, for ₹) writes glyph codes, so each hex string is read
+// through the ToUnicode map of the font selected by the last `/Fn size Tf`; a built-in font's hex is WinAnsi text.
 export function pdfTextOf(buf: Buffer) {
   const raw = buf.toString('latin1');
-  let out = '';
-  for (let i = raw.indexOf('stream\n'); i >= 0; i = raw.indexOf('stream\n', i + 1)) {
-    const end = raw.indexOf('endstream', i);
+  const objects = new Map<string, { dict: string; data: Buffer | null }>();
+  for (const m of raw.matchAll(/(\d+) 0 obj\n([\s\S]*?)endobj/g)) {
+    const at = m[0].indexOf('stream\n');
+    const data = at < 0 ? null : buf.subarray(m.index + at + 7, m.index + m[0].lastIndexOf('endstream'));
+    objects.set(m[1], { dict: at < 0 ? m[2] : m[0].slice(0, at), data });
+  }
+  const inflate = (data: Buffer | null) => {
     try {
-      const content = inflateSync(buf.subarray(i + 7, end)).toString('latin1');
-      for (const m of content.matchAll(/<([0-9a-fA-F]+)>/g)) out += Buffer.from(m[1], 'hex').toString('latin1');
-      out += '\n';
+      return data ? inflateSync(data).toString('latin1') : '';
     } catch {
-      // not a compressed content stream (fonts, images)
+      return ''; // not a compressed stream
     }
+  };
+  const utf16 = (hex: string) => String.fromCharCode(...(hex.match(/.{4}/g) ?? []).map((h) => parseInt(h, 16)));
+  // Glyph code → text, per font object.
+  const maps = new Map<string, Map<number, string>>();
+  for (const [id, o] of objects) {
+    const ref = /\/ToUnicode (\d+) 0 R/.exec(o.dict);
+    if (!ref) continue;
+    const cmap = inflate(objects.get(ref[1])?.data ?? null);
+    const map = new Map<number, string>();
+    for (const r of cmap.matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*(\[[^\]]*\]|<[0-9a-fA-F]+>)/g)) {
+      const lo = parseInt(r[1], 16);
+      const hi = parseInt(r[2], 16);
+      // A ligature maps to several characters, written with spaces: <0066 0069> is "fi".
+      if (r[3].startsWith('[')) [...r[3].matchAll(/<([0-9a-fA-F\s]+)>/g)].forEach((d, k) => map.set(lo + k, utf16(d[1].replace(/\s/g, ''))));
+      else for (let c = lo; c <= hi; c++) map.set(c, String.fromCharCode(parseInt(r[3].slice(1, -1), 16) + (c - lo)));
+    }
+    for (const c of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) for (const p of c[1].matchAll(/<([0-9a-fA-F]+)>\s*<([0-9a-fA-F\s]+)>/g)) map.set(parseInt(p[1], 16), utf16(p[2].replace(/\s/g, '')));
+    maps.set(id, map);
+  }
+  const fontByName = new Map<string, string>();
+  for (const o of objects.values()) for (const f of o.dict.matchAll(/\/(F\d+) (\d+) 0 R/g)) fontByName.set(f[1], f[2]);
+
+  let out = '';
+  for (const o of objects.values()) {
+    const content = inflate(o.data);
+    if (!content.includes('BT') || content.includes('begincmap')) continue;
+    let map: Map<number, string> | undefined;
+    for (const t of content.matchAll(/\/(F\d+)\s+[\d.]+\s+Tf|<([0-9a-fA-F]+)>/g)) {
+      if (t[1]) map = maps.get(fontByName.get(t[1]) ?? '');
+      else if (map) out += (t[2].match(/.{4}/g) ?? []).map((h) => map!.get(parseInt(h, 16)) ?? '').join('');
+      else out += Buffer.from(t[2], 'hex').toString('latin1');
+    }
+    out += '\n';
   }
   return out;
 }
