@@ -1,8 +1,7 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
+import { ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
 import { currentUser, departmentScope } from '../../lib/auth';
-import { config } from '../../lib/config';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -24,7 +23,8 @@ export function addSheet(out: Collector, name: string, cols: Col[], rows: Row[],
   out.sheets.push({
     name,
     columns: cols.map((c) => ({ ...c, width: c.width ?? Math.max(12, c.header.length + 2) })),
-    rows: rows.map((r) => Object.fromEntries(cols.map((c) => [c.key, plain(r[c.key])]))),
+    // A date-time column keeps the instant (ISO); the screen, Excel and PDF show it in hospital time.
+    rows: rows.map((r) => Object.fromEntries(cols.map((c) => [c.key, c.fmt === 'datetime' && r[c.key] instanceof Date ? (r[c.key] as Date).toISOString() : plain(r[c.key])]))),
     totals,
   });
 }
@@ -83,7 +83,6 @@ export const periodCtx = (from: string, to: string, scope: Ctx['scope'], q: Part
 });
 
 export const STATUS_LABEL: Record<string, string> = { active: 'Active', not_in_use: 'Not in use', condemned: 'CONDEMNED', transferred: 'TRANSFERRED' };
-export const stamp = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: config.timezone }).format(d).replace(/(\d{4}) /, '$1, ') : '');
 export const hours = (ms: number) => Math.round((ms / 3_600_000) * 100) / 100;
 const hoursOf = (seconds: number | null) => (seconds == null ? null : Math.round((seconds / 3600) * 100) / 100);
 
@@ -187,7 +186,7 @@ async function pms(wb: Collector, c: Ctx) {
   kpi(wb, 'Corrections', records.filter((r) => r.correctsRecordId).length, 'int', 'Records that correct an earlier one');
   const months = monthKeys(c.from, c.to);
   wb.charts.push(oneSeries('pms-per-month', 'PMS done per month', 'column', 'PMS done', months.map((m) => [monthLabel(m), done.filter((r) => isoDate(r.performedOn).slice(0, 7) === m).length] as [string, number]), 'int'));
-  wb.charts.push(oneSeries('pms-by-type', 'PMS done by equipment type', 'bar', 'PMS done', [...byType].map(([t, v]) => [t, v.count] as [string, number]).sort((a, b) => b[1] - a[1]), 'int'));
+  wb.charts.push({ ...oneSeries('pms-by-type', 'PMS done by equipment type', 'bar', 'PMS done', [...byType].map(([t, v]) => [t, v.count] as [string, number]).sort((a, b) => b[1] - a[1]), 'int'), print: false });
   addSheet(wb, 'Summary', [
     { header: 'Equipment type', key: 'type', width: 22 }, { header: 'PMS done', key: 'count', fmt: 'int' }, { header: 'Passed', key: 'pass', fmt: 'int' }, { header: 'Failed', key: 'fail', fmt: 'int' },
     { header: 'Pass rate', key: 'rate', fmt: 'pct' },
@@ -233,15 +232,15 @@ async function breakdowns(wb: Collector, c: Ctx) {
   const name = (id: string | null) => (id ? (users.find((u) => u.id === id)?.name ?? '') : '');
   const rows = complaints.map((x) => ({ x, m: complaintMetrics(x) }));
   addSheet(wb, 'Breakdowns', [
-    { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', width: 20 }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'asset', width: 26 },
+    { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', fmt: 'datetime', width: 20 }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'asset', width: 26 },
     { header: 'Department', key: 'dept', width: 22 }, { header: 'Criticality', key: 'crit' }, { header: 'Asset status', pdf: false, key: 'astatus' }, { header: 'Problem', key: 'desc', width: 40 },
-    { header: 'Raised by', pdf: false, key: 'by', width: 20 }, { header: 'Status', key: 'status' }, { header: 'Started', pdf: false, key: 'started', width: 20 }, { header: 'Started by', pdf: false, key: 'startedBy', width: 20 },
-    { header: 'Resolved', pdf: false, key: 'resolved', width: 20 }, { header: 'Resolved by', pdf: false, key: 'resolvedBy', width: 20 }, { header: 'Closed', pdf: false, key: 'closed', width: 20 },
+    { header: 'Raised by', pdf: false, key: 'by', width: 20 }, { header: 'Status', key: 'status' }, { header: 'Started', pdf: false, key: 'started', fmt: 'datetime', width: 20 }, { header: 'Started by', pdf: false, key: 'startedBy', width: 20 },
+    { header: 'Resolved', pdf: false, key: 'resolved', fmt: 'datetime', width: 20 }, { header: 'Resolved by', pdf: false, key: 'resolvedBy', width: 20 }, { header: 'Closed', pdf: false, key: 'closed', fmt: 'datetime', width: 20 },
     { header: 'Response time (h)', key: 'resp', fmt: 'hours', width: 18 },
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'Resolution', key: 'notes', width: 40 },
   ], rows.map(({ x, m }) => ({
-    no: x.complaintNo, raised: stamp(x.raisedAt), code: x.asset.assetCode, asset: x.asset.name, dept: x.department.name, crit: CRITICALITY_LABEL[x.asset.criticality], astatus: STATUS_LABEL[x.asset.status], desc: x.description,
-    by: x.raisedBy.name, status: COMPLAINT_STATUS_LABEL[x.status], started: stamp(x.startedAt), startedBy: name(x.startedBy), resolved: stamp(x.resolvedAt), resolvedBy: name(x.resolvedBy), closed: stamp(x.closedAt),
+    no: x.complaintNo, raised: x.raisedAt, code: x.asset.assetCode, asset: x.asset.name, dept: x.department.name, crit: CRITICALITY_LABEL[x.asset.criticality], astatus: STATUS_LABEL[x.asset.status], desc: x.description,
+    by: x.raisedBy.name, status: COMPLAINT_STATUS_LABEL[x.status], started: x.startedAt, startedBy: name(x.startedBy), resolved: x.resolvedAt, resolvedBy: name(x.resolvedBy), closed: x.closedAt,
     resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: x.resolutionNotes,
   })));
 
@@ -259,8 +258,8 @@ async function breakdowns(wb: Collector, c: Ctx) {
   for (const r of rows) groups.get(periodOfMonth(monthInTz(r.x.raisedAt), group))?.push(r);
   const periods = [...groups];
   const plabel = (p: string) => periodName(p, group);
-  wb.charts.push(oneSeries('breakdowns-per-period', `Breakdowns ${PER[group]}`, 'column', 'Breakdowns', periods.map(([p, g]) => [plabel(p), g.length] as [string, number]), 'int'));
-  wb.charts.push(oneSeries('downtime-per-period', `Downtime ${PER[group]}`, 'column', 'Downtime (h)', periods.map(([p, g]) => [plabel(p), Math.round((g.reduce((s, r) => s + (r.m.downtimeSeconds ?? 0), 0) / 3600) * 10) / 10] as [string, number]), 'hours', 'Resolved breakdowns'));
+  wb.charts.push({ ...oneSeries('breakdowns-per-period', `Breakdowns ${PER[group]}`, 'column', 'Breakdowns', periods.map(([p, g]) => [plabel(p), g.length] as [string, number]), 'int'), print: false });
+  wb.charts.push({ ...oneSeries('downtime-per-period', `Downtime ${PER[group]}`, 'column', 'Downtime (h)', periods.map(([p, g]) => [plabel(p), Math.round((g.reduce((s, r) => s + (r.m.downtimeSeconds ?? 0), 0) / 3600) * 10) / 10] as [string, number]), 'hours', 'Resolved breakdowns'), print: false });
   wb.charts.push(oneSeries('top-breakdowns', 'Equipment with the most breakdowns', 'bar', 'Breakdowns', top(tally(rows, (r) => `${r.x.asset.assetCode} ${r.x.asset.name}`), 10), 'int'));
   wb.charts.push(oneSeries('breakdowns-by-department', 'Breakdowns by department', 'bar', 'Breakdowns', tally(rows, (r) => r.x.department.name), 'int'));
   addSheet(wb, group === 'month' ? 'By month' : group === 'year' ? 'By year' : 'By financial year', [
@@ -332,7 +331,7 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
   kpi(wb, criticalOnly ? 'Critical assets' : 'Assets measured', rows.length, 'int');
   kpi(wb, 'Assets with downtime', withDown.length, 'int', withDown.length ? undefined : 'None', withDown.length ? 'warn' : 'good');
   wb.charts.push(oneSeries('most-downtime', 'Equipment with the most downtime', 'bar', 'Downtime (h)', top(withDown, 10).map((r) => [`${r.a.assetCode} ${r.a.name}`, hours(r.downMs)] as [string, number]), 'hours'));
-  wb.charts.push(oneSeries('lowest-uptime', 'Lowest uptime', 'bar', 'Uptime', top([...rows].sort((x, y) => x.downMs / x.periodMs - y.downMs / y.periodMs).reverse(), 10).map((r) => [`${r.a.assetCode} ${r.a.name}`, 1 - r.downMs / r.periodMs] as [string, number]), 'pct'));
+  wb.charts.push({ ...oneSeries('lowest-uptime', 'Lowest uptime', 'bar', 'Uptime', top([...rows].sort((x, y) => x.downMs / x.periodMs - y.downMs / y.periodMs).reverse(), 10).map((r) => [`${r.a.assetCode} ${r.a.name}`, 1 - r.downMs / r.periodMs] as [string, number]), 'pct'), print: false });
   addSheet(wb, 'Summary', [{ header: 'Measure', key: 'k', width: 34 }, { header: 'Value', key: 'v', width: 16 }], [
     { k: criticalOnly ? 'Critical assets in the report' : 'Assets in the report', v: rows.length },
     { k: 'Total downtime (hours)', v: hours(totalDown) },
@@ -349,10 +348,10 @@ async function uptimeSheets(wb: Collector, c: Ctx, criticalOnly: boolean) {
     kpi(wb, `Events over ${criticalDowntimeHours} h`, overLimit, 'int', overLimit ? 'Longer than the hospital limit' : 'None', overLimit ? 'bad' : 'good');
     kpi(wb, 'Downtime events', events.length, 'int');
     addSheet(wb, 'Downtime events', [
-      { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', width: 20 },
-      { header: 'Resolved', key: 'resolved', width: 20 }, { header: 'Downtime in period (h)', key: 'down', fmt: 'hours', width: 22 }, { header: 'Whole event (h)', key: 'whole', fmt: 'hours', width: 16 },
+      { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', fmt: 'datetime', width: 20 },
+      { header: 'Resolved', key: 'resolved', fmt: 'datetime', width: 20 }, { header: 'Downtime in period (h)', key: 'down', fmt: 'hours', width: 22 }, { header: 'Whole event (h)', key: 'whole', fmt: 'hours', width: 16 },
       { header: `Over ${criticalDowntimeHours} h limit`, key: 'over', width: 16 }, { header: 'Problem', key: 'desc', width: 40 },
-    ], events.map(({ a, x }) => ({ whole: lengthH(x), over: lengthH(x) > criticalDowntimeHours ? 'YES' : '',  code: a.assetCode, name: a.name, no: x.complaintNo, raised: stamp(x.raisedAt), resolved: x.resolvedAt ? stamp(x.resolvedAt) : 'Still open', down: hours(overlapMs(x.raisedAt, x.resolvedAt, c.fromAt, periodEnd)), desc: x.description })));
+    ], events.map(({ a, x }) => ({ whole: lengthH(x), over: lengthH(x) > criticalDowntimeHours ? 'YES' : '',  code: a.assetCode, name: a.name, no: x.complaintNo, raised: x.raisedAt, resolved: x.resolvedAt ?? 'Still open', down: hours(overlapMs(x.raisedAt, x.resolvedAt, c.fromAt, periodEnd)), desc: x.description })));
   }
 }
 
@@ -380,8 +379,8 @@ async function equipmentAge(wb: Collector, c: Ctx) {
 
   const types = new Map<string, number[]>();
   for (const { a, years } of list) if (years != null) types.set(a.equipmentType.name, [...(types.get(a.equipmentType.name) ?? []), years]);
-  wb.charts.push(oneSeries('age-bands', 'Equipment by age band', 'column', 'Assets', bands.map((b) => [b, list.filter((l) => band(l.years) === b).length] as [string, number]), 'int'));
-  wb.charts.push(oneSeries('age-by-type', 'Average age by equipment type', 'bar', 'Years', [...types].map(([t, ys]) => [t, Math.round((ys.reduce((a, y) => a + y, 0) / ys.length) * 10) / 10] as [string, number]).sort((a, b) => b[1] - a[1]), 'years'));
+  wb.charts.push({ ...oneSeries('age-bands', 'Equipment by age band', 'column', 'Assets', bands.map((b) => [b, list.filter((l) => band(l.years) === b).length] as [string, number]), 'int'), print: false });
+  wb.charts.push({ ...oneSeries('age-by-type', 'Average age by equipment type', 'bar', 'Years', [...types].map(([t, ys]) => [t, Math.round((ys.reduce((a, y) => a + y, 0) / ys.length) * 10) / 10] as [string, number]).sort((a, b) => b[1] - a[1]), 'years'), print: false });
   addSheet(wb, 'By equipment type', [{ header: 'Equipment type', key: 'type', width: 24 }, { header: 'Assets with an age', key: 'count', fmt: 'int', width: 18 }, { header: 'Average age (years)', key: 'avg', fmt: 'years', width: 20 }, { header: 'Oldest (years)', key: 'max', fmt: 'years' }],
     [...types].map(([type, ys]) => ({ type, count: ys.length, avg: ys.reduce((s, y) => s + y, 0) / ys.length, max: Math.max(...ys) })).sort((x, y) => y.avg - x.avg));
 }
@@ -406,13 +405,13 @@ async function expenses(wb: Collector, c: Ctx) {
   kpi(wb, 'Spare parts', spares, 'money');
   kpi(wb, 'Entries', rows.length, 'int', rows.length ? `Average ₹ ${new Intl.NumberFormat('en-IN').format(Math.round((repairs + spares) / rows.length))}` : undefined);
   wb.charts.push({
-    id: 'spend-per-month', title: 'Spend per month', kind: 'stacked', fmt: 'money',
+    id: 'spend-per-month', title: 'Spend per month', kind: 'stacked', fmt: 'money', print: false,
     series: [{ key: 'repair', label: 'Repairs' }, { key: 'spare', label: 'Spare parts' }],
     data: monthKeys(c.from, c.to).map((m) => ({ label: monthLabel(m), repair: sum(rows.filter((e) => e.type === 'repair' && isoDate(e.date).slice(0, 7) === m)), spare: sum(rows.filter((e) => e.type === 'spare_part' && isoDate(e.date).slice(0, 7) === m)) })),
   });
   const spendByAsset = new Map<string, number>();
   for (const e of rows) spendByAsset.set(`${e.asset.assetCode} ${e.asset.name}`, (spendByAsset.get(`${e.asset.assetCode} ${e.asset.name}`) ?? 0) + Number(e.amount));
-  wb.charts.push(oneSeries('spend-by-asset', 'Equipment with the highest spend', 'bar', 'Spend', top([...spendByAsset].sort((a, b) => b[1] - a[1]), 10), 'money'));
+  wb.charts.push({ ...oneSeries('spend-by-asset', 'Equipment with the highest spend', 'bar', 'Spend', top([...spendByAsset].sort((a, b) => b[1] - a[1]), 10), 'money'), print: false });
   const byAsset = new Map<string, { name: string; count: number; repair: number; spare: number }>();
   for (const e of rows) {
     const t = byAsset.get(e.asset.assetCode) ?? { name: e.asset.name, count: 0, repair: 0, spare: 0 };
@@ -603,6 +602,22 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
   await builders[type]();
 
   const ranged = !SNAPSHOT.includes(type);
+  // What the report covers, in words, for the PDF and Excel headings. The list filters apply to the two reports
+  // that the asset and complaint lists export.
+  const filtered = type === 'asset-master' || type === 'breakdowns';
+  const deptId = scope.departmentId ?? (filtered ? q.departmentId : undefined);
+  const [dept, eqType] = await Promise.all([
+    deptId ? prisma.department.findUnique({ where: { id: deptId }, select: { name: true } }) : null,
+    filtered && q.equipmentTypeId ? prisma.equipmentType.findUnique({ where: { id: q.equipmentTypeId }, select: { name: true } }) : null,
+  ]);
+  const filters = [
+    ...(dept ? [`Department: ${dept.name}`] : []),
+    ...(eqType ? [`Equipment type: ${eqType.name}`] : []),
+    ...(filtered && q.criticality ? [`Criticality: ${CRITICALITY_LABEL[q.criticality]}`] : []),
+    ...(type === 'asset-master' && q.assetStatus && q.assetStatus !== 'all' ? [`Status: ${ASSET_STATUS_LABEL[q.assetStatus]}`] : []),
+    ...(type === 'breakdowns' && q.complaintStatus ? [`Status: ${COMPLAINT_STATUS_LABEL[q.complaintStatus]}`] : []),
+    ...(filtered && q.search ? [`Search: "${q.search}"`] : []),
+  ];
   const meta = REPORTS.find((r) => r.type === type)!;
   const data: ReportData = {
     type,
@@ -613,6 +628,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     group: type === 'breakdowns' ? q.group : null,
     generatedAt: new Date().toISOString(),
     generatedBy: by,
+    filters,
     note:
       type === 'condemnation'
         ? 'Condemnation committee members (name, designation, signature, date): ________________________________'
@@ -693,12 +709,12 @@ export async function buildAssetHistory(req: Request, assetId: string) {
   addSheet(wb, 'Calibration', [{ header: 'Done on', key: 'done', fmt: 'date' }, { header: 'Next due', key: 'due', fmt: 'date' }, { header: 'Agency', key: 'agency', width: 24 }, { header: 'Result', key: 'result' }],
     calibrations.map((c) => ({ done: c.doneOn, due: c.dueOn, agency: c.agency, result: c.result.toUpperCase() })));
   addSheet(wb, 'Complaints', [
-    { header: 'Complaint no.', key: 'no', width: 14 }, { header: 'Raised', key: 'raised', width: 20 }, { header: 'Raised by', key: 'by', width: 20 }, { header: 'Problem', key: 'desc', width: 40 },
-    { header: 'Status', key: 'status' }, { header: 'Started', key: 'started', width: 20 }, { header: 'Resolved', key: 'resolved', width: 20 }, { header: 'Response (h)', key: 'resp', fmt: 'hours' },
+    { header: 'Complaint no.', key: 'no', width: 14 }, { header: 'Raised', key: 'raised', fmt: 'datetime', width: 20 }, { header: 'Raised by', key: 'by', width: 20 }, { header: 'Problem', key: 'desc', width: 40 },
+    { header: 'Status', key: 'status' }, { header: 'Started', key: 'started', fmt: 'datetime', width: 20 }, { header: 'Resolved', key: 'resolved', fmt: 'datetime', width: 20 }, { header: 'Response (h)', key: 'resp', fmt: 'hours' },
     { header: 'Downtime (h)', key: 'down', fmt: 'hours' }, { header: 'What was done', key: 'notes', width: 40 },
   ], complaints.map((c) => {
     const m = complaintMetrics(c);
-    return { no: c.complaintNo, raised: stamp(c.raisedAt), by: c.raisedBy.name, desc: c.description, status: COMPLAINT_STATUS_LABEL[c.status], started: stamp(c.startedAt), resolved: stamp(c.resolvedAt), resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: c.resolutionNotes };
+    return { no: c.complaintNo, raised: c.raisedAt, by: c.raisedBy.name, desc: c.description, status: COMPLAINT_STATUS_LABEL[c.status], started: c.startedAt, resolved: c.resolvedAt, resp: hoursOf(m.responseSeconds), down: hoursOf(m.downtimeSeconds), notes: c.resolutionNotes };
   }));
   addSheet(wb, 'Service log', [{ header: 'Date', key: 'date', fmt: 'date' }, { header: 'Kind', key: 'kind' }, { header: 'Vendor', key: 'vendor', width: 24 }, { header: 'What was done', key: 'desc', width: 50 }],
     logs.map((l) => ({ date: l.serviceDate, kind: SERVICE_KIND[l.kind], vendor: l.vendor, desc: l.description })));
@@ -706,8 +722,8 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     addSheet(wb, 'Expenses', [{ header: 'Date', key: 'date', fmt: 'date' }, { header: 'Type', key: 'type' }, { header: 'Description', key: 'desc', width: 40 }, { header: 'Vendor', key: 'vendor', width: 22 }, { header: 'Complaint', key: 'complaint' }, { header: 'Amount', key: 'amount', fmt: 'money', width: 16 }],
       expenses.map((e) => ({ date: e.date, type: e.type === 'spare_part' ? 'Spare part' : 'Repair', desc: e.description, vendor: e.vendor, complaint: e.complaint?.complaintNo, amount: Number(e.amount) })), ['amount']);
   }
-  addSheet(wb, 'Documents', [{ header: 'File', key: 'name', width: 40 }, { header: 'Kind', key: 'kind', width: 20 }, { header: 'Attached to', key: 'owner', width: 20 }, { header: 'Added', key: 'added', width: 20 }],
-    files.map((f) => ({ name: f.fileName, kind: DOC_KIND[f.kind] ?? f.kind, owner: f.ownerType.replace(/_/g, ' '), added: stamp(f.createdAt) })));
+  addSheet(wb, 'Documents', [{ header: 'File', key: 'name', width: 40 }, { header: 'Kind', key: 'kind', width: 20 }, { header: 'Attached to', key: 'owner', width: 20 }, { header: 'Added', key: 'added', fmt: 'datetime', width: 20 }],
+    files.map((f) => ({ name: f.fileName, kind: DOC_KIND[f.kind] ?? f.kind, owner: f.ownerType.replace(/_/g, ' '), added: f.createdAt })));
   const data: ReportData = {
     type: 'asset-history',
     title: `Full history of ${asset.assetCode}`,
@@ -717,6 +733,7 @@ export async function buildAssetHistory(req: Request, assetId: string) {
     group: null,
     generatedAt: new Date().toISOString(),
     generatedBy: me.name,
+    filters: [`Equipment: ${asset.name}`, `Department: ${asset.department.name}`],
     note: asset.status === 'condemned' ? 'This equipment has been CONDEMNED. Its history is kept.' : asset.status === 'transferred' ? 'This equipment has been TRANSFERRED to another unit. Its history up to then is kept.' : null,
     ...wb,
   };

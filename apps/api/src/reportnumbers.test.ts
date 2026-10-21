@@ -66,13 +66,17 @@ describe('18. Dashboard "Cover ending in 60 days"', () => {
 });
 
 describe('19–20. PDF exports', () => {
-  it('a range longer than 2 years shows the most recent months, says so, and prints Rs. instead of ₹', async () => {
-    const text = await pdfText(`/reports/expenses?format=pdf&from=2022-01-01&to=${todayISO()}`);
-    assert.match(text, /Last 24 of \d+ shown/);
-    const latest = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(parseDate(todayISO()));
-    assert.ok(text.includes(latest), `the newest month (${latest}) is in the chart`);
-    assert.ok(!text.includes('Jan 22'), 'the oldest months are the ones left out');
-    assert.ok(!/¹/.test(text), 'no garbled rupee sign');
+  it('a range longer than 2 years: a summary shows the latest 24 months and says so, the tables keep every month, Rs. instead of ₹', async () => {
+    const today = parseDate(todayISO());
+    const short = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(today);
+    const full = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(today);
+    const pms = await pdfText(`/reports/pms?format=pdf&from=2022-01-01&to=${todayISO()}`);
+    assert.match(pms, /Last 24 of \d+ shown/);
+    assert.ok(pms.includes(short), `the newest month (${short}) is in the summary`);
+    assert.ok(!pms.includes('Jan 22'), 'the oldest months are the ones left out of the summary');
+    const spend = await pdfText(`/reports/expenses?format=pdf&from=2022-01-01&to=${todayISO()}`);
+    assert.ok(spend.includes('Jan 2022') && spend.includes(full), 'the By month table lists every month');
+    assert.ok(!/¹/.test(spend), 'no garbled rupee sign');
   });
 });
 

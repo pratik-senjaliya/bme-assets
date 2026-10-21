@@ -912,7 +912,8 @@ export type CondemnationInfo = {
 // ---------- Charts and figures (dashboard and reports share these) ----------
 
 // How a number reads: whole number, hours (1 decimal), rupees, percentage (0-1), years, a date, or plain text.
-export type ValueFmt = 'int' | 'hours' | 'money' | 'pct' | 'years' | 'date' | 'text';
+// datetime travels as an ISO instant and reads in hospital time (07 Oct 2026, 14:35).
+export type ValueFmt = 'int' | 'hours' | 'money' | 'pct' | 'years' | 'date' | 'datetime' | 'text';
 
 // A headline figure. `tone` colours only the hint, with words (never colour alone).
 export type Kpi = { label: string; value: number | string | null; fmt: ValueFmt; hint?: string; tone?: 'good' | 'warn' | 'bad' | 'neutral' };
@@ -927,6 +928,8 @@ export type ChartSpec = {
   series: { key: string; label: string }[];
   data: ({ label: string } & Record<string, number | string | null>)[];
   fmt: ValueFmt;
+  // false: a table of the report already carries these numbers, so the PDF and Excel summaries leave the chart out.
+  print?: false;
 };
 
 // pdf: false leaves a column out of the PDF only (a page cannot hold 17 columns); screen and Excel keep it.
@@ -944,6 +947,8 @@ export type ReportData = {
   generatedAt: string;
   generatedBy: string;
   note: string | null;
+  // What the report covers beyond the period, in words ("Department: ICU", "Status: Active"); empty = the whole hospital.
+  filters?: string[];
   kpis: Kpi[];
   charts: ChartSpec[];
   sheets: ReportSheetData[];

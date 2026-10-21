@@ -1,84 +1,271 @@
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
-import type { ChartSpec, ReportData, ValueFmt } from '@bme/shared';
+import type { ChartSpec, Kpi, ReportColumn, ReportData, ReportSheetData, ValueFmt } from '@bme/shared';
 import { config } from '../../lib/config';
-import { parseDate } from '../../lib/dates';
+import { parseDate, wallClock } from '../../lib/dates';
 
-// Excel and PDF are made from the same ReportData the screen shows, so the three never disagree.
+// Excel and PDF are made from the same ReportData the screen shows, so the numbers never disagree. The layout is
+// their own: the PDF is a document to print, sign and file (letterhead, report details, key figures, summary tables,
+// the registers, signatures); the Excel file is one to work in (an overview first, real dates and numbers, filters,
+// totals that follow the filter, set up to print).
 
-const NUM_FMT: Partial<Record<ValueFmt, string>> = {
-  date: 'dd mmm yyyy',
-  money: '"₹" #,##0.00',
-  hours: '#,##0.0',
-  pct: '0.0%',
-  int: '#,##0',
-  years: '0.0',
-};
+const DEPARTMENT = 'Biomedical Engineering Department';
 
+const prettyDay = (iso: string) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parseDate(iso));
 const stamp = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: config.timezone })
     .format(new Date(iso))
     .replace(/(\d{4}) /, '$1, ');
+const isInstant = (v: string) => /^\d{4}-\d{2}-\d{2}T/.test(v);
 
-const period = (d: ReportData) => (d.from && d.to ? `${prettyDay(d.from)} to ${prettyDay(d.to)}` : 'As at today');
-const prettyDay = (iso: string) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parseDate(iso));
+const period = (d: ReportData) => (d.from && d.to ? `${prettyDay(d.from)} to ${prettyDay(d.to)}` : `As at ${prettyDay(d.generatedAt.slice(0, 10))}`);
+const covers = (d: ReportData) => (d.filters?.length ? d.filters.join(' · ') : 'Whole hospital');
+// Charts become small tables in both files, except where a table of the report already has the same numbers.
+const summaries = (d: ReportData) => d.charts.filter((c) => c.print !== false && c.data.length > 0);
+const chartColumns = (c: ChartSpec): ReportColumn[] => [
+  { header: '', key: 'label' },
+  ...c.series.map((s) => ({ header: s.label, key: s.key, fmt: c.fmt })),
+  ...(c.series.length > 1 ? [{ header: 'Total', key: '__total', fmt: c.fmt }] : []),
+];
+const chartRows = (c: ChartSpec) =>
+  c.data.map((r): Record<string, string | number | null> => ({ ...r, ...(c.series.length > 1 && { __total: c.series.reduce((t, s) => t + (Number(r[s.key]) || 0), 0) }) }));
+const totalsRow = (s: ReportSheetData, first: string) =>
+  ({ [first]: 'Total', ...Object.fromEntries((s.totals ?? []).map((k) => [k, s.rows.reduce((t, r) => t + (Number(r[k]) || 0), 0)])) }) as Record<string, string | number | null>;
 
 // ---------- Excel ----------
+
+// Indian grouping (12,34,567.00) for rupees and counts; Excel has no built-in format for it.
+const INDIAN = (decimals: string) => `[>=10000000]##\\,##\\,##\\,##0${decimals};[>=100000]##\\,##\\,##0${decimals};#,##0${decimals}`;
+const NUM_FMT: Partial<Record<ValueFmt, string>> = {
+  date: 'dd mmm yyyy',
+  datetime: 'dd mmm yyyy hh:mm',
+  money: `[>=10000000]"₹ "##\\,##\\,##\\,##0.00;[>=100000]"₹ "##\\,##\\,##0.00;"₹ "#,##0.00`,
+  hours: '#,##0.0',
+  pct: '0.0%',
+  int: INDIAN(''),
+  years: '0.0',
+};
+const HEADER_ROW = 4; // title, details, blank, then the table
+const GREY = { argb: 'FF5B6472' };
+const HEAD_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF0' } };
+const thin = { style: 'thin' as const, color: { argb: 'FFB8C2C8' } };
+
+// Sheet names: at most 31 characters, none of []:*?/\ and each one different.
+function sheetName(wb: ExcelJS.Workbook, name: string) {
+  const base = name.replace(/[[\]:*?/\\]/g, '-').slice(0, 31);
+  let out = base;
+  for (let i = 2; wb.getWorksheet(out); i++) out = `${base.slice(0, 31 - String(i).length - 1)} ${i}`;
+  return out;
+}
+
+// A cell value Excel can sort and add up: real dates (hospital clock time), numbers as numbers.
+function excelValue(v: unknown, fmt: ValueFmt | undefined): ExcelJS.CellValue {
+  if (v == null || v === '') return null;
+  if (typeof v === 'string' && fmt === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return parseDate(v);
+  if (typeof v === 'string' && fmt === 'datetime' && isInstant(v)) return wallClock(new Date(v));
+  return v as ExcelJS.CellValue;
+}
+// A plain text column may still hold a date (an asset's summary: "Installed 2023-05-10"); it reads as one, as on screen.
+const isPlainDate = (v: unknown, fmt: ValueFmt | undefined) => (!fmt || fmt === 'text') && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+function excelCell(v: unknown, fmt: ValueFmt | undefined): ExcelJS.CellValue {
+  return isPlainDate(v, fmt) ? parseDate(v as string) : excelValue(v, fmt);
+}
+
+// Escapes text for a print header or footer, where & starts a code.
+const hf = (s: string) => s.replace(/&/g, '&&');
+
+function printSetup(ws: ExcelJS.Worksheet, data: ReportData, landscape: boolean, titleRows?: string) {
+  ws.pageSetup = {
+    ...ws.pageSetup,
+    paperSize: 9, // A4
+    orientation: landscape ? 'landscape' : 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.4, right: 0.4, top: 0.7, bottom: 0.6, header: 0.3, footer: 0.3 },
+    ...(titleRows && { printTitlesRow: titleRows }),
+  };
+  ws.headerFooter = {
+    oddHeader: `&L&"-,Bold"${hf(data.hospital)}&R${hf(data.title)}`,
+    oddFooter: `&L${hf(period(data))}&RPage &P of &N`,
+  };
+}
+
+function widthOf(col: ReportColumn, rows: Record<string, unknown>[]) {
+  if (col.fmt === 'date') return 13;
+  if (col.fmt === 'datetime') return 18;
+  const longestWord = Math.max(...col.header.split(/\s+/).map((w) => w.length));
+  const longestValue = Math.max(0, ...rows.slice(0, 300).map((r) => String(r[col.key] ?? '').length));
+  return Math.min(60, Math.max(10, longestWord + 2, Math.min(longestValue + 2, col.width ?? 60), col.fmt && col.fmt !== 'text' ? 12 : 0));
+}
+
+// One table of the report: a short title block, the header row (frozen, filterable, repeated on every printed page),
+// the rows, and totals that add up whatever the filter leaves showing.
+function addDataSheet(wb: ExcelJS.Workbook, data: ReportData, s: ReportSheetData): ExcelJS.Worksheet {
+  const cols = s.columns;
+  const ws = wb.addWorksheet(sheetName(wb, s.name), { views: [{ state: 'frozen', ySplit: HEADER_ROW, xSplit: cols.length > 6 ? 1 : 0 }] });
+  ws.getCell('A1').value = s.name === data.title ? data.title : `${data.title}: ${s.name}`;
+  ws.getCell('A1').font = { bold: true, size: 13 };
+  ws.getCell('A2').value = `${data.hospital} · ${period(data)} · ${covers(data)}`;
+  ws.getCell('A2').font = { size: 9, color: GREY };
+
+  cols.forEach((c, i) => {
+    const col = ws.getColumn(i + 1);
+    col.width = widthOf(c, s.rows);
+    const f = c.fmt && NUM_FMT[c.fmt];
+    if (f) col.numFmt = f;
+  });
+  const head = ws.getRow(HEADER_ROW);
+  head.values = cols.map((c) => c.header);
+  head.font = { bold: true };
+  head.height = 30;
+  head.eachCell((cell) => {
+    cell.fill = HEAD_FILL;
+    cell.border = { bottom: thin };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+  });
+
+  const wrap = cols.map((c, i) => !c.fmt && (ws.getColumn(i + 1).width ?? 0) >= 40);
+  s.rows.forEach((r, n) => {
+    const row = ws.getRow(HEADER_ROW + 1 + n);
+    row.values = cols.map((c) => excelCell(r[c.key], c.fmt));
+    cols.forEach((c, i) => {
+      if (wrap[i]) row.getCell(i + 1).alignment = { vertical: 'top', wrapText: true };
+      if (isPlainDate(r[c.key], c.fmt)) row.getCell(i + 1).numFmt = NUM_FMT.date!;
+    });
+  });
+  const first = HEADER_ROW + 1;
+  const last = HEADER_ROW + s.rows.length;
+  if (!s.rows.length) {
+    ws.getCell(`A${first}`).value = 'No records in this period.';
+    ws.getCell(`A${first}`).font = { italic: true, color: GREY };
+  } else {
+    ws.autoFilter = { from: { row: HEADER_ROW, column: 1 }, to: { row: HEADER_ROW, column: cols.length } };
+    if (s.totals?.length) {
+      const sums = totalsRow(s, cols[0].key);
+      const row = ws.getRow(last + 1);
+      row.getCell(1).value = 'Total';
+      cols.forEach((c, i) => {
+        if (!s.totals!.includes(c.key)) return;
+        const letter = ws.getColumn(i + 1).letter;
+        row.getCell(i + 1).value = { formula: `SUBTOTAL(109,${letter}${first}:${letter}${last})`, result: sums[c.key] as number };
+      });
+      row.font = { bold: true };
+      row.eachCell({ includeEmpty: true }, (cell, i) => {
+        if (i <= cols.length) cell.border = { top: thin };
+      });
+    }
+  }
+  printSetup(ws, data, cols.length > 7, `${HEADER_ROW}:${HEADER_ROW}`);
+  return ws;
+}
+
+// The first sheet: what the report is, its key figures, short summaries, and what the other sheets hold.
+function addOverview(wb: ExcelJS.Workbook, data: ReportData, contents: { name: string; rows: number }[]): ExcelJS.Worksheet {
+  const ws = wb.addWorksheet('Overview', { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 38 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 40 }];
+  let r = 1;
+  const put = (values: ExcelJS.CellValue[], style: Partial<ExcelJS.Row> = {}) => {
+    const row = ws.getRow(r++);
+    row.values = values;
+    Object.assign(row, style);
+    return row;
+  };
+  put([data.hospital], { font: { bold: true, size: 14 } });
+  put([DEPARTMENT], { font: { size: 10, color: GREY } });
+  r++;
+  put([data.title], { font: { bold: true, size: 16 } });
+  r++;
+  const detail = (label: string, value: string) => {
+    const row = put([label, value]);
+    row.getCell(1).font = { color: GREY };
+    row.getCell(1).alignment = { vertical: 'top' };
+    ws.mergeCells(row.number, 2, row.number, 5);
+    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    if (value.length > 90) row.height = 15 * Math.ceil(value.length / 90);
+  };
+  detail('Period', period(data));
+  detail('Covers', covers(data));
+  detail('Generated', `${stamp(data.generatedAt)} by ${data.generatedBy}`);
+  if (data.note) detail('Note', data.note);
+  r++;
+
+  const heading = (text: string) => put([text], { font: { bold: true, size: 12 } });
+  const header = (values: string[]) => {
+    const row = put(values, { font: { bold: true } });
+    values.forEach((_, i) => {
+      row.getCell(i + 1).fill = HEAD_FILL;
+      row.getCell(i + 1).border = { bottom: thin };
+    });
+  };
+  if (data.kpis.length) {
+    heading('Key figures');
+    header(['Measure', 'Value', 'Note']);
+    data.kpis.forEach((k: Kpi) => {
+      const row = put([k.label, typeof k.value === 'number' ? k.value : (k.value ?? '—'), k.hint ?? '']);
+      const f = k.fmt === 'hours' ? '#,##0.0 "h"' : k.fmt === 'years' ? '0.0 "y"' : NUM_FMT[k.fmt];
+      if (f && typeof k.value === 'number') row.getCell(2).numFmt = f;
+      row.getCell(2).alignment = { horizontal: 'right' };
+      row.getCell(3).alignment = { indent: 1 };
+      if (k.tone === 'bad' || k.tone === 'warn') row.getCell(3).font = { color: { argb: k.tone === 'bad' ? 'FFB4321F' : 'FF8A4F05' } };
+    });
+    r++;
+  }
+  for (const c of summaries(data)) {
+    heading(c.subtitle ? `${c.title} (${c.subtitle})` : c.title);
+    const cols = chartColumns(c);
+    header(cols.map((x) => x.header));
+    for (const d of chartRows(c)) {
+      const row = put(cols.map((x) => (x.key === 'label' ? d.label : excelValue(d[x.key], x.fmt))));
+      cols.forEach((x, i) => {
+        const f = x.fmt && NUM_FMT[x.fmt];
+        if (f && i > 0) row.getCell(i + 1).numFmt = f;
+      });
+    }
+    r++;
+  }
+  if (contents.length) {
+    heading('In this file');
+    header(['Sheet', 'Rows']);
+    for (const { name, rows } of contents) {
+      const row = put([{ text: name, hyperlink: `#'${name.replace(/'/g, "''")}'!A1` }, rows]);
+      row.getCell(1).font = { color: { argb: 'FF0E5C58' }, underline: true };
+    }
+  }
+  printSetup(ws, data, false);
+  return ws;
+}
 
 export function toWorkbook(data: ReportData): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = data.generatedBy;
   wb.created = new Date(data.generatedAt);
-
-  const sheet = (name: string, columns: { header: string; key: string; fmt?: ValueFmt; width?: number }[], rows: Record<string, unknown>[], totals?: string[]) => {
-    const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
-    ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width ?? Math.max(12, c.header.length + 2) }));
-    // Dates travel as YYYY-MM-DD; Excel gets real dates so they sort and filter.
-    ws.addRows(rows.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.fmt === 'date' && typeof r[c.key] === 'string' ? parseDate(r[c.key] as string) : r[c.key]]))));
-    columns.forEach((c, i) => {
-      const f = c.fmt && NUM_FMT[c.fmt];
-      if (f) ws.getColumn(i + 1).numFmt = f;
-    });
-    const header = ws.getRow(1);
-    header.font = { bold: true };
-    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
-    if (rows.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
-    if (totals && rows.length) {
-      const total: Record<string, unknown> = { [columns[0].key]: 'Total' };
-      for (const key of totals) total[key] = rows.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
-      ws.addRow(total).font = { bold: true };
-    }
-  };
-
-  for (const s of data.sheets) sheet(s.name, s.columns, s.rows, s.totals);
-  if (data.kpis.length) {
-    sheet('Highlights', [{ header: 'Measure', key: 'k', width: 34 }, { header: 'Value', key: 'v', width: 22 }, { header: 'Note', key: 'n', width: 44 }], data.kpis.map((k) => ({ k: k.label, v: k.fmt === 'pct' && typeof k.value === 'number' ? `${(k.value * 100).toFixed(1)}%` : k.value, n: k.hint ?? '' })));
-  }
-  sheet('About', [{ header: 'Item', key: 'k', width: 20 }, { header: 'Value', key: 'v', width: 60 }], [
-    { k: 'Hospital', v: data.hospital },
-    { k: 'Report', v: data.title },
-    { k: 'Period', v: period(data) },
-    { k: 'Generated', v: stamp(data.generatedAt) },
-    { k: 'Generated by', v: data.generatedBy },
-    ...(data.note ? [{ k: 'Note', v: data.note }] : []),
-  ]);
+  wb.title = `${data.title} · ${data.hospital}`;
+  const contents = data.sheets.map((sh) => ({ name: addDataSheet(wb, data, sh).name, rows: sh.rows.length }));
+  // The overview lists the sheets by their final names, so it is made last and then put first.
+  (addOverview(wb, data, contents) as ExcelJS.Worksheet & { orderNo: number }).orderNo = 0; // not in ExcelJS's types, but it orders the tabs
   return wb;
 }
 
 // ---------- PDF ----------
 
-const INK = '#0F172A';
-const MUTED = '#64748B';
-const LINE = '#E2E8F0';
-const SERIES = ['#0891B2', '#eb6834', '#4a3aa7'];
-const PAGE = { w: 841.89, h: 595.28, m: 32 }; // A4 landscape
-const USABLE = PAGE.w - PAGE.m * 2;
+const INK = '#16212B';
+const MUTED = '#5B6472';
+const LINE = '#CBD3D9';
+const HEAD_BG = '#E8EEF0';
+const ZEBRA = '#F6F8F9';
+const ACCENT = '#0E5C58';
+const TONE = { bad: '#B4321F', warn: '#8A4F05', good: '#0E6B4F', neutral: MUTED } as const;
 
 // The built-in PDF font has no rupee sign, so money reads "Rs. 12,500" here (Excel and the screen use ₹).
 const num = (n: number, digits = 0) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(n);
 export function formatValue(v: unknown, fmt: ValueFmt | undefined, unit = false): string {
   if (v == null || v === '') return '-';
-  if (typeof v === 'string') return fmt === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? prettyDay(v) : v; // the totals row says "Total" even in a date column
+  if (typeof v === 'string') {
+    if ((fmt === 'date' || !fmt || fmt === 'text') && /^\d{4}-\d{2}-\d{2}$/.test(v)) return prettyDay(v);
+    if (fmt === 'datetime' && isInstant(v)) return stamp(v);
+    return v; // the totals row says "Total" even in a date column
+  }
   if (typeof v !== 'number') return String(v);
   switch (fmt) {
     case 'money':
@@ -93,167 +280,235 @@ export function formatValue(v: unknown, fmt: ValueFmt | undefined, unit = false)
       return num(v, Number.isInteger(v) ? 0 : 1);
   }
 }
+const pdfText = (s: string) => s.replace(/₹\s?/g, 'Rs. ');
+const numeric = (c: ReportColumn) => !!c.fmt && c.fmt !== 'date' && c.fmt !== 'datetime' && c.fmt !== 'text';
 
 export function toPdf(data: ReportData): Promise<Buffer> {
+  // Wide registers print across the page; the rest read better upright.
+  const landscape = data.sheets.some((s) => s.columns.filter((c) => c.pdf !== false).length > 7);
+  const W = landscape ? 841.89 : 595.28;
+  const H = landscape ? 595.28 : 841.89;
+  const M = 34;
+  const USABLE = W - M * 2;
+  const TOP = M + 44; // below the letterhead
+  const BOTTOM = H - M - 22; // above the footer
+
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: PAGE.m, bufferPages: true, info: { Title: data.title, Author: data.generatedBy } });
+    const doc = new PDFDocument({ size: 'A4', layout: landscape ? 'landscape' : 'portrait', margin: M, bufferPages: true, info: { Title: `${data.title} · ${data.hospital}`, Author: data.generatedBy } });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Our own cursor: PDFKit moves its own whenever text is drawn, which would shift everything drawn after.
-    let y = PAGE.m;
-    const bottom = () => PAGE.h - PAGE.m - 14;
+    // Our own cursor: PDFKit moves its own whenever text is drawn.
+    let y = TOP;
+    const newPage = () => {
+      doc.addPage();
+      y = TOP;
+    };
     const need = (h: number) => {
-      if (y + h > bottom()) {
-        doc.addPage();
-        y = PAGE.m;
-      }
+      if (y + h > BOTTOM) newPage();
     };
-    const text = (s: string, x: number, y: number, o: { w?: number; h?: number; size?: number; bold?: boolean; color?: string; align?: 'left' | 'right' | 'center' } = {}) => {
-      // One line, cut with an ellipsis when it does not fit (a fixed height is what makes PDFKit truncate, not wrap).
-      // The built-in font has no rupee sign: any ₹ in a label or hint reads "Rs." like the money values.
-      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size ?? 8).fillColor(o.color ?? INK).text(s.replace(/₹\s?/g, 'Rs. '), x, y, { width: o.w, height: o.h ?? (o.size ?? 8) + 2, align: o.align, ellipsis: true });
+    const font = (size: number, bold = false) => doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+    type TextOpts = { w?: number; size?: number; bold?: boolean; color?: string; align?: 'left' | 'right' | 'center'; lines?: number };
+    // Text that wraps within `w`, cut with an ellipsis after `lines` lines (one line unless asked).
+    const text = (s: string, x: number, at: number, o: TextOpts = {}) => {
+      const size = o.size ?? 8;
+      font(size, o.bold).fillColor(o.color ?? INK).text(pdfText(s), x, at, { width: o.w, height: (o.lines ?? 1) * (size * 1.16) + 1, align: o.align, ellipsis: true, lineGap: 0 });
     };
+    const heightOf = (s: string, w: number, size: number, bold = false, lines = 6) =>
+      Math.min(font(size, bold).heightOfString(pdfText(s) || ' ', { width: w, lineGap: 0 }), lines * size * 1.16 + 1);
+    const rule = (at: number, color = LINE, width = 0.5) => doc.moveTo(M, at).lineTo(M + USABLE, at).lineWidth(width).strokeColor(color).stroke();
 
-    // Title block
-    text(data.hospital, PAGE.m, PAGE.m, { size: 9, color: MUTED });
-    text(data.title, PAGE.m, PAGE.m + 13, { size: 20, bold: true });
-    text(`${period(data)}   |   Generated ${stamp(data.generatedAt)} by ${data.generatedBy}`, PAGE.m, PAGE.m + 40, { size: 8.5, color: MUTED });
-    y = PAGE.m + 60;
+    // ---- Report details: what, when, for whom ----
+    const details: [string, string][] = [['Period', period(data)], ['Covers', covers(data)], ['Generated', stamp(data.generatedAt)], ['By', data.generatedBy]];
+    const dw = USABLE / details.length;
+    doc.rect(M, y, USABLE, 34).lineWidth(0.6).strokeColor(LINE).stroke();
+    details.forEach(([label, value], i) => {
+      const x = M + i * dw;
+      if (i) doc.moveTo(x, y).lineTo(x, y + 34).lineWidth(0.6).strokeColor(LINE).stroke();
+      text(label.toUpperCase(), x + 8, y + 6, { w: dw - 16, size: 6.5, color: MUTED });
+      text(value, x + 8, y + 16, { w: dw - 16, size: 9, bold: true });
+    });
+    y += 46;
 
-    // Headline figures
+    // ---- Key figures: a ruled grid, label over value, the note under it ----
     if (data.kpis.length) {
-      const perRow = data.kpis.length <= 5 ? data.kpis.length : data.kpis.length % 3 === 0 ? 3 : 4;
-      const gap = 8;
-      const w = (USABLE - gap * (perRow - 1)) / perRow;
-      data.kpis.forEach((k, i) => {
-        if (i > 0 && i % perRow === 0) y += 54;
-        need(54);
-        const x = PAGE.m + (i % perRow) * (w + gap);
-        doc.roundedRect(x, y, w, 46, 4).lineWidth(0.6).strokeColor(LINE).stroke();
-        text(k.label, x + 8, y + 6, { w: w - 16, size: 7.5, color: MUTED });
-        text(formatValue(k.value, k.fmt, true), x + 8, y + 17, { w: w - 16, size: 15, bold: true });
-        if (k.hint) text(k.hint, x + 8, y + 36, { w: w - 16, size: 6.5, color: k.tone === 'bad' ? '#B91C1C' : k.tone === 'warn' ? '#B45309' : MUTED });
-      });
-      y += 66;
+      const perRow = Math.min(data.kpis.length, landscape ? 6 : 4);
+      const cw = USABLE / perRow;
+      const ch = 44;
+      text('Key figures', M, y, { size: 10.5, bold: true, color: ACCENT });
+      y += 16;
+      for (let i = 0; i < data.kpis.length; i += perRow) {
+        need(ch);
+        data.kpis.slice(i, i + perRow).forEach((k, j) => {
+          const x = M + j * cw;
+          doc.rect(x, y, cw, ch).lineWidth(0.6).strokeColor(LINE).stroke();
+          text(k.label, x + 7, y + 6, { w: cw - 14, size: 7, color: MUTED });
+          text(formatValue(k.value, k.fmt, true), x + 7, y + 16, { w: cw - 14, size: 13, bold: true });
+          if (k.hint) text(k.hint, x + 7, y + 33, { w: cw - 14, size: 6.5, color: TONE[k.tone ?? 'neutral'] });
+        });
+        y += ch;
+      }
+      y += 16;
     }
 
-    // Charts as plain bars: label, bar, value. Enough to read the shape; the tables carry the detail.
-    const bars = (c: ChartSpec) => {
-      // A ranking shows its top 10; a time series its most recent 24 periods (the Excel file has every one).
-      const series = c.kind !== 'bar';
-      const rows = series ? c.data.slice(-24) : c.data.slice(0, 10);
-      const note = series && c.data.length > rows.length ? `Last ${rows.length} of ${c.data.length} shown; the Excel file has all` : c.subtitle;
-      need(30 + rows.length * 12);
-      text(c.title, PAGE.m, y, { size: 10, bold: true });
-      if (note) text(note, PAGE.m + 260, y + 1.5, { w: PAGE.w - PAGE.m * 2 - 260, size: 7.5, color: MUTED });
-      y += 18;
-      if (c.series.length > 1) {
-        c.series.forEach((s, i) => {
-          doc.rect(PAGE.m + 300 + i * 90, y - 14, 7, 7).fill(SERIES[i % SERIES.length]);
-          text(s.label, PAGE.m + 311 + i * 90, y - 14, { size: 7.5, color: MUTED });
-        });
-      }
-      const totalOf = (r: ChartSpec['data'][number]) => c.series.reduce((t, s) => t + (Number(r[s.key]) || 0), 0);
-      const max = Math.max(1, ...rows.map(totalOf));
-      const barW = 330;
-      for (const r of rows) {
-        text(r.label, PAGE.m, y, { w: 170, size: 7.5 });
-        let x = PAGE.m + 180;
-        c.series.forEach((s, i) => {
-          const v = Number(r[s.key]) || 0;
-          const w = (v / max) * barW;
-          if (w > 0) doc.rect(x, y, Math.max(w - (c.series.length > 1 ? 1 : 0), 0.6), 7).fill(SERIES[i % SERIES.length]);
-          x += w;
-        });
-        text(formatValue(totalOf(r), c.fmt, true), PAGE.m + 180 + barW + 8, y, { w: 90, size: 7.5, color: MUTED });
-        y += 12;
-      }
-      y += 12;
-    };
-    data.charts.forEach(bars);
-
-    // Tables
-    for (const s of data.sheets) {
-      const cols = s.columns.filter((c) => c.pdf !== false);
-      const size = cols.length > 11 ? 6 : cols.length > 8 ? 6.5 : 7.5;
-      // Column widths from the content: short values (dates, numbers) keep their full width, long text gives way.
-      const measure = (t: string, bold = false) => doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).widthOfString(t);
+    // ---- A table: wrapped cells, header repeated on every page, zebra rows, totals ----
+    const table = (title: string, cols: ReportColumn[], rows: Record<string, unknown>[], o: { x?: number; w?: number; size?: number; totals?: Record<string, unknown> | null; caption?: string } = {}) => {
+      const x0 = o.x ?? M;
+      const width = o.w ?? USABLE;
+      const size = o.size ?? (cols.length > 11 ? 6.5 : cols.length > 8 ? 7 : 7.5);
+      const pad = 3;
+      // Widths from the content: dates and numbers keep their full width, long text gives way and wraps.
       const natural = cols.map((c) => {
-        const head = Math.max(...c.header.split(' ').map((w) => measure(w, true)));
-        const cells = s.rows.slice(0, 60).map((r) => measure(formatValue(r[c.key], c.fmt)));
-        return Math.min(180, Math.max(head, ...cells, 18)) + 8;
+        const head = Math.max(...c.header.split(/\s+/).map((wd) => font(size, true).widthOfString(wd)));
+        const cells = rows.slice(0, 80).map((r) => font(size).widthOfString(pdfText(formatValue(r[c.key], c.fmt))));
+        return Math.min(numeric(c) || c.fmt === 'date' || c.fmt === 'datetime' ? 140 : 210, Math.max(head, ...cells, 16)) + pad * 2;
       });
+      // A column never gets narrower than its longest word, so codes and IDs stay on one line.
+      const longestWord = cols.map((c, i) =>
+        Math.min(natural[i], Math.max(...rows.slice(0, 80).flatMap((r) => pdfText(formatValue(r[c.key], c.fmt)).split(/\s+/).map((wd) => font(size).widthOfString(wd))), 0) + pad * 2),
+      );
       const widths = (() => {
-        const need = natural.reduce((t, w) => t + w, 0);
-        if (need <= USABLE) return natural.map((w) => (w / need) * USABLE); // spread the spare room
+        const total = natural.reduce((t, w) => t + w, 0);
+        // A short table keeps a natural width instead of stretching across the page.
+        if (total <= width) return natural.map((w) => (w / total) * (o.w ? width : Math.min(width, Math.max(total * 1.5, width * 0.5))));
         const w = [...natural];
-        for (let pass = 0; pass < 6 && w.reduce((t, x) => t + x, 0) > USABLE; pass++) {
-          const over = w.reduce((t, x) => t + x, 0) - USABLE;
-          const long = w.map((x, i) => (x > 90 ? i : -1)).filter((i) => i >= 0);
-          if (!long.length) break;
-          const cut = Math.min(...long.map((i) => w[i] - 70), over / long.length);
-          if (cut <= 0) break;
-          long.forEach((i) => (w[i] -= cut));
-        }
-        const total = w.reduce((t, x) => t + x, 0);
-        return total > USABLE ? w.map((x) => (x / total) * USABLE) : w;
+        const fixed = cols.map((c) => numeric(c) || c.fmt === 'date' || c.fmt === 'datetime');
+        const over = total - width;
+        const give = w.map((x, i) => (fixed[i] ? 0 : Math.max(0, x - Math.max(60, longestWord[i]))));
+        const room = give.reduce((t, g) => t + g, 0);
+        if (room >= over) return w.map((x, i) => x - (give[i] / room) * over);
+        return w.map((x) => (x / total) * width);
       })();
-      const rowH = size + 8;
-      const headH = size * 2 + 8; // headers may use two lines
-      const align = (c: (typeof cols)[number]) => (c.fmt && c.fmt !== 'date' && c.fmt !== 'text' ? 'right' : 'left');
-
-      const head = () => {
-        doc.rect(PAGE.m, y, USABLE, headH).fill('#F1F5F9');
-        let x = PAGE.m;
+      const tableW = widths.reduce((t, x) => t + x, 0);
+      const align = (c: ReportColumn) => (numeric(c) ? 'right' : 'left');
+      const headH = Math.max(...cols.map((c, i) => heightOf(c.header, widths[i] - pad * 2, size, true, 3))) + pad * 2;
+      const head = (continued: boolean) => {
+        if (continued) {
+          text(`${title} (continued)`, x0, y, { w: tableW, size: 7.5, color: MUTED });
+          y += 12;
+        }
+        doc.rect(x0, y, tableW, headH).fill(HEAD_BG);
+        let x = x0;
         cols.forEach((c, i) => {
-          text(c.header, x + 3, y + 4, { w: widths[i] - 6, h: size * 2 + 2, size, bold: true, color: MUTED, align: align(c) });
+          text(c.header, x + pad, y + pad, { w: widths[i] - pad * 2, size, bold: true, color: INK, align: align(c), lines: 3 });
           x += widths[i];
         });
         y += headH;
       };
-
-      need(60);
-      text(s.name, PAGE.m, y, { size: 11, bold: true });
-      y += 18;
-      if (!s.rows.length) {
-        text('No rows.', PAGE.m, y, { size: 8, color: MUTED });
-        y += 22;
-        continue;
-      }
-      head();
-      const line = (row: Record<string, unknown>, bold = false) => {
-        if (y + rowH > bottom()) {
-          doc.addPage();
-          y = PAGE.m;
-          head();
+      const heightOfRow = (cells: string[], bold: boolean) => Math.max(size + 2, ...cells.map((s, i) => heightOf(s, widths[i] - pad * 2, size, bold))) + pad * 2;
+      // `keep`: room to leave below this row on the same page (the totals row stays with the last row).
+      const line = (r: Record<string, unknown>, n: number, bold = false, keep = 0) => {
+        const cells = cols.map((c) => formatValue(r[c.key], c.fmt));
+        const h = heightOfRow(cells, bold);
+        if (y + h + keep > BOTTOM) {
+          newPage();
+          head(true);
         }
-        let x = PAGE.m;
-        cols.forEach((c, i) => {
-          text(formatValue(row[c.key], c.fmt), x + 3, y + 4, { w: widths[i] - 6, size, bold, align: align(c) });
+        if (bold) doc.moveTo(x0, y).lineTo(x0 + tableW, y).lineWidth(0.8).strokeColor(INK).stroke();
+        else if (n % 2 === 1) doc.rect(x0, y, tableW, h).fill(ZEBRA);
+        let x = x0;
+        cells.forEach((s, i) => {
+          text(s, x + pad, y + pad, { w: widths[i] - pad * 2, size, bold, align: align(cols[i]), lines: 6 });
           x += widths[i];
         });
-        doc.moveTo(PAGE.m, y + rowH).lineTo(PAGE.m + USABLE, y + rowH).lineWidth(0.3).strokeColor(LINE).stroke();
-        y += rowH;
+        y += h;
       };
-      s.rows.forEach((r) => line(r));
-      if (s.totals?.length) line({ [cols[0].key]: 'Total', ...Object.fromEntries(s.totals.map((k) => [k, s.rows.reduce((t, r) => t + (Number(r[k]) || 0), 0)])) }, true);
+      head(false);
+      if (!rows.length) {
+        text('No records in this period.', x0 + pad, y + 5, { w: width, size, color: MUTED });
+        y += size + 12;
+      }
+      const totalsH = o.totals ? heightOfRow(cols.map((c) => formatValue(o.totals![c.key], c.fmt)), true) : 0;
+      rows.forEach((r, n) => line(r, n, false, n === rows.length - 1 ? totalsH : 0));
+      if (o.totals) line(o.totals, 0, true);
+      doc.moveTo(x0, y).lineTo(x0 + tableW, y).lineWidth(0.6).strokeColor(LINE).stroke();
+      if (o.caption) {
+        text(o.caption, x0, y + 3, { w: width, size: 6.5, color: MUTED });
+        y += 10;
+      }
+    };
+
+    // ---- Summaries: the charts as small tables, side by side ----
+    const minis = summaries(data);
+    if (minis.length) {
+      need(60);
+      text('Summary', M, y, { size: 10.5, bold: true, color: ACCENT });
       y += 16;
-    }
-    if (data.note) {
-      need(20);
-      text(data.note, PAGE.m, y, { size: 7.5, color: MUTED });
+      const perRow = landscape ? 3 : 2;
+      const gap = 16;
+      const mw = (USABLE - gap * (perRow - 1)) / perRow;
+      for (let i = 0; i < minis.length; i += perRow) {
+        const group = minis.slice(i, i + perRow).map((c) => {
+          // A long time series prints its latest 24 periods; a ranking its top 12. The Excel file has every one.
+          const all = chartRows(c);
+          const series = c.kind !== 'bar';
+          const rows = series ? all.slice(-24) : all.slice(0, 12);
+          const caption = series && all.length > rows.length ? `Last ${rows.length} of ${all.length} shown; the Excel file has all` : c.subtitle;
+          return { c, rows, caption };
+        });
+        const tallest = Math.max(...group.map((g) => 30 + (g.rows.length + 1) * 13 + (g.caption ? 10 : 0)));
+        need(tallest);
+        const top = y;
+        let bottom = y;
+        group.forEach((g, j) => {
+          y = top;
+          const x = M + j * (mw + gap);
+          text(g.c.title, x, y, { w: mw, size: 8.5, bold: true });
+          y += 14;
+          table(g.c.title, chartColumns(g.c), g.rows, { x, w: mw, size: 7.5, caption: g.caption });
+          bottom = Math.max(bottom, y);
+        });
+        y = bottom + 16;
+      }
     }
 
-    // Page numbers, written last so the total is known.
+    // ---- The report's tables, numbered ----
+    data.sheets.forEach((s, i) => {
+      const cols = s.columns.filter((c) => c.pdf !== false);
+      const title = `${i + 1}. ${s.name}`;
+      const th = heightOf(title, USABLE - 70, 10.5, true, 3);
+      need(th + 60);
+      text(title, M, y, { size: 10.5, bold: true, color: ACCENT, w: USABLE - 70, lines: 3 });
+      text(`${s.rows.length} ${s.rows.length === 1 ? 'row' : 'rows'}`, M, y + 2, { w: USABLE, size: 7.5, color: MUTED, align: 'right' });
+      y += th + 5;
+      table(s.name, cols, s.rows, { totals: s.totals?.length && s.rows.length ? totalsRow(s, cols[0].key) : null });
+      y += 18;
+    });
+
+    // ---- Notes and signatures ----
+    if (data.note) {
+      const h = heightOf(data.note, USABLE, 7.5, false, 10);
+      need(h + 18);
+      text('Notes', M, y, { size: 8, bold: true });
+      text(data.note, M, y + 11, { w: USABLE, size: 7.5, color: MUTED, lines: 10 });
+      y += h + 22;
+    }
+    need(64);
+    y += 6;
+    const signers = ['Prepared by', 'Checked by', 'HOD, Biomedical Engineering'];
+    const sw = (USABLE - 24 * 2) / 3;
+    signers.forEach((who, i) => {
+      const x = M + i * (sw + 24);
+      doc.moveTo(x, y + 26).lineTo(x + sw, y + 26).lineWidth(0.6).strokeColor(INK).stroke();
+      text(who, x, y + 30, { w: sw, size: 7.5, bold: true });
+      text('Name, signature and date', x, y + 41, { w: sw, size: 6.5, color: MUTED });
+    });
+
+    // ---- Letterhead and footer on every page, written last so the page count is known ----
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
       doc.page.margins.bottom = 0; // otherwise writing in the margin starts a new page
-      text(`${data.title}  |  ${data.hospital}`, PAGE.m, PAGE.h - 24, { size: 7, color: MUTED });
-      text(`Page ${i + 1} of ${range.count}`, PAGE.m, PAGE.h - 24, { w: USABLE, size: 7, color: MUTED, align: 'right' });
+      text(data.hospital, M, M, { w: USABLE * 0.55, size: 12, bold: true });
+      text(DEPARTMENT, M, M + 16, { w: USABLE * 0.55, size: 8, color: MUTED });
+      text(data.title, M + USABLE * 0.4, M, { w: USABLE * 0.6, size: 12, bold: true, align: 'right', color: ACCENT });
+      text(period(data), M + USABLE * 0.4, M + 16, { w: USABLE * 0.6, size: 8, color: MUTED, align: 'right' });
+      rule(M + 31, ACCENT, 1.2);
+      rule(H - M - 12);
+      text(`Generated ${stamp(data.generatedAt)} by ${data.generatedBy} · BME Asset Management`, M, H - M - 6, { w: USABLE * 0.75, size: 6.5, color: MUTED });
+      text(`Page ${i + 1} of ${range.count}`, M, H - M - 6, { w: USABLE, size: 6.5, color: MUTED, align: 'right' });
     }
     doc.end();
   });

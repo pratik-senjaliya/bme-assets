@@ -94,7 +94,7 @@ export const initials = (name: string) =>
 // A number or text as its report column or chart says it should read.
 export function formatValue(v: unknown, fmt: ValueFmt | undefined): string {
   if (v == null || v === '') return '—';
-  if (typeof v === 'string') return fmt === 'date' ? formatDate(v) : v;
+  if (typeof v === 'string') return fmt === 'date' ? formatDate(v) : fmt === 'datetime' ? formatDateTime(v) : v;
   if (typeof v !== 'number') return String(v);
   const n = (digits: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(v);
   switch (fmt) {

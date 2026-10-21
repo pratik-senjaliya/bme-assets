@@ -51,22 +51,25 @@ async function report(cookie: string, type: string, query = '') {
   await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
   return { wb, res };
 }
-// Rows of a sheet as objects keyed by header.
+// Rows of a sheet as objects keyed by header. The header is the row the sheet is frozen below (a title block is above).
 const table = (wb: ExcelJS.Workbook, sheet: string) => {
   const ws = wb.getWorksheet(sheet);
   assert.ok(ws, `sheet "${sheet}" exists (have: ${wb.worksheets.map((w) => w.name).join(', ')})`);
-  const header = (ws.getRow(1).values as unknown[]).slice(1).map(String);
+  const headerRow = (ws.views[0] as { ySplit?: number }).ySplit ?? 1;
+  const header = (ws.getRow(headerRow).values as unknown[]).slice(1).map(String);
   const out: Record<string, unknown>[] = [];
   ws.eachRow((row, i) => {
-    if (i === 1) return;
-    out.push(Object.fromEntries(header.map((h, k) => [h, (row.values as unknown[])[k + 1]])));
+    if (i <= headerRow || row.getCell(1).value === 'No records in this period.') return;
+    // A totals cell is a formula (SUBTOTAL, so it follows the filter); its saved result is the number.
+    const value = (v: unknown) => (v && typeof v === 'object' && 'result' in v ? (v as { result: unknown }).result : v);
+    out.push(Object.fromEntries(header.map((h, k) => [h, value((row.values as unknown[])[k + 1])])));
   });
   return out;
 };
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
 describe('every report downloads as a valid Excel file', () => {
-  it('has all eleven, each with data sheets and an About sheet', async () => {
+  it('has all eleven, each with an overview first, then its data sheets', async () => {
     const expected: Record<string, string[]> = {
       'asset-master': ['Asset master'], pms: ['PMS records', 'Summary'], calibration: ['Calibrations done', 'Next due (active assets)'], breakdowns: ['Breakdowns', 'By month'],
       uptime: ['Uptime', 'Summary'], 'critical-downtime': ['Uptime', 'Downtime events'], 'equipment-age': ['Assets by age', 'Age bands', 'By equipment type'], expenses: ['Expenses', 'By asset', 'By month'], 'warranty-contracts': ['Warranty', 'Contracts', 'No cover (active)'],
@@ -77,7 +80,8 @@ describe('every report downloads as a valid Excel file', () => {
       const { wb, res } = await report(biomed, type);
       assert.match(res.headers.get('content-type') ?? '', /spreadsheetml/);
       assert.match(res.headers.get('content-disposition') ?? '', new RegExp(`bme-${type}-.*\\.xlsx`));
-      for (const s of [...sheets, 'About']) assert.ok(wb.getWorksheet(s), `${type} has sheet ${s}`);
+      for (const s of sheets) assert.ok(wb.getWorksheet(s), `${type} has sheet ${s}`);
+      assert.equal(wb.worksheets[0].name, 'Overview', `${type} starts with its overview`);
     }
   });
 
@@ -272,7 +276,8 @@ describe('reports on screen and as PDF', () => {
       }
       // Excel is made from this very data: same sheet names and row counts.
       const { wb } = await report(biomed, type);
-      for (const s of data.sheets) assert.equal(wb.getWorksheet(s.name)!.rowCount, s.rows.length + 1 + (s.totals?.length && s.rows.length ? 1 : 0), `${type}/${s.name} rows`);
+      // Title block (3 rows), header, the rows (or one "No records" line), the totals row.
+      for (const s of data.sheets) assert.equal(wb.getWorksheet(s.name)!.rowCount, 4 + Math.max(s.rows.length, 1) + (s.totals?.length && s.rows.length ? 1 : 0), `${type}/${s.name} rows`);
     }
   });
 

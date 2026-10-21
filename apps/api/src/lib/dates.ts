@@ -40,6 +40,9 @@ function tzOffsetMinutes(at: Date): number {
   return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - at.getTime()) / 60_000;
 }
 
+// An instant as the hospital's wall clock shows it, written as a UTC date: for Excel, whose dates have no time zone.
+export const wallClock = (at: Date) => new Date(at.getTime() + tzOffsetMinutes(at) * 60_000);
+
 // The instant a calendar day starts in the hospital timezone (00:00 on that date there).
 export function zonedDayStart(iso: string): Date {
   const utcMidnight = parseDate(iso);

@@ -282,8 +282,8 @@ describe('Audit pack', () => {
     await wb.xlsx.load((await zip!.file('01 Equipment inventory.xlsx')!.async('nodebuffer')) as unknown as ArrayBuffer);
     const codes: string[] = [];
     const statuses: string[] = [];
-    wb.worksheets[0].eachRow((row, i) => {
-      if (i <= 1) return;
+    wb.getWorksheet('Asset master')!.eachRow((row, i) => {
+      if (i <= 4) return; // title block and header
       const code = String(row.getCell(1).value ?? '');
       if (code.startsWith('SHL-')) {
         codes.push(code);
