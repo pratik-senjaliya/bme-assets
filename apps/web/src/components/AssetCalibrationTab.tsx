@@ -1,11 +1,12 @@
 'use client';
 
 import { InboxOutlined } from '@ant-design/icons';
-import { App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Upload } from 'antd';
+import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Upload } from 'antd';
+import dayjs from 'dayjs';
 import { useState } from 'react';
 import { MAX_UPLOAD_BYTES, createCalibrationSchema, type AssetDetail, type CalibrationRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
-import { DueTag, StatusTag } from '@/components/StatusTag';
+import { DueTag, Pill, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { daysFromToday, formatDate, hospitalToday } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
@@ -15,6 +16,8 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
   const { message } = App.useApp();
   const records = useFetch<CalibrationRow[]>(`/assets/${asset.id}/calibrations`);
   const [open, setOpen] = useState(false);
+  // A record entered wrongly is replaced by a correction (a new record); the original stays in the list, marked.
+  const [correcting, setCorrecting] = useState<CalibrationRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [certificates, setCertificates] = useState<File[]>([]);
   const [form] = Form.useForm();
@@ -35,6 +38,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
       dueOn: v.dueOn ? v.dueOn.format('YYYY-MM-DD') : null,
       agency: v.agency,
       result: v.result,
+      ...(correcting && { correctsRecordId: correcting.id, correctionReason: v.correctionReason }),
     });
     if (!input) return;
     setSaving(true);
@@ -43,7 +47,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
       const failed: string[] = [];
       for (const f of certificates) await uploadCertificate(created.id, f).catch(() => failed.push(f.name));
       if (failed.length) message.warning(`Saved, but ${failed.join(', ')} could not be uploaded. Add ${failed.length === 1 ? 'it' : 'them'} from the list.`);
-      message.success('Calibration recorded');
+      message.success(correcting ? 'Correction saved' : 'Calibration recorded');
       setOpen(false);
       records.reload();
       onChanged();
@@ -83,6 +87,7 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
             <Button
               onClick={() => {
                 form.resetFields();
+                setCorrecting(null);
                 form.setFieldsValue({ doneOn: hospitalToday(), result: 'pass' });
                 setCertificates([]);
                 setOpen(true);
@@ -100,7 +105,17 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
         onRetry={records.reload}
         emptyText="No calibration recorded yet."
         columns={[
-          { title: 'Done on', dataIndex: 'doneOn', render: formatDate },
+          {
+            title: 'Done on',
+            dataIndex: 'doneOn',
+            render: (d: string, row) => (
+              <Space direction="vertical" size={2}>
+                <span>{formatDate(d)}</span>
+                {row.correctedById && <Pill tone="neutral">Replaced by a correction</Pill>}
+                {row.correctsRecordId && <span style={{ color: COLORS.muted, fontSize: 12.5 }}>Correction: {row.correctionReason}</span>}
+              </Space>
+            ),
+          },
           { title: 'Next due', dataIndex: 'dueOn', render: formatDate },
           { title: 'Agency', dataIndex: 'agency' },
           { title: 'Result', dataIndex: 'result', render: (r: CalibrationRow['result']) => <StatusTag status={r} /> },
@@ -127,10 +142,42 @@ export function AssetCalibrationTab({ asset, onChanged }: { asset: AssetDetail; 
                 </Upload>
               </Space>,
           },
+          ...(active
+            ? [
+                {
+                  title: '',
+                  key: 'correct',
+                  render: (_: unknown, row: CalibrationRow) =>
+                    !row.correctedById && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => {
+                          form.resetFields();
+                          form.setFieldsValue({ doneOn: dayjs(row.doneOn), dueOn: dayjs(row.dueOn), agency: row.agency, result: row.result });
+                          setCertificates([]);
+                          setCorrecting(row);
+                          setOpen(true);
+                        }}
+                      >
+                        Correct
+                      </Button>
+                    ),
+                },
+              ]
+            : []),
         ]}
       />
-      <Modal open={open} title="Record calibration" okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setOpen(false)} destroyOnHidden>
+      <Modal open={open} title={correcting ? `Correct the calibration of ${formatDate(correcting.doneOn)}` : 'Record calibration'} okText="Save" confirmLoading={saving} onOk={() => single(save)} onCancel={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical" requiredMark>
+          {correcting && (
+            <>
+              <Alert type="info" showIcon style={{ marginBottom: 16 }} message="The correction replaces this record. The original stays in the list, marked, and the change is recorded." />
+              <Form.Item label="Why is it being corrected?" name="correctionReason" rules={[{ required: true, message: 'Say why' }]}>
+                <Input maxLength={500} placeholder="e.g. Wrong date entered: the certificate says 12 Oct" />
+              </Form.Item>
+            </>
+          )}
           <Form.Item label="Calibration date" name="doneOn" rules={[{ required: true, message: 'Pick the date' }]}>
             <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
           </Form.Item>

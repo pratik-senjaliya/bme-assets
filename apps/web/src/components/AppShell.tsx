@@ -92,14 +92,14 @@ const THEMES: { key: ModeChoice; label: string }[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, loading, logout, can, signedOutReason } = useAuth();
+  const { user, loading, logout, refresh, can, signedOutReason } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   // Phones: the menu hides completely and slides over the page when opened (see .app-sider in globals.css).
   const phone = Grid.useBreakpoint().md === false;
   // How many requests wait for the HOD, next to Approvals; checked again on every page change.
-  const waiting = useFetch<ApprovalRow[]>(user && can('approval.decide') ? '/approvals?status=pending' : null);
+  const waiting = useFetch<ApprovalRow[]>(user && !user.mustChangePassword && can('approval.decide') ? '/approvals?status=pending' : null);
   const reloadWaiting = waiting.reload;
   const firstPath = useRef(pathname);
   useEffect(() => {
@@ -131,6 +131,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             {children}
           </div>
         )}
+      </>
+    );
+  }
+
+  // A password given by the HOD: nothing else works (the API refuses) until the person chooses their own.
+  if (user.mustChangePassword) {
+    return (
+      <>
+        <ShellSkeleton />
+        <ChangePasswordModal open required onClose={() => void refresh()} onSignOut={() => void logout()} />
       </>
     );
   }

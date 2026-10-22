@@ -113,6 +113,10 @@ model HospitalSettings {
   mailLastSentAt   DateTime?
   mailLastError    String?
   mailLastErrorAt  DateTime?
+  // Written by deploy/backup.sh after each nightly backup; the daily job tells the HOD when it failed or stopped.
+  backupLastAt      DateTime?
+  backupLastError   String?
+  backupLastErrorAt DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   createdBy        String?
@@ -213,7 +217,11 @@ model User {
   id           String   @id @default(uuid())
   name         String
   email        String   @unique
+  // Optional short sign-in name (lowercase), for staff without an email of their own.
+  username     String?  @unique
   passwordHash String
+  // Set when the HOD gives or resets the password: the person must choose their own before anything else.
+  mustChangePassword Boolean @default(false)
   roleId       String
   departmentId String? // required for nursing users
   active       Boolean  @default(true)
@@ -394,11 +402,16 @@ model CalibrationRecord {
   dueOn     DateTime @db.Date
   agency    String
   result    String
+  // A record entered wrongly is replaced by one correction that points at it (the original stays, marked).
+  correctsRecordId String?  @unique
+  correctionReason String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  asset Asset @relation(fields: [assetId], references: [id])
+  asset       Asset              @relation(fields: [assetId], references: [id])
+  corrects    CalibrationRecord? @relation("CalibrationCorrection", fields: [correctsRecordId], references: [id])
+  correctedBy CalibrationRecord? @relation("CalibrationCorrection")
 
   @@index([assetId])
   @@map("calibration_records")

@@ -23,7 +23,7 @@ export const money = (n: unknown) => `₹ ${new Intl.NumberFormat('en-IN').forma
 
 // ---------- Telling people ----------
 
-export async function notify(db: Db, userIds: string[], message: string, assetId: string | null, type: 'approval' | 'complaint' = 'approval', complaintId: string | null = null) {
+export async function notify(db: Db, userIds: string[], message: string, assetId: string | null, type: 'approval' | 'complaint' | 'account' = 'approval', complaintId: string | null = null) {
   if (userIds.length === 0) return;
   await db.notification.createMany({ data: userIds.map((userId) => ({ userId, type, assetId, complaintId, message })) });
 }

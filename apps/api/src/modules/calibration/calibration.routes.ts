@@ -17,10 +17,13 @@ export const calibrationRouter = Router();
 type Row = Prisma.CalibrationRecordGetPayload<object>;
 
 async function toRows(records: Row[]): Promise<CalibrationRow[]> {
-  const certs = await prisma.attachment.findMany({
-    where: { ownerType: 'calibration_record', ownerId: { in: records.map((r) => r.id) }, kind: 'certificate' },
-    orderBy: { createdAt: 'asc' },
-  });
+  const [certs, corrections] = await Promise.all([
+    prisma.attachment.findMany({
+      where: { ownerType: 'calibration_record', ownerId: { in: records.map((r) => r.id) }, kind: 'certificate' },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.calibrationRecord.findMany({ where: { correctsRecordId: { in: records.map((r) => r.id) } }, select: { id: true, correctsRecordId: true } }),
+  ]);
   return records.map((r) => {
     return {
       id: r.id,
@@ -29,6 +32,9 @@ async function toRows(records: Row[]): Promise<CalibrationRow[]> {
       agency: r.agency,
       result: r.result as PmsResult,
       certificates: certs.filter((c) => c.ownerId === r.id).map((c) => ({ id: c.id, fileName: c.fileName })),
+      correctsRecordId: r.correctsRecordId,
+      correctionReason: r.correctionReason,
+      correctedById: corrections.find((c) => c.correctsRecordId === r.id)?.id ?? null,
     };
   });
 }
@@ -39,7 +45,8 @@ calibrationRouter.get('/assets/:id/calibrations', requirePermission('calibration
 });
 
 // Calibration is done by an outside agency, so the date is reported (not server-stamped), but it can
-// never be in the future. The asset's next-due date follows the most recent calibration.
+// never be in the future. The asset's next-due date follows the most recent calibration. A record entered wrongly is
+// replaced by a correction that points at it (gap review #12): the original stays, marked, and no longer counts.
 calibrationRouter.post('/assets/:id/calibrations', requirePermission('calibration.manage'), validate(createCalibrationSchema), async (req, res) => {
   const input = req.body as CreateCalibrationInput;
   const asset = await findScopedAsset(req);
@@ -52,18 +59,26 @@ calibrationRouter.post('/assets/:id/calibrations', requirePermission('calibratio
     throw new HttpError(400, 'Enter the next due date (this equipment type has no usual calibration interval)', { fieldErrors: { dueOn: ['Required'] } });
   }
   const dueOn = input.dueOn ? parseDate(input.dueOn) : addMonths(doneOn, months!);
+  if (input.correctsRecordId) {
+    const original = await prisma.calibrationRecord.findUnique({ where: { id: input.correctsRecordId }, include: { correctedBy: { select: { id: true } } } });
+    if (!original || original.assetId !== asset.id) throw new HttpError(400, 'That calibration record is not for this equipment', { fieldErrors: { correctsRecordId: ['Choose a record of this equipment'] } });
+    if (original.correctedBy) throw new HttpError(409, 'This record has already been corrected; correct the correction instead');
+  }
 
   const row = await prisma.$transaction(async (tx) => {
     const record = await tx.calibrationRecord.create({
-      data: { assetId: asset.id, doneOn, dueOn, agency: input.agency, result: input.result, createdBy: currentUser(req).id },
+      data: {
+        assetId: asset.id, doneOn, dueOn, agency: input.agency, result: input.result, createdBy: currentUser(req).id,
+        correctsRecordId: input.correctsRecordId ?? null, correctionReason: input.correctsRecordId ? input.correctionReason : null,
+      },
     });
-    const latest = await tx.calibrationRecord.findFirstOrThrow({ where: { assetId: asset.id }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] });
+    const latest = await tx.calibrationRecord.findFirstOrThrow({ where: { assetId: asset.id, correctedBy: { is: null } }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] });
     // Gap review #3: the latest calibration failing flags the machine until one passes. The due date rule is unchanged
     // (an open decision for the hospital).
     await tx.asset.update({ where: { id: asset.id }, data: { nextCalibrationDue: latest.dueOn, calibrationFailedOn: latest.result === 'fail' ? latest.doneOn : null } });
     if (latest.id === record.id && record.result === 'fail') await tellFailed(tx, asset, 'Calibration');
     await clearReminders(tx, asset.id, ['calibration']);
-    await audit(tx, req, { action: 'calibration.create', entityType: 'calibration_record', entityId: record.id, after: record });
+    await audit(tx, req, { action: record.correctsRecordId ? 'calibration.correct' : 'calibration.create', entityType: 'calibration_record', entityId: record.id, after: record });
     return record;
   });
   res.status(201).json((await toRows([row]))[0]);

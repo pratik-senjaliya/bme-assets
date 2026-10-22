@@ -1,13 +1,14 @@
 'use client';
 
-import { LockOutlined, MailOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Form, Input, Typography } from 'antd';
+import { LockOutlined, UserOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Form, Input, Modal, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { safeNext } from '@/lib/nav';
-import { loginSchema } from '@bme/shared';
+import { forgotPasswordSchema, loginSchema } from '@bme/shared';
+import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { parseForm } from '@/lib/forms';
+import { parseForm, useSingleFlight } from '@/lib/forms';
 import { useDocumentTitle } from '@/lib/title';
 import { COLORS } from '@/theme';
 
@@ -20,6 +21,10 @@ export default function LoginPage() {
   const [signedOut, setSignedOut] = useState<'expired' | 'idle' | null>(null);
   // Five wrong passwords lock a login, and Caps Lock is the usual cause: say when it is on.
   const [caps, setCaps] = useState(false);
+  // "Forgot password": the HOD is told and sets a new one (no email needed).
+  const [forgot, setForgot] = useState<'ask' | 'sent' | null>(null);
+  const [forgotForm] = Form.useForm();
+  const single = useSingleFlight();
   // The page the person was on (or asked for) before being sent here, read from the address.
   const nextPage = () => safeNext(new URLSearchParams(window.location.search).get('next'));
 
@@ -77,8 +82,8 @@ export default function LoginPage() {
             />
           )}
           <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
-            <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
-              <Input type="email" autoComplete="username" autoFocus size="large" prefix={<MailOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />
+            <Form.Item label="Email or username" name="email" rules={[{ required: true, message: 'Enter your email or username' }]}>
+              <Input autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus size="large" prefix={<UserOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />
             </Form.Item>
             <Form.Item
               label="Password"
@@ -100,8 +105,44 @@ export default function LoginPage() {
             </Button>
           </Form>
           <Typography.Paragraph type="secondary" style={{ margin: '20px 0 0', fontSize: 13 }}>
-            Forgot your password? Ask your Biomedical HOD to reset it.
+            Forgot your password?{' '}
+            <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => { forgotForm.setFieldsValue({ login: form.getFieldValue('email') }); setForgot('ask'); }}>
+              Ask your HOD for a new one
+            </Button>
           </Typography.Paragraph>
+          <Modal
+            open={!!forgot}
+            title="Forgot your password"
+            okText={forgot === 'sent' ? 'OK' : 'Ask the HOD'}
+            cancelButtonProps={{ style: forgot === 'sent' ? { display: 'none' } : undefined }}
+            onCancel={() => setForgot(null)}
+            onOk={() =>
+              forgot === 'sent'
+                ? setForgot(null)
+                : single(async () => {
+                    const input = parseForm(forgotForm, forgotPasswordSchema, forgotForm.getFieldsValue());
+                    if (!input) return;
+                    try {
+                      await api('/auth/forgot', { body: input });
+                      setForgot('sent');
+                    } catch (e) {
+                      message.error(e instanceof Error ? e.message : 'Could not send the request');
+                    }
+                  })
+            }
+            destroyOnHidden
+          >
+            {forgot === 'sent' ? (
+              <Typography.Paragraph>The Biomedical HOD has been told. They will set a new password and tell you; you then choose your own when you sign in.</Typography.Paragraph>
+            ) : (
+              <Form form={forgotForm} layout="vertical" requiredMark={false}>
+                <Typography.Paragraph type="secondary">The Biomedical HOD gets a message in the system asking them to set a new password for you.</Typography.Paragraph>
+                <Form.Item label="Your email or username" name="login" rules={[{ required: true, message: 'Enter your email or username' }]}>
+                  <Input autoCapitalize="none" spellCheck={false} />
+                </Form.Item>
+              </Form>
+            )}
+          </Modal>
       </div>
       <div style={{ color: COLORS.muted, fontSize: 12.5 }}>For hospital staff only. Every sign-in is recorded.</div>
     </main>

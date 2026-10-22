@@ -30,6 +30,9 @@ const toResponse = (s: Row): SettingsResponse => ({
   mailLastSentAt: s.mailLastSentAt?.toISOString() ?? null,
   mailLastError: s.mailLastError,
   mailLastErrorAt: s.mailLastErrorAt?.toISOString() ?? null,
+  backupLastAt: s.backupLastAt?.toISOString() ?? null,
+  backupLastError: s.backupLastError,
+  backupLastErrorAt: s.backupLastErrorAt?.toISOString() ?? null,
 });
 
 // One row per install (no multi-tenancy).

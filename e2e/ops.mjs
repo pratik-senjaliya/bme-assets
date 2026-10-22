@@ -109,6 +109,9 @@ await step('Users: add a nursing login for another department; they see only tha
   await modalOk(ap); await ap.locator('.ant-message-success').first().waitFor();
   const n = await session(b, 'e2e.rad@demo.local', undefined, 'E2eRad@12345').catch(() => null);
   expect(n, 'the new user cannot sign in with the password just set');
+  // A password set by the HOD is changed first (nothing else works until then).
+  expect((await n.api('GET', '/assets')).status === 403, 'a given password let them work without changing it');
+  expect((await n.api('POST', '/auth/password', { currentPassword: 'E2eRad@12345', newPassword: 'E2eRad@67890' })).status === 204, 'could not choose their own password');
   const rows = (await n.api('GET', '/assets?pageSize=100')).body.items;
   expect(rows.length > 0 && rows.every((r) => r.departmentName === 'Radiology'), `departments: ${[...new Set(rows.map((r) => r.departmentName))]}`);
 }, ap);

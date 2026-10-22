@@ -228,7 +228,7 @@ export async function scheduleFor(
 ) {
   const [lastPms, lastCalibration, type] = await Promise.all([
     db.pmsRecord.findFirst({ where: { assetId: a.id, correctsRecordId: null }, orderBy: [{ performedOn: 'desc' }, { createdAt: 'desc' }] }),
-    db.calibrationRecord.findFirst({ where: { assetId: a.id }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] }),
+    db.calibrationRecord.findFirst({ where: { assetId: a.id, correctedBy: { is: null } }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] }),
     db.equipmentType.findUniqueOrThrow({ where: { id: a.equipmentTypeId } }),
   ]);
   return {

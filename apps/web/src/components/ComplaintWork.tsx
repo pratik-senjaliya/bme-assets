@@ -1,15 +1,15 @@
 'use client';
 
-import { PaperClipOutlined, UserOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, Modal, Select, Space, Typography } from 'antd';
+import { DeleteOutlined, PaperClipOutlined, PlusOutlined, UserOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import { complaintNoteSchema, optionalNoteSchema, resolveComplaintSchema, type Assignee, type ComplaintRow, type Paged } from '@bme/shared';
+import { complaintNoteSchema, EXPENSE_TYPES, optionalNoteSchema, resolveComplaintSchema, type Assignee, type ComplaintRow, type Paged } from '@bme/shared';
 import { Bar } from '@/components/Skeletons';
 import { CriticalityTag, Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formatDateTime, formatDuration } from '@/lib/format';
+import { formatDateTime, formatDuration, moneyInputProps } from '@/lib/format';
 import { parseForm, useSingleFlight } from '@/lib/forms';
 import { COLORS } from '@/theme';
 
@@ -50,8 +50,17 @@ const NOTE_STEPS = {
     label: 'Anything to add? (optional)',
     initial: '',
     placeholder: 'e.g. Working fine since this morning.',
-    intro: 'Close it once the equipment has been checked and works again. If it still does not work, raise a new complaint instead.',
+    intro: 'Close it once the equipment has been checked and works again. If it still does not work, choose "Still not working" instead.',
     required: false,
+  },
+  reopen: {
+    title: 'Still not working',
+    ok: 'Send back to the engineer',
+    label: 'What is still wrong?',
+    initial: '',
+    placeholder: 'e.g. The alarm still sounds after ten minutes of use.',
+    intro: 'The complaint goes back to the engineer as in progress, and the downtime carries on from when it was first raised.',
+    required: true,
   },
 } as const;
 type NoteStep = keyof typeof NOTE_STEPS;
@@ -112,7 +121,7 @@ export function useComplaintWork(onChanged: () => void) {
     setSaving(true);
     try {
       await api(`/complaints/${c.id}/${step}`, { body: input });
-      message.success({ start: `${c.complaintNo} started`, escalate: `${c.complaintNo} sent to the HOD`, hold: `${c.complaintNo} is on hold`, resume: `${c.complaintNo} is back in progress`, close: `${c.complaintNo} closed` }[step]);
+      message.success({ start: `${c.complaintNo} started`, escalate: `${c.complaintNo} sent to the HOD`, hold: `${c.complaintNo} is on hold`, resume: `${c.complaintNo} is back in progress`, close: `${c.complaintNo} closed`, reopen: `${c.complaintNo} is back with the engineer` }[step]);
       setNoting(null);
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Could not save');
@@ -143,11 +152,15 @@ export function useComplaintWork(onChanged: () => void) {
   const actions = (c: ComplaintRow): ReactNode => {
     if (c.status === 'closed') return null;
     // Resolved: closing it is left, by whoever raised it or someone from that department (the next shift).
+    // Not fixed after all: send it back to the engineer instead.
     if (c.status === 'resolved')
       return c.raisedById === user?.id || (!!user?.departmentId && user.departmentId === c.departmentId && can('complaint.create')) ? (
-        <Button type="primary" onClick={() => askNote(c, 'close')}>
-          Close complaint
-        </Button>
+        <>
+          <Button type="primary" onClick={() => askNote(c, 'close')}>
+            Close complaint
+          </Button>
+          <Button onClick={() => askNote(c, 'reopen')}>Still not working</Button>
+        </>
       ) : null;
     const free = !c.assignedToId;
     const canHold = can('complaint.hold');
@@ -225,6 +238,39 @@ export function useComplaintWork(onChanged: () => void) {
           <Form.Item label="What was done?" name="resolutionNotes" rules={[{ required: true, message: 'Say what was done' }]}>
             <Input.TextArea rows={4} maxLength={2000} showCount />
           </Form.Item>
+          {/* Parts and bills can be booked here, dated today and linked to this complaint (also later on the asset). */}
+          {can('expense.manage') && (
+            <Form.List name="costs">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map((f) => (
+                    <div key={f.key} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '12px 12px 0', marginBottom: 12 }}>
+                      <Space.Compact block>
+                        <Form.Item name={[f.name, 'type']} initialValue="spare_part" style={{ width: 130 }}>
+                          <Select aria-label="Type" options={EXPENSE_TYPES.map((t) => ({ value: t, label: t === 'spare_part' ? 'Spare part' : 'Repair' }))} />
+                        </Form.Item>
+                        <Form.Item name={[f.name, 'amount']} rules={[{ required: true, message: 'Amount' }]} style={{ flex: 1 }}>
+                          <InputNumber aria-label="Amount (₹)" min={0} {...moneyInputProps} placeholder="Amount" style={{ width: '100%' }} />
+                        </Form.Item>
+                        <Button aria-label="Remove this cost" icon={<DeleteOutlined />} onClick={() => remove(f.name)} />
+                      </Space.Compact>
+                      <Form.Item name={[f.name, 'description']} rules={[{ required: true, message: 'Describe it' }]}>
+                        <Input aria-label="What was paid for" maxLength={500} placeholder="What was paid for, e.g. Flow sensor" />
+                      </Form.Item>
+                      <Form.Item name={[f.name, 'vendor']}>
+                        <Input aria-label="Vendor" maxLength={150} placeholder="Vendor (optional)" />
+                      </Form.Item>
+                    </div>
+                  ))}
+                  {fields.length < 10 && (
+                    <Button icon={<PlusOutlined />} onClick={() => add()}>
+                      {fields.length ? 'Add another cost' : 'Add a part or cost'}
+                    </Button>
+                  )}
+                </>
+              )}
+            </Form.List>
+          )}
         </Form>
       </Modal>
       <Modal

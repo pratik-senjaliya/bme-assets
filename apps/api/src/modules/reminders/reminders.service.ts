@@ -32,6 +32,7 @@ const ends = (daysLeft: number) => (daysLeft === 0 ? 'ends today' : `ends in ${i
 export async function generateReminders(today: string): Promise<RunRemindersResult> {
   const settings = await prisma.hospitalSettings.findFirst();
   if (!settings) return { created: 0, emailed: 0 }; // a brand-new install that has not been set up yet
+  await checkBackup(settings, today);
   const thresholds = [...settings.reminderDays].sort((a, b) => a - b);
   if (thresholds.length === 0) return { created: 0, emailed: 0 };
 
@@ -76,6 +77,25 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
   const created = data.length ? await prisma.notification.createManyAndReturn({ data, skipDuplicates: true, select: { id: true } }) : [];
   const emailed = await sendPendingEmails();
   return { created: created.length, emailed };
+}
+
+// The nightly backup on the hospital server records each run (deploy/backup.sh). When the last one failed, or none has
+// run for two days, whoever keeps the settings hears it once a day (gap review #23). Where nothing has ever backed up
+// here (the hosted demo, whose provider backs it up) there is nothing to say.
+const BACKUP_STALE_MS = 2 * 86_400_000;
+async function checkBackup(s: { backupLastAt: Date | null; backupLastError: string | null; backupLastErrorAt: Date | null }, today: string) {
+  if (!s.backupLastAt && !s.backupLastErrorAt) return;
+  const failed = !!s.backupLastErrorAt && (!s.backupLastAt || s.backupLastErrorAt > s.backupLastAt);
+  const stopped = !failed && !!s.backupLastAt && Date.now() - s.backupLastAt.getTime() > BACKUP_STALE_MS;
+  if (!failed && !stopped) return;
+  const message = failed
+    ? `Backup failed on ${prettyDate(s.backupLastErrorAt!)}: ${s.backupLastError ?? 'no details'}. Ask whoever looks after the server to check it.`
+    : `No backup since ${prettyDate(s.backupLastAt!)}. Ask whoever looks after the server to check the backup is running.`;
+  const dueDate = parseDate(today);
+  const people = await usersWithPermissions('setup.manage', 'notification.view');
+  const told = new Set((await prisma.notification.findMany({ where: { type: 'backup', dueDate, userId: { in: people } }, select: { userId: true } })).map((x) => x.userId));
+  const to = people.filter((id) => !told.has(id));
+  if (to.length) await prisma.notification.createMany({ data: to.map((userId) => ({ userId, type: 'backup', dueDate, message })) });
 }
 
 // A reminder is about something still to do. Once it is done (PMS, calibration) or no longer applies (equipment

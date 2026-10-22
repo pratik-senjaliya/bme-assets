@@ -194,8 +194,9 @@ async function pms(wb: Collector, c: Ctx) {
 }
 
 async function calibration(wb: Collector, c: Ctx) {
+  // A record replaced by a correction no longer counts; the correction does.
   const records = await prisma.calibrationRecord.findMany({
-    where: { doneOn: { gte: parseDate(c.from), lte: parseDate(c.to) }, asset: { ...c.scope } },
+    where: { doneOn: { gte: parseDate(c.from), lte: parseDate(c.to) }, asset: { ...c.scope }, correctedBy: { is: null } },
     include: { asset: { include: { equipmentType: true, department: true } } },
     orderBy: [{ doneOn: 'asc' }],
   });

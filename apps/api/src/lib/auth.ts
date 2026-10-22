@@ -52,6 +52,7 @@ export async function loadSessionUser(id: string, sessionVersion?: number): Prom
     roleLabel: ROLE_LABELS[role] ?? user.role.label,
     departmentId: user.departmentId,
     permissions: user.role.rolePermissions.map((rp) => rp.permission.code as PermissionCode),
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -77,10 +78,17 @@ export const authenticate: RequestHandler = async (req, res, next) => {
   next();
 };
 
+// A password given by the HOD must be replaced before anything else (gap review #20); sign-in, "who am I", changing the
+// password and signing out have no permission check, so they still work.
+function assertOwnPassword(req: Parameters<RequestHandler>[0]) {
+  if (req.user?.mustChangePassword) throw new HttpError(403, 'Choose your own password first: the one you were given must be changed before you continue');
+}
+
 // Every route (except login/health) declares the permission it needs.
 export const requirePermission =
   (...codes: PermissionCode[]): RequestHandler =>
   (req, _res, next) => {
+    assertOwnPassword(req);
     const have = req.user?.permissions ?? [];
     if (!codes.every((c) => have.includes(c))) throw new HttpError(403, 'You do not have permission to do this');
     next();
@@ -90,6 +98,7 @@ export const requirePermission =
 export const requireAnyPermission =
   (...codes: PermissionCode[]): RequestHandler =>
   (req, _res, next) => {
+    assertOwnPassword(req);
     const have = req.user?.permissions ?? [];
     if (!codes.some((c) => have.includes(c))) throw new HttpError(403, 'You do not have permission to do this');
     next();
