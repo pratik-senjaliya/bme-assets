@@ -46,6 +46,7 @@ export function toAssetRow(a: AssetWithRefs): AssetRow {
     make: a.make,
     model: a.model,
     serialNo: a.serialNo,
+    tagNo: a.tagNo,
     equipmentTypeId: a.equipmentTypeId,
     equipmentTypeName: a.equipmentType.name,
     departmentId: a.departmentId,
@@ -70,6 +71,7 @@ export const toAssetDetail = (a: AssetWithRefs): AssetDetail => ({
   ...toAssetRow(a),
   warrantyMonths: a.warrantyMonths,
   pmsFrequencyMonths: a.pmsFrequencyMonths,
+  calibrationFrequencyMonths: a.calibrationFrequencyMonths,
   openingPmsOn: isoDateOrNull(a.openingPmsOn),
   openingCalibrationOn: isoDateOrNull(a.openingCalibrationOn),
   createdAt: a.createdAt.toISOString(),
@@ -120,12 +122,15 @@ export type NewAsset = {
   make?: string | null;
   model?: string | null;
   serialNo?: string | null;
+  tagNo?: string | null;
   departmentId: string;
   locationId: string;
   criticality?: Criticality;
+  status?: 'active' | 'not_in_use'; // the Excel import may load equipment that is not in use
   installationDate?: string | null;
   warrantyMonths?: number | null;
   pmsFrequencyMonths?: number | null;
+  calibrationFrequencyMonths?: number | null;
   openingPmsOn?: string | null;
   openingCalibrationOn?: string | null;
   supplierId?: string | null;
@@ -188,6 +193,8 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       make: i.make ?? null,
       model: i.model ?? null,
       serialNo: i.serialNo ?? null,
+      tagNo: i.tagNo ?? null,
+      status: i.status ?? 'active',
       departmentId: i.departmentId,
       locationId: i.locationId,
       criticality: i.criticality ?? 'minor',
@@ -195,6 +202,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       warrantyMonths: i.warrantyMonths ?? null,
       warrantyEnd: warrantyEndFor(installationDate, i.warrantyMonths),
       pmsFrequencyMonths,
+      calibrationFrequencyMonths: i.calibrationFrequencyMonths ?? null,
       openingPmsOn,
       openingCalibrationOn,
       supplierId: i.supplierId ?? null,
@@ -202,7 +210,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       // First due dates run from the last PMS / calibration done before this system (existing equipment), else from
       // installation; after that PMS and calibration records move them on.
       nextPmsDue: firstDue(openingPmsOn ?? installationDate, pmsFrequencyMonths),
-      nextCalibrationDue: firstDue(openingCalibrationOn ?? installationDate, equipmentType.defaultCalibrationMonths),
+      nextCalibrationDue: firstDue(openingCalibrationOn ?? installationDate, i.calibrationFrequencyMonths ?? equipmentType.defaultCalibrationMonths),
       createdBy: req.user?.id ?? null,
     };
   });
@@ -224,7 +232,7 @@ export const firstDue = (from: Date | null, months: number | null | undefined) =
 // equipment never drops off the due lists because a date or interval was filled in or changed after registration.
 export async function scheduleFor(
   db: Db,
-  a: { id: string; equipmentTypeId: string; installationDate: Date | null; openingPmsOn: Date | null; openingCalibrationOn: Date | null; pmsFrequencyMonths: number | null },
+  a: { id: string; equipmentTypeId: string; installationDate: Date | null; openingPmsOn: Date | null; openingCalibrationOn: Date | null; pmsFrequencyMonths: number | null; calibrationFrequencyMonths: number | null },
 ) {
   const [lastPms, lastCalibration, type] = await Promise.all([
     db.pmsRecord.findFirst({ where: { assetId: a.id, correctsRecordId: null }, orderBy: [{ performedOn: 'desc' }, { createdAt: 'desc' }] }),
@@ -234,12 +242,12 @@ export async function scheduleFor(
   return {
     nextPmsDue: lastPms ? firstDue(lastPms.performedOn, a.pmsFrequencyMonths) : firstDue(a.openingPmsOn ?? a.installationDate, a.pmsFrequencyMonths),
     // A calibration record carries its own due date (the certificate's, or done date + the type's interval).
-    nextCalibrationDue: lastCalibration ? lastCalibration.dueOn : firstDue(a.openingCalibrationOn ?? a.installationDate, type.defaultCalibrationMonths),
+    nextCalibrationDue: lastCalibration ? lastCalibration.dueOn : firstDue(a.openingCalibrationOn ?? a.installationDate, a.calibrationFrequencyMonths ?? type.defaultCalibrationMonths),
   };
 }
 
 // Asset fields the schedule depends on.
-export const SCHEDULE_FIELDS = ['installationDate', 'pmsFrequencyMonths', 'openingPmsOn', 'openingCalibrationOn', 'equipmentTypeId'] as const;
+export const SCHEDULE_FIELDS = ['installationDate', 'pmsFrequencyMonths', 'calibrationFrequencyMonths', 'openingPmsOn', 'openingCalibrationOn', 'equipmentTypeId'] as const;
 
 // Long enough for large imports while other creates wait on the counter row.
 export const CREATE_TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;

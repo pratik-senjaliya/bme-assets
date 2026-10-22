@@ -258,6 +258,8 @@ model Asset {
   make                 String?
   model                String?
   serialNo             String?
+  // The hospital\'s own inventory tag from before this system.
+  tagNo                String?
   departmentId         String
   locationId           String
   criticality          Criticality @default(minor)
@@ -266,6 +268,8 @@ model Asset {
   warrantyMonths       Int?
   warrantyEnd          DateTime?   @db.Date
   pmsFrequencyMonths   Int?
+  // Only when this machine is calibrated more or less often than its equipment type.
+  calibrationFrequencyMonths Int?
   nextPmsDue           DateTime?   @db.Date
   nextCalibrationDue   DateTime?   @db.Date
   // The last PMS / calibration failed: the machine is flagged until one passes (cleared by a passing record).

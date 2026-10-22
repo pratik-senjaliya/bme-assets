@@ -11,6 +11,10 @@ import { toPdf } from './reports.export';
 import {
   STATUS_LABEL,
   addSheet,
+  coverEnding,
+  coverSheet,
+  replacementCandidates,
+  replacementSheet,
   avg,
   hours,
   kpi,
@@ -34,10 +38,6 @@ import {
 // Who it is for: the whole hospital (`scope` {}), or one department for someone scoped to it.
 export type Viewer = { name: string; scope: Ctx['scope'] };
 
-// Equipment due for a replacement decision: any one of these is enough, and every reason is listed.
-export const REPLACE_AGE_YEARS = 10;
-export const REPLACE_BREAKDOWNS_12M = 4;
-export const REPLACE_SPEND_SHARE = 0.5; // repairs and spares in 12 months, against what the equipment cost
 
 export const monthStart = (month: string) => `${month}-01`;
 export const monthEnd = (month: string) => addDaysISO(isoDate(addMonths(parseDate(monthStart(month)), 1)), -1);
@@ -171,41 +171,8 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   ], late.map(({ a, what, due }) => ({ what, code: a.assetCode, name: a.name, dept: a.department.name, crit: CRITICALITY_LABEL[a.criticality], due, days: daysBetween(due, parseDate(asAt)) })));
 
   // Replacement: as things stand at the end of the month, over the 12 months up to it.
-  const yearAgo = zonedDayStart(isoDate(addMonths(parseDate(addDaysISO(to, 1)), -12)));
-  const [breaks12, spend12, orders] = await Promise.all([
-    prisma.complaint.groupBy({ by: ['assetId'], where: { assetId: { in: active.map((a) => a.id) }, raisedAt: { gte: yearAgo, lt: c.toAt } }, _count: true }),
-    prisma.serviceExpense.groupBy({ by: ['assetId'], where: { assetId: { in: active.map((a) => a.id) }, date: { gte: yearAgo, lte: parseDate(to) } }, _sum: { amount: true } }),
-    prisma.purchaseOrder.groupBy({ by: ['assetId'], where: { assetId: { in: active.map((a) => a.id) } }, _sum: { cost: true } }),
-  ]);
-  const candidates = active.flatMap((a) => {
-    const ageMonths = toAssetRow(a).ageMonths;
-    const years = ageMonths == null ? null : ageMonths / 12;
-    const breaks = breaks12.find((b) => b.assetId === a.id)?._count ?? 0;
-    const spent = Number(spend12.find((s) => s.assetId === a.id)?._sum.amount ?? 0);
-    const cost = Number(orders.find((o) => o.assetId === a.id)?._sum.cost ?? 0);
-    const reasons = [
-      years != null && years >= REPLACE_AGE_YEARS && `${Math.floor(years)} years old`,
-      breaks >= REPLACE_BREAKDOWNS_12M && `${breaks} breakdowns in 12 months`,
-      cost > 0 && spent >= cost * REPLACE_SPEND_SHARE && `repairs ${Math.round((spent / cost) * 100)}% of its cost in 12 months`,
-    ].filter((r): r is string => !!r);
-    return reasons.length ? [{ a, years, breaks, spent, cost, reasons }] : [];
-  });
-  addSheet(out, 'Equipment to consider replacing', [
-    { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Age (years)', key: 'years', fmt: 'years' },
-    { header: 'Breakdowns, 12 months', key: 'breaks', fmt: 'int', width: 20 }, { header: 'Repair spend, 12 months', key: 'spent', fmt: 'money', width: 22 },
-    { header: 'Purchase cost', key: 'cost', fmt: 'money', width: 16 }, { header: 'Why', key: 'why', width: 40 },
-  ], candidates.map((r) => ({ code: r.a.assetCode, name: r.a.name, dept: r.a.department.name, years: r.years == null ? null : Math.round(r.years * 10) / 10, breaks: r.breaks, spent: r.spent, cost: r.cost || null, why: r.reasons.join('; ') })));
-
-  const horizon = addDaysISO(asAt, 60);
-  const contracts = await prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(asAt), lte: parseDate(horizon) }, asset: { status: 'active', ...c.scope } }, include: { asset: { include: { department: true } } } });
-  const cover = [
-    ...active.filter((a) => a.warrantyEnd && isoDate(a.warrantyEnd) >= asAt && isoDate(a.warrantyEnd) <= horizon).map((a) => ({ what: 'Warranty', a, dept: a.department.name, ends: a.warrantyEnd!, vendor: '' })),
-    ...contracts.map((k) => ({ what: `${k.type.toUpperCase().replace('_', '-')} contract`, a: k.asset, dept: k.asset.department.name, ends: k.endDate, vendor: k.vendor })),
-  ].sort((x, y) => x.ends.getTime() - y.ends.getTime());
-  addSheet(out, 'Warranty and contracts ending in 60 days', [
-    { header: 'Cover', key: 'what' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 },
-    { header: 'Vendor', key: 'vendor', width: 20 }, { header: 'Ends', key: 'ends', fmt: 'date' },
-  ], cover.map((r) => ({ what: r.what, code: r.a.assetCode, name: r.a.name, dept: r.dept, vendor: r.vendor, ends: r.ends })));
+  replacementSheet(out, 'Equipment to consider replacing', await replacementCandidates(active, to));
+  coverSheet(out, 'Warranty and contracts ending in 60 days', await coverEnding(active, c.scope, asAt, 60));
 
   return {
     type: 'monthly',

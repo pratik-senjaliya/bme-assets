@@ -87,7 +87,9 @@ await step('Excel export still lists the condemned asset, labelled CONDEMNED (ru
   const r = await admin.ctx.request.get(`${BASE}/api/v1/reports/asset-master`);
   const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await r.body());
   const ws = wb.getWorksheet('Asset master'); let found = false;
-  ws.eachRow((row) => { if (String(row.getCell(1).value) === A.code) found = /CONDEMNED/.test(String(row.getCell(10).value)); });
+  // Find the Status column by its header (row 4), so a new column does not move it.
+  let status = 0; ws.getRow(4).eachCell((c, n) => { if (String(c.value) === 'Status') status = n; });
+  ws.eachRow((row) => { if (String(row.getCell(1).value) === A.code) found = /CONDEMNED/.test(String(row.getCell(status).value)); });
   expect(found, 'not listed as CONDEMNED');
 });
 await step('Complaints can no longer be raised on a condemned asset', async () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch } from 'antd';
+import Link from 'next/link';
 import { useState } from 'react';
 import { ROLE_LABELS, ROLE_NAMES, createUserSchema, updateUserSchema, type RoleName, type UserRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
@@ -85,9 +86,14 @@ function UsersPageScreen() {
         subtitle="Logins for biomedical and nursing staff"
         crumbs={['Admin', 'Users']}
         action={
-          <Button type="primary" onClick={() => open('new')}>
-            Add user
-          </Button>
+          <Space wrap>
+            <Link href="/admin/users/import">
+              <Button>Import from Excel</Button>
+            </Link>
+            <Button type="primary" onClick={() => open('new')}>
+              Add user
+            </Button>
+          </Space>
         }
       />
       <DataTable<UserRow>
