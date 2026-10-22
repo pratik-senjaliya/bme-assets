@@ -16,6 +16,15 @@ import { COLORS } from '@/theme';
 // The steps that take a short note, with the words for their dialog. Escalating and holding need a reason; going
 // back to work and closing do not.
 const NOTE_STEPS = {
+  start: {
+    title: 'Start work',
+    ok: 'Start work',
+    label: 'What happens next? (optional)',
+    initial: '',
+    placeholder: 'e.g. Checking the power board; back within the hour.',
+    intro: 'The response time stops now, and whoever raised it is told someone is on it.',
+    required: false,
+  },
   escalate: {
     title: 'Escalate to the HOD',
     ok: 'Escalate',
@@ -41,7 +50,7 @@ const NOTE_STEPS = {
     label: 'Anything to add? (optional)',
     initial: '',
     placeholder: 'e.g. Working fine since this morning.',
-    intro: 'Close it once you have checked the equipment works again. If it still does not work, raise a new complaint instead.',
+    intro: 'Close it once the equipment has been checked and works again. If it still does not work, raise a new complaint instead.',
     required: false,
   },
 } as const;
@@ -103,7 +112,7 @@ export function useComplaintWork(onChanged: () => void) {
     setSaving(true);
     try {
       await api(`/complaints/${c.id}/${step}`, { body: input });
-      message.success({ escalate: `${c.complaintNo} sent to the HOD`, hold: `${c.complaintNo} is on hold`, resume: `${c.complaintNo} is back in progress`, close: `${c.complaintNo} closed` }[step]);
+      message.success({ start: `${c.complaintNo} started`, escalate: `${c.complaintNo} sent to the HOD`, hold: `${c.complaintNo} is on hold`, resume: `${c.complaintNo} is back in progress`, close: `${c.complaintNo} closed` }[step]);
       setNoting(null);
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Could not save');
@@ -133,9 +142,9 @@ export function useComplaintWork(onChanged: () => void) {
   // The buttons for the next step, or null when this person has none.
   const actions = (c: ComplaintRow): ReactNode => {
     if (c.status === 'closed') return null;
-    // Resolved: only whoever raised it has a step left, closing it.
+    // Resolved: closing it is left, by whoever raised it or someone from that department (the next shift).
     if (c.status === 'resolved')
-      return c.raisedById === user?.id ? (
+      return c.raisedById === user?.id || (!!user?.departmentId && user.departmentId === c.departmentId && can('complaint.create')) ? (
         <Button type="primary" onClick={() => askNote(c, 'close')}>
           Close complaint
         </Button>
@@ -161,7 +170,7 @@ export function useComplaintWork(onChanged: () => void) {
         </Button>
       ),
       c.status === 'open' && can('complaint.start') && (
-        <Button key="start" type="primary" onClick={() => single(() => step(c, 'start', undefined, `${c.complaintNo} started`))}>
+        <Button key="start" type="primary" onClick={() => askNote(c, 'start')}>
           Start work
         </Button>
       ),
@@ -351,11 +360,11 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
   );
 }
 
-// The complaints this person raised that are fixed and waiting for them to close (decision B). Shown above the
+// The fixed complaints this person may close (decision B): raised by them, or in their department (shift handover). Shown above the
 // complaints list for anyone who raises complaints; nothing at all when there are none.
 export function ToClose({ version, onChanged, onOpen }: { version: number; onChanged: () => void; onOpen?: (id: string) => void }) {
   const { can } = useAuth();
-  const list = useFetch<Paged<ComplaintRow>>(can('complaint.create') ? `/complaints?status=resolved&raisedBy=me&pageSize=50&k=${version}` : null, { fresh: true });
+  const list = useFetch<Paged<ComplaintRow>>(can('complaint.create') ? `/complaints?closable=me&pageSize=50&k=${version}` : null, { fresh: true });
   const { actions, dialogs } = useComplaintWork(onChanged);
   const items = list.data?.items ?? [];
   if (!items.length) return null;
@@ -363,7 +372,7 @@ export function ToClose({ version, onChanged, onOpen }: { version: number; onCha
     <Card style={{ marginBottom: 20, borderColor: COLORS.good.dot }} styles={{ body: { padding: '14px 18px' } }}>
       <div style={{ fontWeight: 700, color: COLORS.ink, fontSize: 15 }}>Fixed: please check and close ({items.length})</div>
       <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 6 }}>
-        You raised these. Close each one once the equipment works again; any not closed close by themselves after a few days.
+        Raised by you or your department. Close each one once the equipment works again; any not closed close by themselves after a few days.
       </div>
       {items.map((c) => (
         <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>

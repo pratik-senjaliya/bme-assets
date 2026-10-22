@@ -99,8 +99,9 @@ export async function toComplaintDetail(c: ComplaintWithRefs, canSeeCosts: boole
     ...(row.assignedAt && row.assignedToName && !byStarting
       ? [{ at: row.assignedAt, kind: 'assigned', title: selfTaken ? `Taken by ${row.assignedToName}` : `Assigned to ${row.assignedToName}`, by: selfTaken ? null : (assigner?.name ?? null) } satisfies ComplaintEvent]
       : []),
-    ...(row.startedAt ? [{ at: row.startedAt, kind: 'started', title: 'Work started', detail: `${row.startedByName ?? 'An engineer'} is attending · response time ${durationText(row.responseSeconds)}`, by: row.startedByName } satisfies ComplaintEvent] : []),
-    ...steps.map((s): ComplaintEvent => ({
+    ...(row.startedAt ? [{ at: row.startedAt, kind: 'started', title: 'Work started', detail: `${steps.find((s) => s.kind === 'started')?.note ? `${steps.find((s) => s.kind === 'started')!.note} · ` : ''}${row.startedByName ?? 'An engineer'} is attending · response time ${durationText(row.responseSeconds)}`, by: row.startedByName } satisfies ComplaintEvent] : []),
+    // The note given when starting work belongs to "Work started" above.
+    ...steps.filter((s) => s.kind !== 'started').map((s): ComplaintEvent => ({
       at: s.at.toISOString(),
       kind: s.kind as ComplaintEvent['kind'],
       title: s.kind === 'closed' && !s.by ? 'Closed automatically' : (STEP_TITLE[s.kind] ?? s.kind),

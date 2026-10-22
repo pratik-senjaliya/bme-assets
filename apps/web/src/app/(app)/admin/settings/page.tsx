@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
 import { FormPageSkeleton } from '@/components/Skeletons';
+import { formatDateTime } from '@/lib/format';
 
 function SettingsPageScreen() {
   const { message } = App.useApp();
@@ -181,6 +182,18 @@ function SettingsPageScreen() {
             <Typography.Paragraph type="secondary">
               Reminders always appear in the app. If this server can reach a mail server, they are also emailed once a day. Leave the host empty to keep reminders in-app only.
             </Typography.Paragraph>
+            {/* The last attempt, so a mail server that stopped working is noticed here (gap review #21). */}
+            {settings.data.mailLastError && (!settings.data.mailLastSentAt || settings.data.mailLastErrorAt! > settings.data.mailLastSentAt) ? (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message={`The last email could not be sent (${formatDateTime(settings.data.mailLastErrorAt)})`}
+                description={`${settings.data.mailLastError}. Check the settings below and send a test email.`}
+              />
+            ) : (
+              settings.data.mailLastSentAt && <Alert type="success" showIcon style={{ marginBottom: 16 }} message={`Email is working: last sent ${formatDateTime(settings.data.mailLastSentAt)}`} />
+            )}
               <Form.Item label="SMTP host" name="smtpHost"><Input placeholder="smtp.hospital.local" /></Form.Item>
               <Space wrap align="start" size={16}>
                 <Form.Item label="Port" name="smtpPort"><InputNumber min={1} max={65535} placeholder="587" /></Form.Item>

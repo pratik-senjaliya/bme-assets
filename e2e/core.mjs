@@ -135,6 +135,8 @@ await step('Biomedical staff see it Open on the board; there is no Resolve until
 await step('Start work, then Resolve with notes: statuses move one step at a time with server times', async () => {
   const card = () => bp.locator('.ant-card', { hasText: made.cmp.complaintNo }).last();
   await card().getByRole('button', { name: 'Start work' }).click();
+  await bp.locator('.ant-modal:visible textarea').fill('E2E: checking the sensor');
+  await bp.locator('.ant-modal:visible').getByRole('button', { name: 'Start work' }).click();
   await bp.locator('.ant-message-success', { hasText: /started/ }).waitFor();
   await bp.waitForTimeout(1500);
   await card().getByRole('button', { name: 'Resolve' }).click();

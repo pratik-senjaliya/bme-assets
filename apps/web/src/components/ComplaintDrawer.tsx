@@ -35,7 +35,8 @@ const Fact = ({ label, children }: { label: string; children: React.ReactNode })
 );
 
 // One complaint, start to finish: who raised it, who started and resolved it, how long each step took, the documents
-// and (for those allowed to see costs) the expenses. Documents can be added until the complaint is resolved.
+// and (for those allowed to see costs) the expenses. Documents can be added until the complaint is resolved; after
+// that only by the biomedical team (the OEM's report or the invoice often comes later).
 export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null; onClose: () => void; onChanged?: () => void }) {
   const { can } = useAuth();
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
@@ -46,7 +47,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
     onChanged?.();
   });
   const c = complaint.data && complaint.data.id === id ? complaint.data : null;
-  const canAttach = !!c && !c.resolvedAt && (can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
+  const canAttach = !!c && (c.resolvedAt ? can('complaint.resolve') : can('complaint.create') || can('complaint.start') || can('complaint.resolve'));
   // Running time for a complaint that is still open (display only; stored times are the server's).
   const openFor = c && !c.resolvedAt ? formatDuration((Date.now() - new Date(c.raisedAt).getTime()) / 1000) : null;
 
@@ -94,8 +95,8 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
             <Alert
               type="success"
               showIcon
-              message={`Resolved · waiting for ${c.raisedByName} to close it`}
-              description="Whoever raised it closes it once the equipment works again. Downtime ended when it was resolved."
+              message={`Resolved · waiting for ${c.departmentName} to close it`}
+              description={`${c.raisedByName}, or anyone from ${c.departmentName}, closes it once the equipment works again. Downtime ended when it was resolved.`}
             />
           )}
           <StepNote c={c} />
@@ -149,7 +150,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
               }}
               emptyText={canAttach ? 'No documents yet. Add a photo of the fault if it helps.' : 'No documents.'}
             />
-            {!canAttach && c.resolvedAt && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>A resolved complaint is closed, so documents can no longer be added.</div>}
+            {!canAttach && c.resolvedAt && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>This complaint is resolved: only the biomedical team can still add its service report or invoice.</div>}
           </div>
           {c.expenses.length > 0 && (
             <div>

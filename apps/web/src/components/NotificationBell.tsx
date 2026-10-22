@@ -37,6 +37,7 @@ export function NotificationBell() {
     if (!n.readAt) await api(`/notifications/${n.id}/read`, { method: 'POST' }).catch(() => undefined);
     void load();
     if (n.type === 'approval') router.push('/approvals');
+    else if (n.complaintId) router.push(`/complaints?open=${n.complaintId}`);
     else if (n.type === 'stock') router.push('/consumables?low=true');
     else if (n.type === 'report') router.push(`/reports/monthly${n.dueDate ? `?month=${n.dueDate.slice(0, 7)}` : ''}`);
     else if (n.assetId) router.push(`/assets/${n.assetId}?tab=${TAB[n.type]}`);

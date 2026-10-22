@@ -23,9 +23,9 @@ export const money = (n: unknown) => `₹ ${new Intl.NumberFormat('en-IN').forma
 
 // ---------- Telling people ----------
 
-export async function notify(db: Db, userIds: string[], message: string, assetId: string | null, type: 'approval' | 'complaint' = 'approval') {
+export async function notify(db: Db, userIds: string[], message: string, assetId: string | null, type: 'approval' | 'complaint' = 'approval', complaintId: string | null = null) {
   if (userIds.length === 0) return;
-  await db.notification.createMany({ data: userIds.map((userId) => ({ userId, type, assetId, message })) });
+  await db.notification.createMany({ data: userIds.map((userId) => ({ userId, type, assetId, complaintId, message })) });
 }
 
 export const approvers = () => usersWithPermissions('approval.decide', 'notification.view');
@@ -220,6 +220,8 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
   return payloads.map(({ r, p }): ApprovalRow => {
     const assetId = assetIdOf(r) ?? null;
     const asset = assets.find((a) => a.id === assetId);
+    // A decided request reads as it did when decided (gap review #17): a deleted record or asset keeps its name.
+    const snap = r.status !== 'pending' ? (p.snapshot as { summary?: string; assetCode?: string | null; assetName?: string | null } | undefined) : undefined;
     let summary = '';
     if (r.type === 'edit_key_field') {
       summary = Object.entries(p.changes ?? {})
@@ -254,15 +256,16 @@ export async function toApprovalRows(rows: RequestRow[]): Promise<ApprovalRow[]>
       status: r.status as ApprovalStatus,
       // Only a link to an asset that still exists (a deleted one shows as "Deleted", not as an empty link).
       assetId: asset ? assetId! : null,
-      assetCode: asset?.assetCode ?? null,
-      assetName: asset?.name ?? null,
-      summary,
+      assetCode: asset?.assetCode ?? snap?.assetCode ?? null,
+      assetName: asset?.name ?? snap?.assetName ?? null,
+      summary: snap?.summary ?? summary,
       requestReason: typeof p.reason === 'string' ? p.reason : null,
       requestedByName: name(r.requestedBy) ?? 'Unknown',
       createdAt: r.createdAt.toISOString(),
       decidedByName: name(r.decidedBy),
       decidedAt: r.decidedAt?.toISOString() ?? null,
       decisionNote: r.reason,
+      selfApproved: r.status !== 'pending' && r.status !== 'withdrawn' && r.decidedBy === r.requestedBy,
     };
   });
 }

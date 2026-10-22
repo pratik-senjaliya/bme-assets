@@ -1,10 +1,12 @@
 'use client';
 
-import { App, Button, Form, Input, InputNumber, Modal, Popconfirm, Space } from 'antd';
+import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Space } from 'antd';
+import Link from 'next/link';
 import { useState } from 'react';
 import { equipmentTypeSchema } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
+import { Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
@@ -15,6 +17,7 @@ type EquipmentType = {
   code: string;
   defaultPmsMonths: number | null;
   defaultCalibrationMonths: number | null;
+  checklistVersion: number | null; // latest PMS checklist; null = none yet
 };
 
 function EquipmentTypesPageScreen() {
@@ -77,6 +80,16 @@ function EquipmentTypesPageScreen() {
           </Button>
         }
       />
+      {!!types.data?.some((t) => t.checklistVersion == null) && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`No PMS checklist yet for: ${types.data.filter((t) => t.checklistVersion == null).map((t) => t.name).join(', ')}`}
+          description="PMS cannot be recorded for this equipment until it has a checklist."
+          action={<Link href="/admin/pms-templates"><Button>PMS checklists</Button></Link>}
+        />
+      )}
       <DataTable<EquipmentType>
         rows={types.data}
         loading={types.loading}
@@ -88,6 +101,7 @@ function EquipmentTypesPageScreen() {
           { title: 'Code', dataIndex: 'code' },
           { title: 'Default PMS', dataIndex: 'defaultPmsMonths', align: 'right', render: months },
           { title: 'Default calibration', dataIndex: 'defaultCalibrationMonths', align: 'right', render: months },
+          { title: 'PMS checklist', dataIndex: 'checklistVersion', render: (v: number | null) => (v == null ? <Pill tone="warn">None yet</Pill> : `Version ${v}`) },
           {
             title: <span className="sr-only">Actions</span>,
             key: 'actions',

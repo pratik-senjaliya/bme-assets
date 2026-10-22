@@ -4,7 +4,8 @@ import { CheckCircleOutlined } from '@ant-design/icons';
 import { Button, Card, Col, Row, Space, Tabs, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import type { ComplaintRow, Paged } from '@bme/shared';
 import { CardSkeleton, ComplaintCard, ToClose, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
@@ -26,6 +27,15 @@ const COLUMNS: { status: Column; title: string; empty: string }[] = [
   { status: 'on_hold', title: 'On hold', empty: 'Nothing on hold.' },
   { status: 'done', title: 'Recently resolved', empty: 'No resolved complaints yet.' },
 ];
+
+// A bell notice links here with ?open=<complaint>: open its details (also when already on this page).
+function OpenFromAddress({ onOpen }: { onOpen: (id: string) => void }) {
+  const open = useSearchParams().get('open');
+  useEffect(() => {
+    if (open) onOpen(open);
+  }, [open, onOpen]);
+  return null;
+}
 
 export default function ComplaintsPage() {
   const { can } = useAuth();
@@ -54,6 +64,9 @@ export default function ComplaintsPage() {
       ) : (
         <ComplaintsHistory reloadKey={version} />
       )}
+      <Suspense fallback={null}>
+        <OpenFromAddress onOpen={setOpenId} />
+      </Suspense>
       <ComplaintDrawer id={openId} onClose={() => setOpenId(null)} onChanged={() => setVersion((v) => v + 1)} />
       <RaiseComplaintModal open={raising} onClose={() => setRaising(false)} onRaised={() => setVersion((v) => v + 1)} />
     </>

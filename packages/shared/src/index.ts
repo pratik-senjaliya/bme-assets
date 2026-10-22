@@ -74,13 +74,16 @@ const BIOMED: PermissionCode[] = [
 ];
 
 // Defaults seeded into the DB; hospitals can adjust them later.
+// The HOD's role always keeps these, so a mis-click in Roles cannot lock the hospital out of its own install.
+export const ADMIN_KEEPS: PermissionCode[] = ['role.manage', 'user.manage', 'setup.manage', 'approval.decide'];
+
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, readonly PermissionCode[]> = {
   // The vendor's super admin is audited like everyone and cannot bypass the HOD: its key-field edits,
   // condemnations and deletions are requests, and it cannot decide them.
   super_admin: PERMISSIONS.filter((p) => p !== 'asset.edit_key' && p !== 'approval.decide'),
   admin: PERMISSIONS.filter((p) => p !== 'settings.pattern'),
   biomed: BIOMED,
-  nursing: ['asset.view', 'complaint.view', 'complaint.create'],
+  nursing: ['asset.view', 'complaint.view', 'complaint.create', 'notification.view'],
 };
 
 // ---------- Auth ----------
@@ -225,6 +228,10 @@ export type SettingsResponse = {
   smtpUser: string | null;
   smtpFrom: string | null;
   smtpPasswordSet: boolean;
+  // The last email attempt (reminders, monthly report, urgent complaints), so a mail server that stopped is noticed.
+  mailLastSentAt: string | null;
+  mailLastError: string | null;
+  mailLastErrorAt: string | null;
 };
 
 // ---------- Assets ----------
@@ -560,6 +567,8 @@ export const complaintListQuerySchema = z.object({
   status: z.enum([...COMPLAINT_STATUSES, 'unresolved', 'done']).optional(),
   // 'me' = raised by whoever is asking (their own complaints, e.g. the ones waiting for them to close).
   raisedBy: z.enum(['me']).optional(),
+  // 'me' = resolved complaints the asker may close: raised by them, or in their own department (shift handover).
+  closable: z.enum(['me']).optional(),
   // 'true' = escalated to the HOD and still waiting for them.
   escalated: z.enum(['true']).optional(),
   // 'me' = assigned to whoever is asking, 'none' = nobody yet, or one person's id.
@@ -825,6 +834,7 @@ export type NotificationRow = {
   id: string;
   type: NotificationType;
   assetId: string | null;
+  complaintId: string | null; // a complaint notice opens the complaint
   message: string;
   dueDate: string | null;
   thresholdDays: number | null;
@@ -910,6 +920,7 @@ export type ApprovalRow = {
   decidedByName: string | null;
   decidedAt: string | null;
   decisionNote: string | null; // approver's note, or the reason for rejecting
+  selfApproved: boolean; // decided by the person who asked (a one-HOD hospital): shown, never hidden
 };
 
 export type CondemnationInfo = {

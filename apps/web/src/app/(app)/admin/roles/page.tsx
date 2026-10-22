@@ -2,7 +2,7 @@
 
 import { App, Alert, Button, Card, Checkbox, Select, Space } from 'antd';
 import { useEffect, useState } from 'react';
-import { PERMISSIONS, type PermissionCode, type RoleRow } from '@bme/shared';
+import { ADMIN_KEEPS, PERMISSIONS, type PermissionCode, type RoleRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
 import { PERMISSION_TEXT } from '@/lib/permissions';
@@ -25,6 +25,7 @@ const GROUPS: Record<string, string> = {
   audit: 'Audit',
   report: 'Reports',
   notification: 'Reminders',
+  consumable: 'Consumables',
 };
 
 function RolesPageScreen() {
@@ -82,13 +83,14 @@ function RolesPageScreen() {
             options={roles.data!.map((r) => ({ value: r.id, label: r.label }))}
           />
           {locked && <Alert type="info" showIcon message="Super admin permissions are fixed and cannot be changed." />}
+          {role.name === 'admin' && <Alert type="info" showIcon message="The Admin (HOD) role always keeps users, roles, setup and approvals, so the hospital can never lock itself out." />}
           <Checkbox.Group value={selected} onChange={(v) => setSelected(v as PermissionCode[])} disabled={locked} style={{ display: 'block', width: '100%' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: 16 }}>
               {Object.entries(GROUPS).map(([prefix, label]) => (
                 <Card key={prefix} size="small" title={label}>
                   <Space direction="vertical" size={12}>
                     {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`)).map((p) => (
-                      <Checkbox key={p} value={p}>
+                      <Checkbox key={p} value={p} disabled={role.name === 'admin' && ADMIN_KEEPS.includes(p)}>
                         <span style={{ fontWeight: 500 }}>{PERMISSION_TEXT[p].label}</span>
                         <span style={{ display: 'block', color: COLORS.muted, fontSize: 12.5 }}>{PERMISSION_TEXT[p].hint}</span>
                       </Checkbox>
