@@ -1,10 +1,10 @@
 'use client';
 
-import { Alert, App, Form, Input, Modal, Select } from 'antd';
+import { Alert, App, Checkbox, Form, Input, Modal, Select } from 'antd';
 import { useEffect, useState } from 'react';
-import { createComplaintSchema, type AssetRow, type ComplaintRow, type Paged } from '@bme/shared';
+import { createComplaintSchema, type AssetRow, type ComplaintRow, type HospitalInfo, type Paged } from '@bme/shared';
 import { FilePicker } from '@/components/FilePicker';
-import { api } from '@/lib/api';
+import { api, useFetch } from '@/lib/api';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { formatDateTime } from '@/lib/format';
 import { uploadAll } from '@/lib/uploads';
@@ -12,20 +12,24 @@ import { uploadAll } from '@/lib/uploads';
 type AssetOption = { id: string; assetCode: string; name: string };
 
 // Raise a complaint. With `asset` the equipment is fixed; without it the person searches for it
-// (the API only returns equipment they are allowed to see: a nurse's own department).
+// (the API only returns equipment they are allowed to see: a nurse's own department). `description` pre-fills the
+// problem (e.g. the items a failed PMS found).
 export function RaiseComplaintModal({
   open,
   asset,
+  description,
   onClose,
   onRaised,
 }: {
   open: boolean;
   asset?: AssetOption;
+  description?: string;
   onClose: () => void;
   onRaised?: (c: ComplaintRow) => void;
 }) {
-  const { message } = App.useApp();
-  const [form] = Form.useForm<{ assetId?: string; description?: string }>();
+  const { message, modal } = App.useApp();
+  const [form] = Form.useForm<{ assetId?: string; description?: string; urgent?: boolean }>();
+  const hospital = useFetch<HospitalInfo>(open ? '/hospital' : null);
   const [options, setOptions] = useState<AssetOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,15 +65,15 @@ export function RaiseComplaintModal({
     if (!open) return;
     form.resetFields();
     setFiles([]);
-    form.setFieldsValue({ assetId: asset?.id });
+    form.setFieldsValue({ assetId: asset?.id, description, urgent: false });
     if (!asset) void search('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, asset]);
+  }, [open, asset, description]);
 
   const single = useSingleFlight();
 
   async function save() {
-    const input = parseForm(form, createComplaintSchema, form.getFieldsValue());
+    const input = parseForm(form, createComplaintSchema, { ...form.getFieldsValue(), urgent: !!form.getFieldValue('urgent') });
     if (!input) return;
     setSaving(true);
     try {
@@ -78,6 +82,8 @@ export function RaiseComplaintModal({
       const failed = await uploadAll(files, { ownerType: 'complaint', ownerId: c.id }, (f) => (/\.pdf$/i.test(f.name) ? 'other' : 'photo'));
       if (failed.length) message.warning(`Complaint ${c.complaintNo} raised, but ${failed.join(', ')} could not be uploaded. Open the complaint to add ${failed.length === 1 ? 'it' : 'them'} again.`, 8);
       else message.success(`Complaint ${c.complaintNo} raised`);
+      // Urgent: the team has been told, and the ward also gets the number to call.
+      if (c.urgent && hospital.data?.biomedContact) modal.info({ title: `${c.complaintNo} raised as urgent`, content: `The biomedical team has been told. If a patient is waiting, also call: ${hospital.data.biomedContact}` });
       onClose();
       onRaised?.(c);
     } catch (e) {
@@ -121,6 +127,12 @@ export function RaiseComplaintModal({
         >
           <Input.TextArea rows={4} maxLength={2000} />
         </Form.Item>
+        <Form.Item name="urgent" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Checkbox>Urgent: the machine cannot be used, or patient care is affected</Checkbox>
+        </Form.Item>
+        {hospital.data?.biomedContact && (
+          <Alert type="info" showIcon style={{ marginBottom: 16 }} message={`For an emergency, also call the biomedical team: ${hospital.data.biomedContact}`} />
+        )}
         <Form.Item label="Photos or files" extra="Optional. A photo of the display, alarm or damage helps the biomedical team. PDF, JPG or PNG, up to 10 MB each.">
           <FilePicker files={files} onChange={setFiles} label="Add photos" />
         </Form.Item>

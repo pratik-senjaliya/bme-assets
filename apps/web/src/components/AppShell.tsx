@@ -29,7 +29,7 @@ import { Button, Dropdown, Grid, Layout, Menu, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ApprovalRow, PermissionCode } from '@bme/shared';
+import type { ApprovalRow, HospitalInfo, PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -38,6 +38,7 @@ import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { initials, shortName } from '@/lib/format';
 import { useThemeMode, type ModeChoice } from '@/lib/themeMode';
+import { useIdleSignOut } from '@/lib/idle';
 import { loginHref } from '@/lib/nav';
 import { COLORS } from '@/theme';
 
@@ -91,7 +92,7 @@ const THEMES: { key: ModeChoice; label: string }[] = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, loading, logout, can, sessionExpired } = useAuth();
+  const { user, loading, logout, can, signedOutReason } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -113,8 +114,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Not signed in (or the session ended): go to sign in, and come back to this page afterwards.
-    if (!loading && !user) router.replace(loginHref(sessionExpired()));
-  }, [loading, user, router, sessionExpired]);
+    if (!loading && !user) router.replace(loginHref(signedOutReason()));
+  }, [loading, user, router, signedOutReason]);
+  // Shared ward PCs: sign out a login left unused (Hospital settings). The redirect above then says why.
+  const hospital = useFetch<HospitalInfo>(user ? '/hospital' : null);
+  useIdleSignOut(user ? hospital.data?.idleLogoutMinutes : 0, () => void logout('idle'));
 
   if (loading || !user) {
     return (

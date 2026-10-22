@@ -27,6 +27,8 @@ await prisma.consumableItem.deleteMany({ where: { id: { in: e2eItems.map((i) => 
 await prisma.notification.deleteMany({ where: { type: 'stock', message: { startsWith: 'E2E-' } } });
 await prisma.asset.deleteMany({ where: { id: { in: ids } } });
 await prisma.vendor.deleteMany({ where: { name: { startsWith: 'E2E-' } } });
+// The safety suite sets a 1-minute idle sign-out; put it back if that run stopped half-way.
+await prisma.hospitalSettings.updateMany({ where: { idleLogoutMinutes: 1 }, data: { idleLogoutMinutes: 30 } });
 const types = await prisma.equipmentType.findMany({ where: { code: { in: ['E2ET', 'E2EJ'] } }, select: { id: true } });
 await prisma.pmsTemplate.deleteMany({ where: { equipmentTypeId: { in: types.map((t) => t.id) } } });
 await prisma.asset.deleteMany({ where: { equipmentTypeId: { in: types.map((t) => t.id) } } }).catch(() => {});

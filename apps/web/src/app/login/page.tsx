@@ -17,7 +17,7 @@ export default function LoginPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [expired, setExpired] = useState(false);
+  const [signedOut, setSignedOut] = useState<'expired' | 'idle' | null>(null);
   // Five wrong passwords lock a login, and Caps Lock is the usual cause: say when it is on.
   const [caps, setCaps] = useState(false);
   // The page the person was on (or asked for) before being sent here, read from the address.
@@ -25,7 +25,8 @@ export default function LoginPage() {
 
   useDocumentTitle('Sign in · BME Assets');
   useEffect(() => {
-    setExpired(new URLSearchParams(window.location.search).get('expired') === '1');
+    const q = new URLSearchParams(window.location.search);
+    setSignedOut(q.get('idle') === '1' ? 'idle' : q.get('expired') === '1' ? 'expired' : null);
   }, []);
   useEffect(() => {
     if (!loading && user) router.replace(nextPage());
@@ -66,7 +67,15 @@ export default function LoginPage() {
         <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
           Use the login given to you by your Biomedical HOD.
         </Typography.Paragraph>
-          {expired && <Alert type="info" showIcon style={{ marginBottom: 20 }} message="You were signed out" description="Your session ended, so please sign in again. You will come back to the page you were on." />}
+          {signedOut && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 20 }}
+              message="You were signed out"
+              description={signedOut === 'idle' ? 'This computer was not used for a while, so the login was closed for safety. Please sign in again.' : 'Your session ended, so please sign in again. You will come back to the page you were on.'}
+            />
+          )}
           <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter your email' }]}>
               <Input type="email" autoComplete="username" autoFocus size="large" prefix={<MailOutlined style={{ color: COLORS.faint }} />} placeholder="you@hospital.org" />

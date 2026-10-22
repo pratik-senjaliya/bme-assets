@@ -21,7 +21,7 @@ import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
 import { stageUpload, upload } from '../assets/attachments.service';
 import { clearReminders } from '../reminders/reminders.service';
-import { dueList, evaluateAnswers, latestTemplate, pmsRecordInclude, templateItems, toPmsRows } from './pms.service';
+import { dueList, evaluateAnswers, latestTemplate, pmsRecordInclude, refreshPmsFlag, tellFailed, templateItems, toPmsRows } from './pms.service';
 
 export const pmsRouter = Router();
 
@@ -119,6 +119,7 @@ pmsRouter.post('/assets/:id/pms', requirePermission('pms.perform'), validate(sub
       await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
       await clearReminders(tx, asset.id, ['pms']);
     }
+    if ((await refreshPmsFlag(tx, asset.id)) && record.result === 'fail') await tellFailed(tx, asset, 'PMS');
     await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit', entityType: 'pms_record', entityId: record.id, after: record });
     return record;
   });
@@ -190,6 +191,7 @@ pmsRouter.post('/assets/:id/pms/oem', requirePermission('pms.perform'), upload.s
         await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
         await clearReminders(tx, asset.id, ['pms']);
       }
+      if ((await refreshPmsFlag(tx, asset.id)) && record.result === 'fail') await tellFailed(tx, asset, 'PMS');
       await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit_oem', entityType: 'pms_record', entityId: record.id, after: { ...record, report: file } });
       return record;
     });

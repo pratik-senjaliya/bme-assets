@@ -302,9 +302,10 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
         <span className="code" style={{ color: COLORS.muted, fontSize: 12.5 }}>{c.complaintNo}</span>
         <CriticalityTag value={c.criticality} />
       </div>
-      {c.overDowntimeLimit && (
-        <div style={{ marginTop: 8 }}>
-          <Pill tone="bad">Over downtime limit</Pill>
+      {(c.urgent || c.overDowntimeLimit) && (
+        <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {c.urgent && !c.resolvedAt && <Pill tone="bad">Urgent: cannot be used</Pill>}
+          {c.overDowntimeLimit && <Pill tone="bad">Over downtime limit</Pill>}
         </div>
       )}
       <div style={{ marginTop: 8 }}>

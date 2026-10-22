@@ -4,12 +4,15 @@ export function safeNext(raw: string | null | undefined): string {
   return raw;
 }
 
+// Why a signed-in person was sent to sign in: the session ended, or the computer was left unused (see lib/idle.ts).
+export type SignedOutReason = 'expired' | 'idle' | null;
+
 // The sign-in address for the page the person is on, so they come back to it afterwards.
-export function loginHref(expired: boolean): string {
+export function loginHref(reason: SignedOutReason): string {
   const here = `${window.location.pathname}${window.location.search}`;
   const params = new URLSearchParams();
   if (here !== '/') params.set('next', here);
-  if (expired) params.set('expired', '1');
+  if (reason) params.set(reason, '1');
   return `/login${params.size ? `?${params}` : ''}`;
 }
 

@@ -97,6 +97,10 @@ model HospitalSettings {
   complaintCloseDays    Int   @default(3)
   // Transfers of equipment to another unit of the group: only for hospitals that have other units.
   transfersEnabled      Boolean @default(false)
+  // Who the wards call for a broken machine (shown to everyone; e.g. "Biomedical on call: 98250 00000, ext. 214").
+  biomedContact         String?
+  // Shared ward PCs: sign out after this many minutes without use (0 = never).
+  idleLogoutMinutes     Int     @default(30)
   // Counters incremented inside the creating transaction (asset IDs / complaint numbers are never reused).
   assetSeq         Int      @default(0)
   complaintSeq     Int      @default(0)
@@ -246,6 +250,9 @@ model Asset {
   pmsFrequencyMonths   Int?
   nextPmsDue           DateTime?   @db.Date
   nextCalibrationDue   DateTime?   @db.Date
+  // The last PMS / calibration failed: the machine is flagged until one passes (cleared by a passing record).
+  pmsFailedOn          DateTime?   @db.Date
+  calibrationFailedOn  DateTime?   @db.Date
   // Last PMS / calibration done before this system was used. Set once when existing equipment is registered;
   // the first due date runs from it. Never a PMS record, so the PMS date lock is untouched.
   openingPmsOn         DateTime?   @db.Date
@@ -402,6 +409,8 @@ model Complaint {
   raisedById      String
   departmentId    String
   description     String
+  // The machine cannot be used or patient care is affected: listed first, and emailed to the biomedical team.
+  urgent          Boolean         @default(false)
   status          ComplaintStatus @default(open)
   raisedAt        DateTime        @default(now())
   startedAt       DateTime?

@@ -25,8 +25,8 @@ const actor = (req: Request) => ({ createdBy: currentUser(req).id });
 
 // Its name and the optional parts it has turned on, for every signed-in person (the full settings are the admin's).
 setupRouter.get('/hospital', requirePermission('asset.view'), async (_req, res) => {
-  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true } });
-  res.json({ name: s.name, transfersEnabled: s.transfersEnabled } satisfies HospitalInfo);
+  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true, biomedContact: true, idleLogoutMinutes: true } });
+  res.json(s satisfies HospitalInfo);
 });
 
 // ---------- Departments ----------

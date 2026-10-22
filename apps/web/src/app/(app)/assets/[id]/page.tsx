@@ -43,6 +43,7 @@ import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
 import { StatusResult } from '@/components/StatusResult';
 import { VendorCards } from '@/components/VendorCards';
+import { SafetyAlerts } from '@/components/AssetSafety';
 import { MoveModal } from '@/components/ConsumableModals';
 
 // Tab contents and dialogs load when first opened, so the asset's own page shows sooner.
@@ -69,6 +70,7 @@ export default function AssetDetailPage() {
   const asset = useFetch<AssetDetail>(`/assets/${id}`);
   const initialTab = useSearchParams().get('tab') ?? 'overview';
   const [raising, setRaising] = useState(false);
+  const [raiseText, setRaiseText] = useState<string>();
   const [complaintsVersion, setComplaintsVersion] = useState(0);
   const [condemning, setCondemning] = useState(false);
   const [transferring, setTransferring] = useState(false);
@@ -150,6 +152,15 @@ export default function AssetDetailPage() {
         }
       />
       <AssetApprovalBanners asset={a} version={requests} />
+      <SafetyAlerts
+        asset={a}
+        canRaise={can('complaint.create')}
+        canPerformPms={can('pms.perform')}
+        onRaise={(text) => {
+          setRaiseText(text);
+          setRaising(true);
+        }}
+      />
       {a.status === 'active' && a.nextPmsDue && daysFromToday(a.nextPmsDue) < 0 && can('pms.perform') && (
         <Alert
           style={{ marginBottom: 16 }}
@@ -200,8 +211,15 @@ export default function AssetDetailPage() {
       <RaiseComplaintModal
         open={raising}
         asset={{ id: a.id, assetCode: a.assetCode, name: a.name }}
-        onClose={() => setRaising(false)}
-        onRaised={() => setComplaintsVersion((v) => v + 1)}
+        description={raiseText}
+        onClose={() => {
+          setRaising(false);
+          setRaiseText(undefined);
+        }}
+        onRaised={() => {
+          setComplaintsVersion((v) => v + 1);
+          void asset.reload(); // the "under repair" banner
+        }}
       />
     </>
   );

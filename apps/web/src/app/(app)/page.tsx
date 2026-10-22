@@ -4,7 +4,8 @@ import { ArrowRightOutlined, CheckCircleOutlined, SafetyCertificateOutlined } fr
 import { Alert, Button, Card, Col, Grid, Row } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import type { DashboardResponse } from '@bme/shared';
+import type { AssetRow, DashboardResponse, HospitalInfo, Paged } from '@bme/shared';
+import { UnsafeList } from '@/components/AssetSafety';
 import { ChartGrid } from '@/components/charts/LazyCharts';
 import { ComplaintsMiniList } from '@/components/ComplaintsMiniList';
 import { ToClose } from '@/components/ComplaintWork';
@@ -69,6 +70,9 @@ const Quiet = ({ children, icon = <CheckCircleOutlined /> }: { children: ReactNo
 export default function Home() {
   const { user, can } = useAuth();
   const dash = useFetch<DashboardResponse>('/dashboard');
+  // Machines not to use (an urgent fault not fixed, or a failed PMS / calibration), within the person's scope.
+  const unsafe = useFetch<Paged<AssetRow>>('/assets?condition=unsafe&pageSize=20');
+  const hospital = useFetch<HospitalInfo>('/hospital');
   const d = dash.data;
   const phone = Grid.useBreakpoint().md === false;
   const [showCharts, setShowCharts] = useState(false);
@@ -187,6 +191,19 @@ export default function Home() {
               message={`${d.pendingApprovals} ${d.pendingApprovals === 1 ? 'request is' : 'requests are'} waiting for your decision`}
               action={<Link href="/approvals"><Button size="small">Review</Button></Link>}
             />
+          )}
+          {!!unsafe.data?.total && (
+            <Card
+              title={`Not safe to use (${unsafe.data.total})`}
+              style={{ marginBottom: 20, borderColor: COLORS.bad.dot }}
+              styles={{ body: { padding: '4px 20px 12px' } }}
+              extra={unsafe.data.total > unsafe.data.items.length && <ViewAll href="/assets?condition=unsafe">All</ViewAll>}
+            >
+              <UnsafeList rows={unsafe.data.items} />
+            </Card>
+          )}
+          {hospital.data?.biomedContact && can('complaint.create') && !can('complaint.start') && (
+            <Alert style={{ marginBottom: 20 }} type="info" showIcon message={`Machine broken? Raise a complaint here. For an emergency, also call the biomedical team: ${hospital.data.biomedContact}`} />
           )}
           <ToClose
             version={closedVersion}

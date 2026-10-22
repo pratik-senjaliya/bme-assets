@@ -20,6 +20,8 @@ const toResponse = (s: Row): SettingsResponse => ({
   criticalDowntimeHours: s.criticalDowntimeHours,
   complaintCloseDays: s.complaintCloseDays,
   transfersEnabled: s.transfersEnabled,
+  biomedContact: s.biomedContact,
+  idleLogoutMinutes: s.idleLogoutMinutes,
   smtpHost: s.smtpHost,
   smtpPort: s.smtpPort,
   smtpUser: s.smtpUser,
