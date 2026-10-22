@@ -54,7 +54,7 @@ calibrationRouter.post('/assets/:id/calibrations', requirePermission('calibratio
   if (input.doneOn > todayISO()) throw new HttpError(400, 'The calibration date cannot be in the future', { fieldErrors: { doneOn: ['Cannot be in the future'] } });
 
   const doneOn = parseDate(input.doneOn);
-  const months = asset.equipmentType.defaultCalibrationMonths;
+  const months = asset.calibrationFrequencyMonths ?? asset.equipmentType.defaultCalibrationMonths;
   if (!input.dueOn && !months) {
     throw new HttpError(400, 'Enter the next due date (this equipment type has no usual calibration interval)', { fieldErrors: { dueOn: ['Required'] } });
   }

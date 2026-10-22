@@ -33,6 +33,7 @@ type Values = {
   make?: string;
   model?: string;
   serialNo?: string;
+  tagNo?: string;
   departmentId?: string;
   locationId?: string;
   criticality?: string;
@@ -40,6 +41,7 @@ type Values = {
   installationDate?: dayjs.Dayjs | null;
   warrantyMonths?: number | null;
   pmsFrequencyMonths?: number | null;
+  calibrationFrequencyMonths?: number | null;
   openingPmsOn?: dayjs.Dayjs | null;
   openingCalibrationOn?: dayjs.Dayjs | null;
   supplierId?: string | null;
@@ -54,6 +56,7 @@ const toForm = (a: AssetDetail): Values => ({
   make: a.make ?? undefined,
   model: a.model ?? undefined,
   serialNo: a.serialNo ?? undefined,
+  tagNo: a.tagNo ?? undefined,
   departmentId: a.departmentId,
   locationId: a.locationId,
   criticality: a.criticality,
@@ -61,6 +64,7 @@ const toForm = (a: AssetDetail): Values => ({
   installationDate: a.installationDate ? dayjs(a.installationDate) : null,
   warrantyMonths: a.warrantyMonths,
   pmsFrequencyMonths: a.pmsFrequencyMonths,
+  calibrationFrequencyMonths: a.calibrationFrequencyMonths,
   openingPmsOn: a.openingPmsOn ? dayjs(a.openingPmsOn) : null,
   openingCalibrationOn: a.openingCalibrationOn ? dayjs(a.openingCalibrationOn) : null,
   supplierId: a.supplier?.id ?? null,
@@ -76,6 +80,7 @@ const toBody = ({ purchaseOrder: po, ...v }: Values) => ({
   installationDate: v.installationDate ? v.installationDate.format('YYYY-MM-DD') : null,
   warrantyMonths: v.warrantyMonths ?? null,
   pmsFrequencyMonths: v.pmsFrequencyMonths ?? null,
+  calibrationFrequencyMonths: v.calibrationFrequencyMonths ?? null,
   openingPmsOn: v.openingPmsOn ? v.openingPmsOn.format('YYYY-MM-DD') : null,
   openingCalibrationOn: v.openingCalibrationOn ? v.openingCalibrationOn.format('YYYY-MM-DD') : null,
   supplierId: v.supplierId ?? null,
@@ -253,6 +258,11 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           </Form.Item>
         </Col>
         <Col {...half}>
+          <Form.Item label="Hospital tag no" name="tagNo" extra="Optional: the hospital's own inventory number, if the machine already carries one.">
+            <Input maxLength={50} placeholder="e.g. BME/ICU/0412" />
+          </Form.Item>
+        </Col>
+        <Col {...half}>
           <Form.Item label="Criticality" name="criticality" extra="How badly patient care suffers if this equipment is down.">
             <Select options={CRITICALITIES.map((c) => ({ value: c, label: CRITICALITY_LABEL[c] }))} />
           </Form.Item>
@@ -303,6 +313,15 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
         <Col {...half}>
           <Form.Item label="PMS every (months)" name="pmsFrequencyMonths" extra="Defaults to the equipment type's usual interval.">
             <InputNumber min={1} max={120} placeholder="e.g. 6" suffix="months" style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col {...half}>
+          <Form.Item
+            label="Calibration every (months)"
+            name="calibrationFrequencyMonths"
+            extra={type?.defaultCalibrationMonths ? `Leave blank for the equipment type's usual ${type.defaultCalibrationMonths} months.` : 'Leave blank for the equipment type\'s usual interval.'}
+          >
+            <InputNumber min={1} max={120} placeholder="e.g. 12" suffix="months" style={{ width: '100%' }} />
           </Form.Item>
         </Col>
         {asset && !isGone(asset.status) && (

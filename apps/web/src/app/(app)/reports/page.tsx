@@ -21,12 +21,14 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
     entries: [
       { href: '/reports/monthly', title: 'Monthly report', description: 'The month in one page: uptime, breakdowns, PMS and calibration on schedule, spend, and equipment to consider replacing. Saved and sent to the HOD on the 1st.' },
       { href: '/reports/audit-pack', title: 'Audit pack', description: 'One ZIP for an auditor: inventory, PMS checklists, calibration certificates, breakdowns, downtime, cover and condemnation letters for a period.' },
+      entry('replacement'),
     ],
   },
   { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts', 'condemnation'] as ReportType[]).map(entry) },
   { title: 'Maintenance', entries: (['pms', 'calibration'] as ReportType[]).map(entry) },
   { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime'] as ReportType[]).map(entry) },
-  { title: 'Cost', entries: (['expenses'] as ReportType[]).map(entry) },
+  { title: 'Cost', entries: (['expenses', 'consumables'] as ReportType[]).map(entry) },
+  { title: 'Team and suppliers', entries: (['engineers', 'suppliers'] as ReportType[]).map(entry) },
 ];
 
 export default function ReportsPage() {

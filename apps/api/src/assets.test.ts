@@ -224,6 +224,8 @@ describe('purchase orders, contracts and timeline', () => {
 
 describe('Excel import', () => {
   const HEADERS = ['Equipment type code', 'Name', 'Make', 'Model', 'Serial no', 'Department code', 'Location code', 'Criticality', 'Installation date', 'Warranty months', 'PMS frequency months', 'Last PMS done', 'Last calibration done', 'Supplier', 'Service vendor'];
+  // The template also has the optional columns added later (gap review #26); the rows below fill the first ones only.
+  const TEMPLATE = [...HEADERS, 'Tag no', 'Status', 'Calibration every (months)', 'PO number', 'PO date', 'Purchase cost', 'Contract type', 'Contract vendor', 'Contract start', 'Contract end', 'Contract cost'];
 
   async function workbook(rows: (string | number | undefined)[][]) {
     const wb = new ExcelJS.Workbook();
@@ -285,7 +287,7 @@ describe('Excel import', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ArrayBuffer);
     const header = wb.getWorksheet('Assets')!.getRow(1).values as unknown[];
-    assert.deepEqual(Array.from(header).slice(1), HEADERS);
+    assert.deepEqual(Array.from(header).slice(1), TEMPLATE);
     assert.equal((await fetch(`${base}/import/template`, { headers: { cookie: nursing } })).status, 403);
   });
 });

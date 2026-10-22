@@ -316,12 +316,16 @@ const assetFields = {
   make: optionalText(100),
   model: optionalText(100),
   serialNo: optionalText(100),
+  // The hospital's own inventory tag from before this system (often what is painted on the machine).
+  tagNo: optionalText(50),
   departmentId: z.string().uuid(),
   locationId: z.string().uuid(),
   criticality: z.enum(CRITICALITIES).default('minor'),
   installationDate: isoDateSchema.nullish(),
   warrantyMonths: z.number().int().min(0).max(240).nullish(),
   pmsFrequencyMonths: z.number().int().min(1).max(120).nullish(),
+  // Only when this machine is calibrated more or less often than its equipment type.
+  calibrationFrequencyMonths: z.number().int().min(1).max(120).nullish(),
   // Existing equipment: when PMS / calibration was last done before this system. The first due dates run from these.
   openingPmsOn: isoDateSchema.nullish(),
   openingCalibrationOn: isoDateSchema.nullish(),
@@ -385,6 +389,7 @@ export type AssetRow = {
   make: string | null;
   model: string | null;
   serialNo: string | null;
+  tagNo: string | null;
   equipmentTypeId: string;
   equipmentTypeName: string;
   departmentId: string;
@@ -409,6 +414,7 @@ export type OpenComplaintRef = { id: string; complaintNo: string; status: Compla
 export type AssetDetail = AssetRow & {
   warrantyMonths: number | null;
   pmsFrequencyMonths: number | null;
+  calibrationFrequencyMonths: number | null;
   openingPmsOn: string | null;
   openingCalibrationOn: string | null;
   createdAt: string;
@@ -1092,6 +1098,9 @@ export const REPORTS = [
   { type: 'condemnation', title: 'Condemnation register', description: 'Equipment condemned in the period, by committee date: reason, purchase cost, estimated value today and who approved it. The PDF is the committee’s form.', range: true },
   { type: 'warranty-contracts', title: 'Warranty and contracts', description: 'Warranties and AMC / CMC / in-house contracts: what is running, what ends soon and what has ended.', range: false },
   { type: 'consumables', title: 'Consumables register', description: 'Everything given out in the period (to which department, machine or complaint, and why), what was received, and the stock today with its value.', range: true },
+  { type: 'engineers', title: 'Engineer performance', description: 'Per engineer in the period: complaints taken and fixed, response and repair times, fixes sent back as not working, PMS and calibrations recorded.', range: true },
+  { type: 'suppliers', title: 'Supplier performance', description: 'Per supplier and service company: the equipment they sold or service, its breakdowns and downtime in the period, what was spent on it, and their contracts.', range: true },
+  { type: 'replacement', title: 'Replacement and renewals', description: 'Equipment to consider replacing (age, breakdowns, repair spend against its cost), and warranties and contracts ending in the next 90 days.', range: false },
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];
 

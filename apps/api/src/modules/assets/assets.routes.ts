@@ -83,7 +83,7 @@ const registerWhere = (req: Request, q: Omit<AssetListQuery, 'sortBy' | 'order' 
   ...(q.equipmentTypeId && { equipmentTypeId: q.equipmentTypeId }),
   ...(q.criticality && { criticality: q.criticality }),
   ...(q.search && {
-    OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
+    OR: ['assetCode', 'name', 'serialNo', 'tagNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
   }),
   ...(q.condition && { AND: [CONDITION[q.condition]] }),
   ...departmentScope(currentUser(req)), // last, so a nursing user cannot widen it with ?departmentId=
@@ -239,6 +239,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
         openingPmsOn: pick('openingPmsOn'),
         openingCalibrationOn: pick('openingCalibrationOn'),
         pmsFrequencyMonths: pick('pmsFrequencyMonths'),
+        calibrationFrequencyMonths: pick('calibrationFrequencyMonths'),
       }),
     );
   }

@@ -17,8 +17,10 @@ The first numbered release: everything built so far, as installed for the first 
 - **Complaints:** Open → In progress (⇄ On hold) → Resolved → Closed, escalation, assignment and My work, urgent
   complaints first, the ward closes or sends back a fix, costs booked while resolving, downtime and response times.
 - **Approvals:** key-field edits, deletions, condemnation and transfer decided by the HOD (or a deputy HOD).
-- **Reports:** dashboard, eleven reports on screen, in Excel and as signed PDFs, the monthly report and the audit pack;
-  the audit log exports to Excel.
+- **Reports:** dashboard, fourteen reports on screen, in Excel and as signed PDFs (including engineer and supplier
+  performance, and replacement and renewals), the monthly report and the audit pack; the audit log exports to Excel.
+- **Loading data:** Excel import of the asset register (with tag numbers, status, purchase orders and contracts) and
+  of user logins.
 - **Running it:** Docker Compose install, nightly backups of the database, uploads and `.env` with a failure notice,
   disk-space and daily-job checks, first sign-in password change, usernames and "forgot password" to the HOD,
   sign-out of idle shared PCs.

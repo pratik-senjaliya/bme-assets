@@ -5,7 +5,7 @@ import { currentUser, departmentScope } from '../../lib/auth';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
-import { assetInclude, toAssetRow } from '../assets/assets.service';
+import { assetInclude, toAssetRow, type AssetWithRefs } from '../assets/assets.service';
 import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
 
 // ---------- What a builder produces ----------
@@ -98,7 +98,7 @@ async function assetMaster(wb: Collector, c: Ctx) {
     ...(q.departmentId && { departmentId: q.departmentId }),
     ...(q.equipmentTypeId && { equipmentTypeId: q.equipmentTypeId }),
     ...(q.criticality && { criticality: q.criticality }),
-    ...(q.search && { OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })) }),
+    ...(q.search && { OR: ['assetCode', 'name', 'serialNo', 'tagNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })) }),
   };
   const assets = await prisma.asset.findMany({ where, include: assetInclude, orderBy: { assetCode: 'asc' } });
   const rowsOf = assets.map(toAssetRow);
@@ -119,7 +119,7 @@ async function assetMaster(wb: Collector, c: Ctx) {
   addSheet(wb, 'Asset master', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Name', key: 'name', width: 28 }, { header: 'Equipment type', key: 'type', width: 18 },
     { header: 'Make', pdf: false, key: 'make' }, { header: 'Model', pdf: false, key: 'model' }, { header: 'Serial no', pdf: false, key: 'serial', width: 18 },
-    { header: 'Department', key: 'dept', width: 22 }, { header: 'Location', key: 'loc', width: 16 }, { header: 'Criticality', key: 'crit' },
+    { header: 'Tag no', pdf: false, key: 'tag', width: 16 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Location', key: 'loc', width: 16 }, { header: 'Criticality', key: 'crit' },
     { header: 'Status', key: 'status' }, { header: 'Installed', key: 'installed', fmt: 'date' }, { header: 'Age (years)', pdf: false, key: 'age', fmt: 'years' },
     { header: 'Warranty ends', key: 'warranty', fmt: 'date' }, { header: 'PMS every (months)', pdf: false, key: 'pmsMonths', fmt: 'int' },
     { header: 'Next PMS due', key: 'pms', fmt: 'date' }, { header: 'Next calibration due', key: 'cal', fmt: 'date' },
@@ -127,7 +127,7 @@ async function assetMaster(wb: Collector, c: Ctx) {
   ], assets.map((a) => {
     const r = toAssetRow(a);
     return {
-      code: a.assetCode, name: a.name, type: a.equipmentType.name, make: a.make, model: a.model, serial: a.serialNo, dept: a.department.name, loc: a.location.name,
+      code: a.assetCode, name: a.name, type: a.equipmentType.name, make: a.make, model: a.model, serial: a.serialNo, tag: a.tagNo, dept: a.department.name, loc: a.location.name,
       crit: CRITICALITY_LABEL[a.criticality], status: STATUS_LABEL[a.status], installed: a.installationDate, age: r.ageMonths == null ? null : Math.round((r.ageMonths / 12) * 10) / 10,
       warranty: a.warrantyEnd, pmsMonths: a.pmsFrequencyMonths, pms: a.status === 'active' ? a.nextPmsDue : null, cal: a.status === 'active' ? a.nextCalibrationDue : null,
       supplier: a.supplier?.name ?? null, servicer: a.serviceVendor?.name ?? null,
@@ -569,7 +569,7 @@ async function warrantyContracts(wb: Collector, c: Ctx) {
 // ---------- Entry point ----------
 
 // Reports that are "as at today" rather than for a period.
-const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contracts'];
+const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contracts', 'replacement'];
 
 export async function buildReport(type: ReportType, req: Request, q: ReportQuery): Promise<{ data: ReportData; filename: string }> {
   const me = currentUser(req);
@@ -599,6 +599,9 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     'warranty-contracts': () => warrantyContracts(out, ctx),
     condemnation: () => condemnationRegister(out, ctx),
     consumables: () => consumables(out, ctx),
+    engineers: () => engineers(out, ctx),
+    suppliers: () => suppliers(out, ctx),
+    replacement: () => replacement(out, ctx),
   };
   await builders[type]();
 
@@ -635,10 +638,176 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
         ? 'Condemnation committee members (name, designation, signature, date): ________________________________'
         : type === 'consumables'
           ? 'Stock today is as at the day this report was made, not the end of the period. Value = quantity × the unit cost at the time.'
+          : type === 'engineers'
+            ? 'Response = work started − complaint raised; repair = resolved − work started. "Sent back" counts fixes the ward reported as still not working. PMS counts each PMS once (corrections are not another PMS).'
+            : type === 'suppliers'
+              ? 'A company looks after equipment it services, or that it sold when no service company is set. Downtime adds up each breakdown, so overlapping faults on one machine count twice here (the uptime report counts them once).'
+              : type === 'replacement'
+                ? `Consider replacing: ${REPLACE_AGE_YEARS}+ years old, ${REPLACE_BREAKDOWNS_12M}+ breakdowns in 12 months, or repairs costing over ${REPLACE_SPEND_SHARE * 100}% of the purchase price in 12 months. Active equipment only.`
           : 'Condemned, transferred and not-in-use assets are included and labelled in the Status column.',
     ...out,
   };
   return { data, filename: `bme-${type}-${ranged ? `${from}_to_${to}` : today}` };
+}
+
+// ---------- Replacement and renewals (also in the monthly report) ----------
+
+// Equipment due for a replacement decision: any one of these is enough, and every reason is listed.
+export const REPLACE_AGE_YEARS = 10;
+export const REPLACE_BREAKDOWNS_12M = 4;
+export const REPLACE_SPEND_SHARE = 0.5; // repairs and spares in 12 months, against what the equipment cost
+
+// Active equipment to consider replacing, over the 12 months up to `to` (inclusive).
+export async function replacementCandidates(active: AssetWithRefs[], to: string) {
+  const toAt = zonedDayStart(addDaysISO(to, 1));
+  const yearAgo = zonedDayStart(isoDate(addMonths(parseDate(addDaysISO(to, 1)), -12)));
+  const ids = active.map((a) => a.id);
+  const [breaks12, spend12, orders] = await Promise.all([
+    prisma.complaint.groupBy({ by: ['assetId'], where: { assetId: { in: ids }, raisedAt: { gte: yearAgo, lt: toAt } }, _count: true }),
+    prisma.serviceExpense.groupBy({ by: ['assetId'], where: { assetId: { in: ids }, date: { gte: yearAgo, lte: parseDate(to) } }, _sum: { amount: true } }),
+    prisma.purchaseOrder.groupBy({ by: ['assetId'], where: { assetId: { in: ids } }, _sum: { cost: true } }),
+  ]);
+  return active.flatMap((a) => {
+    const ageMonths = toAssetRow(a).ageMonths;
+    const years = ageMonths == null ? null : ageMonths / 12;
+    const breaks = breaks12.find((b) => b.assetId === a.id)?._count ?? 0;
+    const spent = Number(spend12.find((s) => s.assetId === a.id)?._sum.amount ?? 0);
+    const cost = Number(orders.find((o) => o.assetId === a.id)?._sum.cost ?? 0);
+    const reasons = [
+      years != null && years >= REPLACE_AGE_YEARS && `${Math.floor(years)} years old`,
+      breaks >= REPLACE_BREAKDOWNS_12M && `${breaks} breakdowns in 12 months`,
+      cost > 0 && spent >= cost * REPLACE_SPEND_SHARE && `repairs ${Math.round((spent / cost) * 100)}% of its cost in 12 months`,
+    ].filter((r): r is string => !!r);
+    return reasons.length ? [{ a, years, breaks, spent, cost, reasons }] : [];
+  });
+}
+export function replacementSheet(out: Collector, name: string, candidates: Awaited<ReturnType<typeof replacementCandidates>>) {
+  addSheet(out, name, [
+    { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Age (years)', key: 'years', fmt: 'years' },
+    { header: 'Breakdowns, 12 months', key: 'breaks', fmt: 'int', width: 20 }, { header: 'Repair spend, 12 months', key: 'spent', fmt: 'money', width: 22 },
+    { header: 'Purchase cost', key: 'cost', fmt: 'money', width: 16 }, { header: 'Why', key: 'why', width: 40 },
+  ], candidates.map((r) => ({ code: r.a.assetCode, name: r.a.name, dept: r.a.department.name, years: r.years == null ? null : Math.round(r.years * 10) / 10, breaks: r.breaks, spent: r.spent, cost: r.cost || null, why: r.reasons.join('; ') })));
+}
+
+// Warranties and contracts of active equipment ending from `asAt` to `days` later, soonest first.
+export async function coverEnding(active: AssetWithRefs[], scope: Ctx['scope'], asAt: string, days: number) {
+  const horizon = addDaysISO(asAt, days);
+  const contracts = await prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(asAt), lte: parseDate(horizon) }, asset: { status: 'active', ...scope } }, include: { asset: { include: { department: true } } } });
+  return [
+    ...active.filter((a) => a.warrantyEnd && isoDate(a.warrantyEnd) >= asAt && isoDate(a.warrantyEnd) <= horizon).map((a) => ({ what: 'Warranty', a, dept: a.department.name, ends: a.warrantyEnd!, vendor: '' })),
+    ...contracts.map((k) => ({ what: `${k.type.toUpperCase().replace('_', '-')} contract`, a: k.asset, dept: k.asset.department.name, ends: k.endDate, vendor: k.vendor })),
+  ].sort((x, y) => x.ends.getTime() - y.ends.getTime());
+}
+export function coverSheet(out: Collector, name: string, cover: Awaited<ReturnType<typeof coverEnding>>) {
+  addSheet(out, name, [
+    { header: 'Cover', key: 'what' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 },
+    { header: 'Vendor', key: 'vendor', width: 20 }, { header: 'Ends', key: 'ends', fmt: 'date' },
+  ], cover.map((r) => ({ what: r.what, code: r.a.assetCode, name: r.a.name, dept: r.dept, vendor: r.vendor, ends: r.ends })));
+}
+
+// As things stand today: what to plan for replacing, and what cover runs out in the next 90 days.
+async function replacement(wb: Collector, c: Ctx) {
+  const today = todayISO();
+  const active = await prisma.asset.findMany({ where: { status: 'active', ...c.scope }, include: assetInclude, orderBy: { assetCode: 'asc' } });
+  const candidates = await replacementCandidates(active, today);
+  const cover = await coverEnding(active, c.scope, today, 90);
+  kpi(wb, 'To consider replacing', candidates.length, 'int', `Of ${active.length} active`, candidates.length ? 'warn' : 'good');
+  kpi(wb, `${REPLACE_AGE_YEARS}+ years old`, candidates.filter((r) => r.years != null && r.years >= REPLACE_AGE_YEARS).length, 'int');
+  kpi(wb, `${REPLACE_BREAKDOWNS_12M}+ breakdowns in 12 months`, candidates.filter((r) => r.breaks >= REPLACE_BREAKDOWNS_12M).length, 'int');
+  kpi(wb, 'Cover ending in 90 days', cover.length, 'int', cover.length ? 'Renew or plan' : 'None', cover.length ? 'warn' : 'good');
+  if (candidates.length) wb.charts.push(oneSeries('replace-by-department', 'To consider replacing, by department', 'bar', 'Assets', tally(candidates, (r) => r.a.department.name), 'int'));
+  replacementSheet(wb, 'Equipment to consider replacing', candidates);
+  coverSheet(wb, 'Cover ending in 90 days', cover); // sheet names: 31 characters at most
+}
+
+// Per engineer in the period: complaints started and resolved, how fast, fixes sent back as still not working, PMS
+// done and calibrations recorded. Whoever did the work counts, including people who have since left.
+async function engineers(wb: Collector, c: Ctx) {
+  const inPeriod = { gte: c.fromAt, lt: c.toAt };
+  const assetScope = { asset: { ...c.scope } };
+  const [started, resolved, sentBack, pmsRows, calibrations] = await Promise.all([
+    prisma.complaint.findMany({ where: { startedAt: inPeriod, startedBy: { not: null }, ...c.scope }, select: { startedBy: true, raisedAt: true, startedAt: true } }),
+    prisma.complaint.findMany({ where: { resolvedAt: inPeriod, resolvedBy: { not: null }, ...c.scope }, select: { resolvedBy: true, startedAt: true, resolvedAt: true } }),
+    // A reopened complaint keeps the undone resolution as a `resolved` step, by whoever resolved it.
+    prisma.complaintStep.findMany({ where: { kind: 'resolved', at: inPeriod, by: { not: null }, complaint: { ...c.scope } }, select: { by: true } }),
+    prisma.pmsRecord.findMany({ where: { performedOn: { gte: parseDate(c.from), lte: parseDate(c.to) }, correctsRecordId: null, ...assetScope }, select: { performedBy: true } }),
+    prisma.calibrationRecord.findMany({ where: { doneOn: { gte: parseDate(c.from), lte: parseDate(c.to) }, createdBy: { not: null }, ...assetScope }, select: { createdBy: true } }),
+  ]);
+  const open = await prisma.complaint.groupBy({ by: ['assignedToId'], where: { status: { in: ['open', 'in_progress', 'on_hold'] }, assignedToId: { not: null }, ...c.scope }, _count: true });
+  const ids = [...new Set([...started.map((x) => x.startedBy!), ...resolved.map((x) => x.resolvedBy!), ...sentBack.map((x) => x.by!), ...pmsRows.map((x) => x.performedBy), ...calibrations.map((x) => x.createdBy!), ...open.map((o) => o.assignedToId!)])];
+  const people = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, active: true }, orderBy: { name: 'asc' } });
+  const h = (ms: number[]) => (ms.length ? Math.round((ms.reduce((s, v) => s + v, 0) / ms.length / 3_600_000) * 10) / 10 : null);
+  const rows = people.map((p) => {
+    const mine = started.filter((x) => x.startedBy === p.id);
+    const fixed = resolved.filter((x) => x.resolvedBy === p.id);
+    return {
+      name: p.active ? p.name : `${p.name} (left)`,
+      started: mine.length,
+      response: h(mine.map((x) => x.startedAt!.getTime() - x.raisedAt.getTime())),
+      resolved: fixed.length,
+      repair: h(fixed.filter((x) => x.startedAt).map((x) => x.resolvedAt!.getTime() - x.startedAt!.getTime())),
+      sentBack: sentBack.filter((x) => x.by === p.id).length,
+      open: open.find((o) => o.assignedToId === p.id)?._count ?? 0,
+      pms: pmsRows.filter((x) => x.performedBy === p.id).length,
+      cal: calibrations.filter((x) => x.createdBy === p.id).length,
+    };
+  });
+  kpi(wb, 'Complaints resolved', resolved.length, 'int', span(c));
+  kpi(wb, 'Average response', h(started.map((x) => x.startedAt!.getTime() - x.raisedAt.getTime())), 'hours', 'Raised to work started');
+  kpi(wb, 'Average repair', h(resolved.filter((x) => x.startedAt).map((x) => x.resolvedAt!.getTime() - x.startedAt!.getTime())), 'hours', 'Work started to resolved');
+  kpi(wb, 'Fixes sent back', sentBack.length, 'int', 'Reported still not working', sentBack.length ? 'warn' : 'good');
+  if (rows.some((r) => r.resolved)) wb.charts.push(oneSeries('resolved-by-engineer', 'Complaints resolved, by engineer', 'bar', 'Complaints', rows.filter((r) => r.resolved).map((r) => [r.name, r.resolved] as [string, number]).sort((a, b) => b[1] - a[1]), 'int'));
+  addSheet(wb, 'Engineers', [
+    { header: 'Engineer', key: 'name', width: 24 }, { header: 'Started', key: 'started', fmt: 'int' }, { header: 'Average response (h)', key: 'response', fmt: 'hours', width: 20 },
+    { header: 'Resolved', key: 'resolved', fmt: 'int' }, { header: 'Average repair (h)', key: 'repair', fmt: 'hours', width: 18 }, { header: 'Sent back', key: 'sentBack', fmt: 'int' },
+    { header: 'Unresolved now', key: 'open', fmt: 'int', width: 16 }, { header: 'PMS done', key: 'pms', fmt: 'int' }, { header: 'Calibrations recorded', key: 'cal', fmt: 'int', width: 20 },
+  ], rows, ['started', 'resolved', 'sentBack', 'open', 'pms', 'cal']);
+}
+
+// Per company in the suppliers list: what it sold and looks after, how that equipment broke down in the period, what
+// was spent on it and the company's contracts running today.
+async function suppliers(wb: Collector, c: Ctx) {
+  const today = parseDate(todayISO());
+  const [vendors, assets, contracts] = await Promise.all([
+    prisma.vendor.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    prisma.asset.findMany({ where: { ...c.scope, OR: [{ supplierId: { not: null } }, { serviceVendorId: { not: null } }] }, select: { id: true, status: true, supplierId: true, serviceVendorId: true } }),
+    prisma.serviceContract.findMany({ where: { endDate: { gte: today }, startDate: { lte: today }, asset: { ...c.scope } }, select: { vendor: true } }),
+  ]);
+  const caredFor = (vid: string) => assets.filter((a) => (a.serviceVendorId ?? a.supplierId) === vid).map((a) => a.id);
+  const allCared = [...new Set(assets.map((a) => a.id))];
+  const [complaints, spend, orders] = await Promise.all([
+    prisma.complaint.findMany({ where: { assetId: { in: allCared }, raisedAt: { gte: c.fromAt, lt: c.toAt } }, select: { assetId: true, raisedAt: true, startedAt: true, resolvedAt: true } }),
+    prisma.serviceExpense.groupBy({ by: ['assetId'], where: { assetId: { in: allCared }, date: { gte: parseDate(c.from), lte: parseDate(c.to) } }, _sum: { amount: true } }),
+    prisma.purchaseOrder.groupBy({ by: ['assetId'], where: { assetId: { in: allCared } }, _sum: { cost: true } }),
+  ]);
+  const rows = vendors.flatMap((v) => {
+    const supplied = assets.filter((a) => a.supplierId === v.id);
+    const looked = new Set(caredFor(v.id));
+    const theirs = complaints.filter((x) => looked.has(x.assetId));
+    const running = contracts.filter((k) => k.vendor.trim().toLowerCase() === v.name.trim().toLowerCase()).length;
+    if (!supplied.length && !looked.size && !running) return [];
+    const down = theirs.reduce((s, x) => s + (complaintMetrics(x).downtimeSeconds ?? 0), 0);
+    return [{
+      name: v.name,
+      supplied: supplied.length,
+      suppliedActive: supplied.filter((a) => a.status === 'active').length,
+      bought: supplied.reduce((s, a) => s + Number(orders.find((o) => o.assetId === a.id)?._sum.cost ?? 0), 0) || null,
+      looked: looked.size,
+      breakdowns: theirs.length,
+      downtime: Math.round((down / 3600) * 10) / 10,
+      spent: [...looked].reduce((s, id) => s + Number(spend.find((x) => x.assetId === id)?._sum.amount ?? 0), 0),
+      contracts: running,
+    }];
+  });
+  kpi(wb, 'Companies', rows.length, 'int', 'With equipment or contracts');
+  kpi(wb, 'Breakdowns', rows.reduce((s, r) => s + r.breakdowns, 0), 'int', 'On equipment they look after');
+  kpi(wb, 'Service spend', rows.reduce((s, r) => s + r.spent, 0), 'money', span(c));
+  if (rows.some((r) => r.breakdowns)) wb.charts.push(oneSeries('breakdowns-by-supplier', 'Breakdowns of the equipment each company looks after', 'bar', 'Breakdowns', top(rows.filter((r) => r.breakdowns).map((r) => [r.name, r.breakdowns] as [string, number]).sort((a, b) => b[1] - a[1]), 10), 'int'));
+  addSheet(wb, 'Suppliers', [
+    { header: 'Company', key: 'name', width: 26 }, { header: 'Equipment sold', key: 'supplied', fmt: 'int', width: 16 }, { header: 'Still in use', key: 'suppliedActive', fmt: 'int' },
+    { header: 'Bought for', key: 'bought', fmt: 'money', width: 16 }, { header: 'Looks after', key: 'looked', fmt: 'int' }, { header: 'Breakdowns', key: 'breakdowns', fmt: 'int' },
+    { header: 'Downtime (h)', key: 'downtime', fmt: 'hours' }, { header: 'Service spend', key: 'spent', fmt: 'money', width: 16 }, { header: 'Contracts running', key: 'contracts', fmt: 'int', width: 18 },
+  ], rows, ['supplied', 'suppliedActive', 'bought', 'looked', 'breakdowns', 'downtime', 'spent', 'contracts']);
 }
 
 // ---------- One asset's whole life ----------

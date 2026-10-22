@@ -251,9 +251,11 @@ function Overview({ a }: { a: AssetDetail }) {
           </Descriptions.Item>
           <Descriptions.Item label="Equipment type">{a.equipmentTypeName}</Descriptions.Item>
           <Descriptions.Item label="Serial number">{a.serialNo ?? '—'}</Descriptions.Item>
+          {a.tagNo && <Descriptions.Item label="Hospital tag no">{a.tagNo}</Descriptions.Item>}
           <Descriptions.Item label="Installed">{formatDate(a.installationDate)}</Descriptions.Item>
           <Descriptions.Item label="Warranty">{a.warrantyMonths != null ? `${a.warrantyMonths} months` : '—'}</Descriptions.Item>
           <Descriptions.Item label="PMS interval">{a.pmsFrequencyMonths ? `Every ${a.pmsFrequencyMonths} months` : '—'}</Descriptions.Item>
+          {a.calibrationFrequencyMonths && <Descriptions.Item label="Calibration interval">Every {a.calibrationFrequencyMonths} months (this machine)</Descriptions.Item>}
           {a.openingPmsOn && <Descriptions.Item label="Last PMS before this system">{formatDate(a.openingPmsOn)}</Descriptions.Item>}
           {a.openingCalibrationOn && <Descriptions.Item label="Last calibration before this system">{formatDate(a.openingCalibrationOn)}</Descriptions.Item>}
           <Descriptions.Item label="Registered">{formatDateTime(a.createdAt)}</Descriptions.Item>
