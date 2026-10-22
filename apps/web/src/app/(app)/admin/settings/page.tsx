@@ -1,7 +1,7 @@
 'use client';
 
 import { LockOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
 import { FormPageSkeleton } from '@/components/Skeletons';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatSize } from '@/lib/format';
 
 function SettingsPageScreen() {
   const { message } = App.useApp();
@@ -42,6 +42,7 @@ function SettingsPageScreen() {
       transfersEnabled: values.transfersEnabled,
       biomedContact: values.biomedContact ?? null,
       idleLogoutMinutes: values.idleLogoutMinutes ?? 0,
+      labelBaseUrl: values.labelBaseUrl ?? null,
       smtpHost: values.smtpHost ?? null,
       smtpPort: values.smtpPort ?? null,
       smtpUser: values.smtpUser ?? null,
@@ -177,6 +178,13 @@ function SettingsPageScreen() {
             >
               <InputNumber min={0} max={720} style={{ width: 160 }} />
             </Form.Item>
+            <Form.Item
+              label="Address on QR labels"
+              name="labelBaseUrl"
+              extra="The address staff use on the hospital network, e.g. http://bme.hospital.local. QR labels open it whichever computer prints them. Leave empty to use the address the labels are printed from."
+            >
+              <Input maxLength={200} placeholder="http://bme.hospital.local" />
+            </Form.Item>
             </Card>
           <Card title="Email for reminders (optional)">
             <Typography.Paragraph type="secondary">
@@ -214,6 +222,18 @@ function SettingsPageScreen() {
               The check runs automatically every day at 06:00. Run it now after changing lead times, or to show how it works. It never sends the same reminder twice.
             </Typography.Paragraph>
             <Button loading={busy === 'run'} onClick={runReminders}>Run reminders now</Button>
+          </Card>
+          {/* For support: which release runs here and whether the daily job and the disk are fine (gap review #24). */}
+          <Card title="System">
+            <Descriptions size="small" column={1}>
+              <Descriptions.Item label="Version">{settings.data.system.version}</Descriptions.Item>
+              <Descriptions.Item label="Daily check last ran">{settings.data.system.dailyJobLastRunAt ? formatDateTime(settings.data.system.dailyJobLastRunAt) : 'Not yet'}</Descriptions.Item>
+              {settings.data.system.storageFreeBytes != null && settings.data.system.storageTotalBytes != null && (
+                <Descriptions.Item label="Free space for documents">
+                  {formatSize(settings.data.system.storageFreeBytes)} of {formatSize(settings.data.system.storageTotalBytes)}
+                </Descriptions.Item>
+              )}
+            </Descriptions>
           </Card>
           {/* Written by the nightly backup on the hospital server (deploy/backup.sh). The daily check tells the HOD if
               it failed or stopped (gap review #23). */}

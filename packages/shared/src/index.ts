@@ -11,10 +11,17 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((v) => (v === '' ? null : v));
 
+// The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
+// knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
+export const APP_VERSION = '1.0.0';
+
 export type HealthResponse = {
   status: 'ok';
   database: 'up' | 'down';
   serverTime: string;
+  version: string;
+  // When the daily job (reminders, complaint follow-up, backup and disk checks) last ran: a stopped job shows here.
+  dailyJobLastRunAt: string | null;
 };
 
 // ---------- Roles & permissions ----------
@@ -75,6 +82,10 @@ const BIOMED: PermissionCode[] = [
 
 // Defaults seeded into the DB; hospitals can adjust them later.
 // The HOD's role always keeps these, so a mis-click in Roles cannot lock the hospital out of its own install.
+// A deputy HOD (gap review #19): a biomedical engineer the HOD trusts to approve, assign and hold complaints while the
+// HOD is away. Given per person (users.deputy), on top of their role, so the role stays as it is for everyone else.
+export const DEPUTY_PERMISSIONS: PermissionCode[] = ['approval.decide', 'complaint.assign', 'complaint.hold', 'notification.view'];
+
 export const ADMIN_KEEPS: PermissionCode[] = ['role.manage', 'user.manage', 'setup.manage', 'approval.decide'];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, readonly PermissionCode[]> = {
@@ -158,6 +169,8 @@ const userBase = {
   role: z.enum(ROLE_NAMES),
   departmentId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
+  // Deputy HOD: biomedical staff only (DEPUTY_PERMISSIONS).
+  deputy: z.boolean().optional(),
 };
 
 const nursingNeedsDepartment = (v: { role?: RoleName; departmentId?: string | null }) =>
@@ -180,6 +193,7 @@ export type UserRow = {
   email: string;
   username: string | null;
   mustChangePassword: boolean;
+  deputy: boolean;
   role: RoleName;
   roleLabel: string;
   departmentId: string | null;
@@ -219,6 +233,15 @@ export const updateSettingsSchema = z.object({
   biomedContact: optionalText(200),
   // Shared ward PCs: sign out after this many minutes without use; 0 = never.
   idleLogoutMinutes: z.number().int().min(0).max(720).optional(),
+  // The address QR labels point at (e.g. http://bme.hospital.local); empty = the address the label is printed from.
+  labelBaseUrl: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^https?:\/\/[^\s/?#]+(:\d+)?\/?$/, 'Use an address like http://bme.hospital.local')
+    .transform((v) => v.replace(/\/$/, ''))
+    .nullish()
+    .or(z.literal('').transform(() => null)),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
   // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
   smtpHost: optionalText(200),
@@ -253,6 +276,9 @@ export type SettingsResponse = {
   backupLastAt: string | null;
   backupLastError: string | null;
   backupLastErrorAt: string | null;
+  labelBaseUrl: string | null;
+  // How the server is doing (gap review #24).
+  system: { version: string; dailyJobLastRunAt: string | null; storageFreeBytes: number | null; storageTotalBytes: number | null };
 };
 
 // ---------- Assets ----------
@@ -347,7 +373,8 @@ export const assetLabelsQuerySchema = assetListQuerySchema.omit({ sortBy: true, 
 export type AssetLabel = { id: string; assetCode: string; name: string; departmentName: string; locationName: string; lastPmsOn: string | null; nextPmsDue: string | null };
 // At most MAX_LABELS in one print; `total` says how many matched, so the page can say when it is cut short.
 export const MAX_LABELS = 1000;
-export type AssetLabelsResponse = { hospitalName: string; items: AssetLabel[]; total: number };
+// baseUrl: the fixed address labels point at (Hospital settings), or null for the address they are printed from.
+export type AssetLabelsResponse = { hospitalName: string; baseUrl: string | null; items: AssetLabel[]; total: number };
 
 export type WarrantyStatus = 'none' | 'active' | 'expiring' | 'expired';
 
@@ -862,8 +889,9 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-// backup: the nightly backup failed or stopped; account: someone asks the HOD for a new password.
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'backup', 'account'] as const;
+// system: the nightly backup failed or stopped, or the server is short of disk space; account: someone asks the HOD
+// for a new password.
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'system', 'account'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {

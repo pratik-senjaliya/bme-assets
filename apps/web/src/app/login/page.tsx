@@ -5,7 +5,7 @@ import { Alert, App, Button, Form, Input, Modal, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { safeNext } from '@/lib/nav';
-import { forgotPasswordSchema, loginSchema } from '@bme/shared';
+import { APP_VERSION, forgotPasswordSchema, loginSchema } from '@bme/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, useSingleFlight } from '@/lib/forms';
@@ -144,7 +144,7 @@ export default function LoginPage() {
             )}
           </Modal>
       </div>
-      <div style={{ color: COLORS.muted, fontSize: 12.5 }}>For hospital staff only. Every sign-in is recorded.</div>
+      <div style={{ color: COLORS.muted, fontSize: 12.5 }}>For hospital staff only. Every sign-in is recorded. · Version {APP_VERSION}</div>
     </main>
   );
 }

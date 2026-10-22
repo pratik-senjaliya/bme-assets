@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { HealthResponse } from '@bme/shared';
+import { APP_VERSION, type HealthResponse } from '@bme/shared';
 import { authenticate } from './lib/auth';
 import { prisma } from './lib/prisma';
 import { approvalsRouter } from './modules/approvals/approvals.routes';
@@ -31,7 +31,8 @@ v1.get('/health', async (_req, res) => {
   } catch {
     database = 'down';
   }
-  const body: HealthResponse = { status: 'ok', database, serverTime: new Date().toISOString() };
+  const settings = database === 'up' ? await prisma.hospitalSettings.findFirst({ select: { dailyJobLastRunAt: true } }) : null;
+  const body: HealthResponse = { status: 'ok', database, serverTime: new Date().toISOString(), version: APP_VERSION, dailyJobLastRunAt: settings?.dailyJobLastRunAt?.toISOString() ?? null };
   res.status(database === 'up' ? 200 : 503).json(body);
 });
 

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 // Where uploaded files live: local disk (on-prem) or Supabase Storage (demo). Chosen by STORAGE_DRIVER;
@@ -46,6 +46,21 @@ function supabaseStorage(url: string, serviceKey: string, bucket: string): FileS
       await check(await fetch(endpoint(key), { method: 'DELETE', headers: auth }), 'delete');
     },
   };
+}
+
+// Free and total bytes on the disk that holds the uploads (local driver only; the hosted storage is the provider's
+// concern). Null when it cannot be read.
+export async function diskSpace(): Promise<{ free: number; total: number } | null> {
+  if (process.env.STORAGE_DRIVER === 'supabase') return null;
+  for (const dir of [process.env.STORAGE_PATH || './uploads', '.']) {
+    try {
+      const s = await statfs(dir);
+      return { free: s.bavail * s.bsize, total: s.blocks * s.bsize };
+    } catch {
+      // not created yet: the disk of the working folder is the same one
+    }
+  }
+  return null;
 }
 
 // Read from the environment on each call so tests can point it at a temp folder.

@@ -117,6 +117,10 @@ model HospitalSettings {
   backupLastAt      DateTime?
   backupLastError   String?
   backupLastErrorAt DateTime?
+  // The address QR labels point at; null = the address they are printed from.
+  labelBaseUrl      String?
+  // Set by the daily job each time it runs, so a stopped job shows (health, Hospital settings).
+  dailyJobLastRunAt DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   createdBy        String?
@@ -222,6 +226,8 @@ model User {
   passwordHash String
   // Set when the HOD gives or resets the password: the person must choose their own before anything else.
   mustChangePassword Boolean @default(false)
+  // Deputy HOD (biomedical staff only): DEPUTY_PERMISSIONS on top of the role.
+  deputy       Boolean  @default(false)
   roleId       String
   departmentId String? // required for nursing users
   active       Boolean  @default(true)

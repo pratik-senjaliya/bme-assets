@@ -32,6 +32,7 @@ const toRow = (u: UserWithRefs): UserRow => ({
   email: u.email,
   username: u.username,
   mustChangePassword: u.mustChangePassword,
+  deputy: u.deputy,
   role: u.role.name as RoleName,
   roleLabel: ROLE_LABELS[u.role.name as RoleName] ?? u.role.label,
   departmentId: u.departmentId,
@@ -69,10 +70,11 @@ usersRouter.get('/', async (_req, res) => {
 });
 
 usersRouter.post('/', validate(createUserSchema), async (req, res) => {
-  const { password, role, departmentId, ...rest } = req.body as CreateUserInput;
+  const { password, role, departmentId, deputy, ...rest } = req.body as CreateUserInput;
   guardSuperAdmin(currentUser(req).role, role);
   const data = {
     ...rest,
+    deputy: role === 'biomed' && !!deputy, // deputy HOD is for biomedical staff only
     roleId: await roleId(role),
     departmentId: role === 'nursing' ? departmentId : null,
     passwordHash: await bcrypt.hash(password, 10),
@@ -85,7 +87,7 @@ usersRouter.post('/', validate(createUserSchema), async (req, res) => {
 });
 
 usersRouter.patch('/:id', validate(updateUserSchema), async (req, res) => {
-  const { password, role, departmentId, ...rest } = req.body as UpdateUserInput;
+  const { password, role, departmentId, deputy, ...rest } = req.body as UpdateUserInput;
   const me = currentUser(req);
   const before = await prisma.user.findUniqueOrThrow({ where: { id: idOf(req) }, include: { role: true } });
   guardSuperAdmin(me.role, before.role.name as RoleName, role);
@@ -96,6 +98,7 @@ usersRouter.patch('/:id', validate(updateUserSchema), async (req, res) => {
     ...rest,
     roleId: await roleId(role),
     departmentId: role === 'nursing' ? departmentId : null,
+    deputy: role === 'biomed' && (deputy ?? before.deputy),
     // A reset ends the person's sessions everywhere (the audit entry shows the version going up).
     // and a password set by someone else is changed at the next sign-in.
     ...(password ? { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 }, mustChangePassword: before.id !== me.id } : {}),

@@ -1,6 +1,7 @@
 import PgBoss from 'pg-boss';
 import { config } from './lib/config';
 import { todayISO } from './lib/dates';
+import { prisma } from './lib/prisma';
 import { followUpResolvedComplaints } from './modules/complaints/complaints.service';
 import { generateReminders } from './modules/reminders/reminders.service';
 import { MONTHLY_TIME, lastMonth, saveMonthlyReport } from './modules/reports/monthly.service';
@@ -14,6 +15,7 @@ async function runReminders() {
   // Resolved complaints: close the ones whose time is up, remind their raisers of the rest.
   const complaints = await followUpResolvedComplaints(todayISO());
   if (complaints.closed || complaints.reminded) console.log(`Complaints: ${complaints.closed} closed automatically, ${complaints.reminded} raisers reminded`);
+  await prisma.hospitalSettings.updateMany({ data: { dailyJobLastRunAt: new Date() } });
 }
 
 // Last month's management report, saved once (see saveMonthlyReport).

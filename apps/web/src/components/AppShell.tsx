@@ -29,7 +29,7 @@ import { Button, Dropdown, Grid, Layout, Menu, type MenuProps } from 'antd';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ApprovalRow, HospitalInfo, PermissionCode } from '@bme/shared';
+import { APP_VERSION, type ApprovalRow, type HospitalInfo, type PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -224,6 +224,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             menu={{
               items: [
                 { key: 'role', label: `${user.roleLabel}`, disabled: true },
+                { key: 'version', label: `Version ${APP_VERSION}`, disabled: true },
                 { key: 'password', icon: <KeyOutlined />, label: 'Change password' },
                 { type: 'divider' },
                 {

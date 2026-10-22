@@ -150,7 +150,25 @@ own certificate authority:
 4. `docker compose up -d`, then install Caddy's root certificate (from the `caddy-data` volume,
    `pki/authorities/local/root.crt`) on the staff PCs so browsers trust it.
 
+Phones that scan QR labels must trust that certificate too, or they show a warning first; on a LAN where that is a
+burden, keep plain HTTP.
+
 *This option has not been tested yet.*
+
+## QR labels and the server's address
+
+QR labels hold the address of each machine's page. Set **Admin > Hospital settings > Address on QR labels** to the
+address staff use on the hospital network (for example `http://bme.hospital.local`, or `http://192.168.1.20` if
+there is no name), so labels printed from any computer open the right place. If the server's address ever changes,
+labels already stuck on machines keep the old one: give the new server the old name or address if you can.
+
+## Keeping an eye on it
+
+- **Admin > Hospital settings > System** shows the version, when the daily check last ran and the free disk space.
+- `http://<server>/api/v1/health` answers with the version, whether the database is up and when the daily check last
+  ran (for a monitoring tool, if the hospital has one).
+- The HOD gets a notice in the bell when a backup failed or stopped, or when the disk has less than 2 GB or 10% free.
+- Container logs rotate by themselves (5 files of 10 MB each per service).
 
 ## What was and was not tested
 
