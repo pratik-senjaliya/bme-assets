@@ -178,12 +178,14 @@ async function decide(req: Parameters<typeof currentUser>[0], status: 'approved'
   const files = await prisma.$transaction(async (tx) => {
     const { count } = await tx.approvalRequest.updateMany({
       where: { id: before.id, status: 'pending' },
-      data: { status, decidedBy: me.id, decidedAt: new Date(), reason: note },
+      // A copy of what was decided, as it read then: the record (or the asset) may be gone afterwards.
+      data: { status, decidedBy: me.id, decidedAt: new Date(), reason: note, payload: { ...(before.payload as object), snapshot: { summary: summaryRow.summary, assetCode: summaryRow.assetCode, assetName: summaryRow.assetName } } },
     });
     if (count === 0) throw new HttpError(409, 'This request has already been decided');
     const after = await tx.approvalRequest.findUniqueOrThrow({ where: { id: before.id } });
     const toRemove = status === 'approved' ? await applyApproval(tx, req, after) : [];
-    await audit(tx, req, { action: status === 'approved' ? 'approval.approve' : 'approval.reject', entityType: 'approval_request', entityId: before.id, before, after });
+    // A one-HOD hospital decides its own requests too; that is allowed, and always marked (gap review #16).
+    await audit(tx, req, { action: status === 'approved' ? 'approval.approve' : 'approval.reject', entityType: 'approval_request', entityId: before.id, before, after: { ...after, selfApproved: before.requestedBy === me.id } });
 
     // The notice links to the asset only if it still exists (this request, or an earlier one, may have deleted it);
     // otherwise a request about a deleted asset could never be approved or rejected.

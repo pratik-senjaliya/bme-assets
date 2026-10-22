@@ -331,7 +331,9 @@ describe('reminders', () => {
     assert.equal((await call(base, admin, 'POST', `/notifications/${target.id}/read`)).status, 404);
     assert.equal((await call(base, biomed, 'POST', `/notifications/${target.id}/read`)).status, 204);
     assert.equal((await (await call(base, biomed, 'GET', '/notifications')).json()).unread, mineList.unread - 1);
-    assert.equal((await call(base, nursing, 'GET', '/notifications')).status, 403);
+    // Nursing has the bell too (gap review #6), and sees only its own notices.
+    const nursingList = (await (await call(base, nursing, 'GET', '/notifications')).json()) as { items: { id: string }[] };
+    assert.ok(!nursingList.items.some((x) => x.id === target.id), 'a nurse sees someone else’s notice');
     assert.equal((await call(base, biomed, 'POST', '/reminders/run')).status, 403);
   });
 });

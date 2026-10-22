@@ -93,7 +93,7 @@ const condemn = async (assetId: string) => {
 };
 
 describe('8. People hear about complaints', () => {
-  it('a new complaint tells the biomedical staff; resolving it tells the person who raised it (if they have the bell)', async () => {
+  it('a new complaint tells the biomedical staff; resolving it tells the person who raised it (the wards have the bell too)', async () => {
     const a = await makeAsset();
     const c = await raise(a.id);
     assert.equal(await unread(ids.biomedUser, a.id, 'complaint'), 1, 'biomed is told');
@@ -103,10 +103,10 @@ describe('8. People hear about complaints', () => {
     assert.equal((await call(base, admin, 'POST', `/complaints/${own.id}/resolve`, { resolutionNotes: 'Replaced the fuse' })).status, 200);
     const told = await prisma.notification.findFirst({ where: { userId: ids.biomedUser, assetId: a.id, message: { contains: `${own.complaintNo} resolved` } } });
     assert.ok(told, 'the raiser is told it is resolved');
-    // Nursing has no bell by default, so nothing is stored for them.
+    // Nursing has the bell by default (gap review #6): the ward that raised it hears it is fixed.
     await call(base, admin, 'POST', `/complaints/${c.id}/start`);
     await call(base, admin, 'POST', `/complaints/${c.id}/resolve`, { resolutionNotes: 'Fixed' });
-    assert.equal(await prisma.notification.count({ where: { userId: ids.nursingUser, assetId: a.id } }), 0);
+    assert.equal(await prisma.notification.count({ where: { userId: ids.nursingUser, assetId: a.id, message: { contains: `${c.complaintNo} resolved` } } }), 1);
   });
 });
 

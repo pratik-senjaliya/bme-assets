@@ -126,8 +126,14 @@ setupRouter.delete('/locations/:id', requirePermission('setup.manage'), async (r
 
 // ---------- Equipment types ----------
 
+// Each type with its latest PMS checklist version (null: none yet, so PMS cannot be recorded for it; gap review #21).
 setupRouter.get('/equipment-types', requirePermission('asset.view'), async (_req, res) => {
-  res.json(await prisma.equipmentType.findMany({ orderBy: { name: 'asc' } }));
+  const [types, versions] = await Promise.all([
+    prisma.equipmentType.findMany({ orderBy: { name: 'asc' } }),
+    prisma.pmsTemplate.groupBy({ by: ['equipmentTypeId'], _max: { version: true } }),
+  ]);
+  const latest = new Map(versions.map((v) => [v.equipmentTypeId, v._max.version]));
+  res.json(types.map((t) => ({ ...t, checklistVersion: latest.get(t.id) ?? null })));
 });
 
 setupRouter.post('/equipment-types', requirePermission('setup.manage'), validate(equipmentTypeSchema), async (req, res) => {

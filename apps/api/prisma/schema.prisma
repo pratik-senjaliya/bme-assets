@@ -109,6 +109,10 @@ model HospitalSettings {
   smtpUser         String?
   smtpPassword     String?
   smtpFrom         String?
+  // The last email attempt, shown in Hospital settings so a mail server that stopped working is noticed.
+  mailLastSentAt   DateTime?
+  mailLastError    String?
+  mailLastErrorAt  DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   createdBy        String?
@@ -512,6 +516,8 @@ model Notification {
   role          String? // used when the notification targets a whole role
   type          String
   assetId       String?
+  // The complaint a complaint notice is about, so the bell opens it (a plain id: a deleted complaint leaves it dangling).
+  complaintId   String?
   dueDate       DateTime? @db.Date
   thresholdDays Int?
   message       String

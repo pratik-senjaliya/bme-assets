@@ -17,5 +17,14 @@ export async function sendMail(s: Settings, to: string, subject: string, text: s
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
   });
-  await transport.sendMail({ from: s.smtpFrom!, to, subject, text, attachments });
+  // Each attempt is written down (Hospital settings shows it), so a mail server that stopped working is noticed
+  // instead of failing quietly in the server log.
+  try {
+    await transport.sendMail({ from: s.smtpFrom!, to, subject, text, attachments });
+    await prisma.hospitalSettings.update({ where: { id: s.id }, data: { mailLastSentAt: new Date() } }).catch(() => undefined);
+  } catch (e) {
+    const error = `${to}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 500);
+    await prisma.hospitalSettings.update({ where: { id: s.id }, data: { mailLastError: error, mailLastErrorAt: new Date() } }).catch(() => undefined);
+    throw e;
+  }
 }

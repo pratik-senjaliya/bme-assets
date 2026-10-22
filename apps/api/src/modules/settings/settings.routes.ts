@@ -27,6 +27,9 @@ const toResponse = (s: Row): SettingsResponse => ({
   smtpUser: s.smtpUser,
   smtpFrom: s.smtpFrom,
   smtpPasswordSet: !!s.smtpPassword, // the password itself is never sent back
+  mailLastSentAt: s.mailLastSentAt?.toISOString() ?? null,
+  mailLastError: s.mailLastError,
+  mailLastErrorAt: s.mailLastErrorAt?.toISOString() ?? null,
 });
 
 // One row per install (no multi-tenancy).

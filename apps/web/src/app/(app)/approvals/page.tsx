@@ -6,7 +6,7 @@ import { useState } from 'react';
 import type { ApprovalRow, ApprovalType } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
-import { StatusTag } from '@/components/StatusTag';
+import { Pill, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime } from '@/lib/format';
@@ -136,6 +136,11 @@ export default function ApprovalsPage() {
               r.decidedAt ? (
                 <div>
                   {r.decidedByName}
+                  {r.selfApproved && (
+                    <div style={{ marginTop: 2 }}>
+                      <Pill tone="warn">Own request</Pill>
+                    </div>
+                  )}
                   <div style={{ color: COLORS.muted, fontSize: 12 }}>{formatDateTime(r.decidedAt)}</div>
                   {r.decisionNote && <div style={{ color: COLORS.muted, fontSize: 12 }}>{r.decisionNote}</div>}
                 </div>

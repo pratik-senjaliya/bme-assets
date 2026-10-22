@@ -175,7 +175,7 @@ describe('Documents on records', () => {
     assert.equal((await fetch(`${base}/attachments/${otherFile.id}/download`, { headers: { cookie: nursing } })).status, 404, 'nursing cannot download another department’s file');
   });
 
-  it('keeps costs and calibration documents away from nursing, and closes a resolved complaint to new files', async () => {
+  it('keeps costs and calibration documents away from nursing, and closes a resolved complaint to the ward (not to the service report)', async () => {
     const a = await makeAsset();
     const c = await (await raise(nursing, a.id)).json();
     assert.equal((await upload(nursing, { ownerType: 'service_expense', ownerId: c.id, kind: 'invoice' })).status, 403);
@@ -183,7 +183,9 @@ describe('Documents on records', () => {
 
     await call(base, biomed, 'POST', `/complaints/${c.id}/start`);
     await call(base, biomed, 'POST', `/complaints/${c.id}/resolve`, { resolutionNotes: 'Replaced the filter' });
-    assert.equal((await upload(biomed, { ownerType: 'complaint', ownerId: c.id, kind: 'photo' })).status, 409);
+    assert.equal((await upload(nursing, { ownerType: 'complaint', ownerId: c.id, kind: 'photo' })).status, 409);
+    // The OEM's report or the invoice often comes later: the biomedical team can still add it.
+    assert.equal((await upload(biomed, { ownerType: 'complaint', ownerId: c.id, kind: 'service_report' })).status, 201);
   });
 
   it('attaches a service report to a log entry and counts it', async () => {

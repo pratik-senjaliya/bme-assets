@@ -58,7 +58,7 @@ hospital LAN. Nothing in it needs the internet after installation.
    - Running it again is refused once the install has users.
 
 5. **Open the system** in a browser at the `PUBLIC_URL`, sign in as the admin, and:
-   1. Change both passwords (Admin > Users).
+   1. Change the admin's password: your name at the top right > **Change password**. The admin cannot change the super admin's password (that login belongs to the vendor): sign in once as the super admin and change it the same way, then keep it in the vendor's password store, not at the hospital. Each new user should do the same after their first sign-in.
    2. Check the asset ID pattern in Admin > Hospital settings **before adding the first asset**. It cannot be changed afterwards. Only the super admin can change it.
    3. Add departments and their locations, and any more equipment types (Admin).
    4. Add users: biomedical staff, and nursing staff (each tied to one department).

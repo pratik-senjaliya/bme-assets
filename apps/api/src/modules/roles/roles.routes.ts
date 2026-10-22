@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { rolePermissionsSchema, type PermissionCode, type RoleName, type RolePermissionsInput } from '@bme/shared';
+import { ADMIN_KEEPS, rolePermissionsSchema, type PermissionCode, type RoleName, type RolePermissionsInput } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
@@ -32,6 +32,8 @@ rolesRouter.put('/:id/permissions', validate(rolePermissionsSchema), async (req,
   const role = await prisma.role.findUniqueOrThrow({ where: { id: idOf(req) } });
   // Locked so a mis-click can never lock the vendor out of the install.
   if (role.name === 'super_admin') throw new HttpError(403, 'Super admin permissions cannot be changed');
+  const dropped = role.name === 'admin' ? ADMIN_KEEPS.filter((code) => !permissions.includes(code)) : [];
+  if (dropped.length) throw new HttpError(409, `The Admin (HOD) role always keeps: ${dropped.join(', ')}. Without them nobody in the hospital could manage the install.`);
 
   const before = await permissionCodes(role.id);
   const perms = await prisma.permission.findMany({ where: { code: { in: permissions } } });

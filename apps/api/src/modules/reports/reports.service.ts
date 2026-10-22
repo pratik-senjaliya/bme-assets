@@ -446,7 +446,7 @@ async function condemnationRegister(wb: Collector, c: Ctx) {
     return [{
       committee: date, code: a.assetCode, name: a.name, type: a.equipmentType.name, make: [a.make, a.model].filter(Boolean).join(' '), serial: a.serialNo, dept: a.department.name,
       installed: a.installationDate, age: years == null ? null : Math.round(years * 10) / 10, cost: cost || null, value: p.estimatedValue ?? null,
-      reason: p.reasonCategory ? CONDEMN_REASON_LABEL[p.reasonCategory] : '', details: p.reason ?? '', by: name(r.requestedBy), approver: name(r.decidedBy), approved: r.decidedAt, category: p.reasonCategory ?? 'other',
+      reason: p.reasonCategory ? CONDEMN_REASON_LABEL[p.reasonCategory] : '', details: p.reason ?? '', by: name(r.requestedBy), approver: r.decidedBy && r.decidedBy === r.requestedBy ? `${name(r.decidedBy)} (own request)` : name(r.decidedBy), approved: r.decidedAt, category: p.reasonCategory ?? 'other',
     }];
   }).sort((x, y) => x.committee.localeCompare(y.committee) || x.code.localeCompare(y.code));
   kpi(wb, 'Equipment condemned', rows.length, 'int', span(c));

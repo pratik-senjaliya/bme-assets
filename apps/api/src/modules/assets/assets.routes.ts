@@ -465,7 +465,9 @@ attachmentsRouter.post('/', upload.single('file'), async (req, res) => {
   if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so documents can no longer be added`);
   if (ownerType === 'complaint') {
     const c = await prisma.complaint.findUniqueOrThrow({ where: { id: ownerId } });
-    if (c.resolvedAt) throw new HttpError(409, 'This complaint is resolved, so documents can no longer be added');
+    // The OEM's service report or the invoice often arrives days after the fix: the biomedical team can still add it.
+    // The ward's photos stop at resolve (gap review #11). Nothing is removed from a resolved complaint.
+    if (c.resolvedAt && !me.permissions.includes('complaint.resolve')) throw new HttpError(409, 'This complaint is resolved, so documents can no longer be added');
   }
   res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset.id, ownerType, ownerId, kind })));
 });

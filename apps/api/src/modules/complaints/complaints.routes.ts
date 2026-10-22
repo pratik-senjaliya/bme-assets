@@ -33,9 +33,16 @@ import { complaintInclude, complaintNo, emailUrgent, toComplaintDetail, toCompla
 export const complaintsRouter = Router();
 
 // Nursing only sees its own department's complaints; a foreign id looks like a missing one.
+// Business rule 4 for complaints: nursing sees its own department's, and also the ones they raised themselves (a nurse
+// who moved department can still follow and close those; gap review #13).
+function complaintScope(me: ReturnType<typeof currentUser>): Prisma.ComplaintWhereInput {
+  const scope = departmentScope(me);
+  return scope.departmentId ? { OR: [{ departmentId: scope.departmentId }, { raisedById: me.id }] } : {};
+}
+
 async function findScoped(req: Request) {
   const complaint = await prisma.complaint.findFirst({
-    where: { id: idOf(req), ...departmentScope(currentUser(req)) },
+    where: { id: idOf(req), AND: [complaintScope(currentUser(req))] },
     include: complaintInclude,
   });
   if (!complaint) throw new HttpError(404, 'Complaint not found');
@@ -65,7 +72,8 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
         { asset: { name: { contains: q.search, mode: 'insensitive' as const } } },
       ],
     }),
-    ...departmentScope(me), // last, so it cannot be widened from the query
+    // Last, so they cannot be widened from the query. closable: resolved complaints the asker may close.
+    AND: [complaintScope(me), ...(q.closable ? [{ status: 'resolved' as const, OR: [{ raisedById: me.id }, ...(me.departmentId ? [{ departmentId: me.departmentId }] : [])] }] : [])],
   };
   // Waiting complaints: urgent ones first, then longest-waiting first. Resolved: most recent first. Mixed: newest first.
   const orderBy: Prisma.ComplaintOrderByWithRelationInput | Prisma.ComplaintOrderByWithRelationInput[] = q.sortBy
@@ -119,7 +127,7 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
       },
     });
     await audit(tx, req, { action: 'complaint.create', entityType: 'complaint', entityId: row.id, after: row });
-    await notify(tx, staff, `${input.urgent ? 'URGENT: machine cannot be used. ' : ''}New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint');
+    await notify(tx, staff, `${input.urgent ? 'URGENT: machine cannot be used. ' : ''}New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint', row.id);
     return row;
   });
   if (created.urgent) void emailUrgent(created, asset, me.name);
@@ -153,25 +161,30 @@ async function transition(
   });
 }
 
-// Tells people about a step, leaving out whoever took it.
-async function tell(req: Request, userIds: (string | null)[], message: string, assetId: string) {
+// Tells people about a step, leaving out whoever took it. The notice opens the complaint.
+async function tell(req: Request, userIds: (string | null)[], message: string, c: { id: string; assetId: string }) {
   const me = currentUser(req).id;
   const to = [...new Set(userIds.filter((id): id is string => !!id && id !== me))];
   const withBell = new Set(await usersWithPermissions('notification.view'));
-  await notify(prisma, to.filter((id) => withBell.has(id)), message, assetId, 'complaint');
+  await notify(prisma, to.filter((id) => withBell.has(id)), message, c.assetId, 'complaint', c.id);
 }
 
-complaintsRouter.post('/:id/start', requirePermission('complaint.start'), async (req, res) => {
+// Work starts: the response time stops here. An optional note says what happens next ("Checking the power board, back
+// in an hour"); whoever raised it hears that someone is on it (gap review #6, #14).
+complaintsRouter.post('/:id/start', requirePermission('complaint.start'), validate(optionalNoteSchema), async (req, res) => {
+  const { note } = req.body as OptionalNoteInput;
   const me = currentUser(req).id;
   const now = new Date();
-  const { after } = await transition(
+  const { before, after } = await transition(
     req,
     ['open'],
     // Starting an unassigned complaint makes it yours; one assigned to someone else stays theirs.
     (before) => ({ status: 'in_progress', startedAt: now, startedBy: me, ...(!before.assignedToId && { assignedToId: me, assignedAt: now, assignedBy: me }) }),
     'complaint.start',
     'This complaint has already been started',
+    note ? { step: { kind: 'started', note } } : {},
   );
+  await tell(req, [before.raisedById], `Complaint ${before.complaintNo}: ${currentUser(req).name} has started work on ${before.asset.name}${note ? `: "${note.slice(0, 80)}"` : ''}`, after);
   res.json(await one(after.id));
 });
 
@@ -187,7 +200,7 @@ complaintsRouter.post('/:id/escalate', requirePermission('complaint.start'), val
     },
     also: { escalatedAt: null },
   });
-  await tell(req, await usersWithPermissions('complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}"`, before.assetId);
+  await tell(req, await usersWithPermissions('complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}"`, before);
   res.json(await one(after.id));
 });
 
@@ -198,7 +211,8 @@ complaintsRouter.post('/:id/hold', requirePermission('complaint.hold'), validate
   const { before, after } = await transition(req, ['in_progress'], { status: 'on_hold', holdNote: note, escalatedAt: null, escalatedBy: null }, 'complaint.hold', 'Only a complaint being worked on can be put on hold', {
     step: { kind: 'held', note },
   });
-  await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} put on hold by ${currentUser(req).name}: "${note.slice(0, 80)}"`, before.assetId);
+  await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} put on hold by ${currentUser(req).name}: "${note.slice(0, 80)}"`, before);
+  await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is on hold: "${note.slice(0, 80)}"`, before);
   res.json(await one(after.id));
 });
 
@@ -211,7 +225,8 @@ complaintsRouter.post('/:id/resume', requirePermission('complaint.hold'), valida
       if (b.status === 'in_progress' && !b.escalatedAt) throw new HttpError(409, 'This complaint is not on hold or waiting for the HOD');
     },
   });
-  await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} is back with you${note ? `: "${note.slice(0, 80)}"` : ''}`, before.assetId);
+  await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} is back with you${note ? `: "${note.slice(0, 80)}"` : ''}`, before);
+  if (before.status === 'on_hold') await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is being worked on again`, before);
   res.json(await one(after.id));
 });
 
@@ -226,7 +241,7 @@ complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), va
     'Start the complaint before resolving it (or it is already resolved)',
   );
   // Whoever raised it hears that it is fixed and that it is theirs to close.
-  await tell(req, [after.raisedById], `Complaint ${after.complaintNo} resolved: check the equipment works, then close the complaint.`, after.assetId);
+  await tell(req, [after.raisedById], `Complaint ${after.complaintNo} resolved: check the equipment works, then close the complaint.`, after);
   res.json(await one(after.id));
 });
 
@@ -237,8 +252,10 @@ complaintsRouter.post('/:id/close', requirePermission('complaint.view'), validat
   const me = currentUser(req);
   const { after } = await transition(req, ['resolved'], { status: 'closed', closedAt: new Date(), closedBy: me.id, closeNote: note ?? null }, 'complaint.close', 'Only a resolved complaint can be closed', {
     step: { kind: 'closed', note },
+    // Whoever raised it, or someone of that department who can raise complaints (the next shift checks the machine).
     check: (b) => {
-      if (b.raisedById !== me.id) throw new HttpError(403, `Only ${b.raisedBy.name}, who raised it, can close this complaint`);
+      const sameWard = !!me.departmentId && me.departmentId === b.departmentId && me.permissions.includes('complaint.create');
+      if (b.raisedById !== me.id && !sameWard) throw new HttpError(403, `Only ${b.raisedBy.name}, who raised it, or someone from ${b.department.name} can close this complaint`);
     },
   });
   res.json(await one(after.id));
@@ -277,8 +294,13 @@ complaintsRouter.post('/:id/assign', requirePermission('complaint.view'), valida
     const after = await tx.complaint.findUniqueOrThrow({ where: { id: before.id } });
     await audit(tx, req, { action: 'complaint.assign', entityType: 'complaint', entityId: before.id, before, after });
     if (userId && userId !== me.id) {
-      await notify(tx, [userId], `Complaint ${before.complaintNo} assigned to you: ${before.asset.assetCode} ${before.asset.name} (by ${me.name})`, before.assetId, 'complaint');
+      await notify(tx, [userId], `Complaint ${before.complaintNo} assigned to you: ${before.asset.assetCode} ${before.asset.name} (by ${me.name})`, before.assetId, 'complaint', before.id);
     }
   });
+  // Whoever raised it hears who is on it.
+  if (userId) {
+    const who = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
+    await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is with ${who.name}`, before);
+  }
   res.json(await one(before.id));
 });
