@@ -81,7 +81,8 @@ await step('The audit log exports what the filters show to Excel', async () => {
 
 await step('"Forgot password" on the sign-in page tells the HOD', async () => {
   const ctx = await b.newContext(); const p = await ctx.newPage(); p.setDefaultTimeout(20000);
-  await p.goto(BASE + '/login');
+  // Wait until the page is ready: a click before it is would open nothing.
+  await p.goto(BASE + '/login'); await p.waitForLoadState('networkidle');
   await p.getByRole('button', { name: 'Ask your HOD for a new one' }).click();
   const m = p.locator('.ant-modal:visible');
   await m.locator('input').fill('nursing@demo.local');
