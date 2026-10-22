@@ -5,7 +5,8 @@ import { Card, Col, Row, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import type { Assignee, ComplaintRow, ConsumableRow, DueRow, Paged } from '@bme/shared';
+import type { AssetRow, Assignee, ComplaintRow, ConsumableRow, DueRow, Paged } from '@bme/shared';
+import { UnsafeList } from '@/components/AssetSafety';
 import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
 import { RequirePermission } from '@/components/RequirePermission';
@@ -55,6 +56,7 @@ function MyWork() {
   const free = useFetch<Paged<ComplaintRow>>(`/complaints?assignedTo=none&status=unresolved&pageSize=100&k=${version}`, { fresh: true });
   const pms = useFetch<DueRow[]>(can('pms.perform') ? `/pms/due?until=${until}` : null);
   const calibration = useFetch<DueRow[]>(can('calibration.manage') ? `/calibration/due?until=${until}` : null);
+  const failed = useFetch<Paged<AssetRow>>(can('pms.perform') || can('calibration.manage') ? '/assets?condition=failed&pageSize=100' : null);
   const low = useFetch<ConsumableRow[]>(can('consumable.manage') ? '/consumables?low=true' : null);
   const team = useFetch<Assignee[]>(can('complaint.assign') ? `/complaints/assignees?k=${version}` : null, { fresh: true });
 
@@ -93,6 +95,13 @@ function MyWork() {
       <Section title="Waiting for someone" count={free.data?.total} hint={can('complaint.assign') ? 'Assign them, or start one yourself' : 'Take one, or start work on it'}>
         {cards(free, 'Every complaint has someone on it.')}
       </Section>
+      {!!failed.data?.total && (
+        <Section title="Failed PMS or calibration" count={failed.data.total} hint="Repair, then do the PMS or calibration again">
+          <Card styles={{ body: { padding: '4px 20px' } }}>
+            <UnsafeList rows={failed.data.items} />
+          </Card>
+        </Section>
+      )}
       {(can('pms.perform') || can('calibration.manage')) && (
         <Section title="PMS and calibration" count={dueLoading ? undefined : due.length} hint="Overdue, and due in the next 7 days">
           <Card styles={{ body: { padding: '4px 20px' } }}>

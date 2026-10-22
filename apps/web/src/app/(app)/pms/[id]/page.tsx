@@ -3,7 +3,9 @@
 import { LockOutlined, PrinterOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Descriptions, Space, Table, Tooltip, Typography } from 'antd';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 import type { AssetDetail, PmsItem, PmsRecordRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusTag } from '@/components/StatusTag';
@@ -13,6 +15,8 @@ import { StatusResult } from '@/components/StatusResult';
 import { useAuth } from '@/lib/auth';
 import { COLORS } from '@/theme';
 import { DetailPageSkeleton } from '@/components/Skeletons';
+
+const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
 
 const itemOk = (i: PmsItem, v: unknown) => {
   if (i.type === 'check') return v === 'pass';
@@ -25,6 +29,7 @@ export default function PmsRecordPage() {
   const { can } = useAuth();
   const rec = useFetch<PmsRecordRow>(can('pms.perform') ? `/pms/${id}` : null); // ask only if the answer will be used
   const asset = useFetch<AssetDetail>(rec.data ? `/assets/${rec.data.assetId}` : null);
+  const [raising, setRaising] = useState(false);
 
   if (!can('pms.perform')) return <StatusResult status="403" title="You cannot see PMS records" extra={<Link href="/"><Button>Back to the dashboard</Button></Link>} />;
   if (rec.error) return <StatusResult status="404" title="PMS record not found" extra={<Link href="/assets"><Button>Back to assets</Button></Link>} />;
@@ -57,6 +62,27 @@ export default function PmsRecordPage() {
         />
       </div>
 
+      {/* Gap review #1: a failed PMS leads somewhere: the machine is flagged, and a complaint gets it repaired. */}
+      {r.result === 'fail' && !r.correctedByRecordId && a?.pmsFailedOn && (
+        <Alert
+          className="no-print"
+          style={{ marginBottom: 16 }}
+          type="error"
+          showIcon
+          message="This PMS failed: the machine is flagged as not safe to use until a PMS passes"
+          description={a.openComplaints.length ? `A complaint is already open (${a.openComplaints.map((c) => c.complaintNo).join(', ')}).` : 'Raise a complaint so it gets repaired, then do the PMS again.'}
+          action={!a.openComplaints.length && can('complaint.create') && <Button danger onClick={() => setRaising(true)}>Raise complaint</Button>}
+        />
+      )}
+      {a && (
+        <RaiseComplaintModal
+          open={raising}
+          asset={{ id: a.id, assetCode: a.assetCode, name: a.name }}
+          description={`PMS failed on ${formatDate(r.performedOn)}: ${r.items.filter((i) => !itemOk(i, r.answers[i.id])).map((i) => i.label).join('; ') || 'see the PMS record'}`}
+          onClose={() => setRaising(false)}
+          onRaised={() => void asset.reload()}
+        />
+      )}
       {r.correctsRecordId && (
         <Alert
           className="no-print"

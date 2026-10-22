@@ -213,6 +213,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
             render: (s: ComplaintRow['status'], c) => (
               <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                 <StatusTag status={s} />
+                {c.urgent && <Pill tone="bad">Urgent</Pill>}
                 {c.overDowntimeLimit && <Pill tone="bad">Over downtime limit</Pill>}
               </div>
             ),

@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { isCritical, UNRESOLVED_STATUSES, type ComplaintDetail, type ComplaintEvent, type ComplaintRow, type Criticality } from '@bme/shared';
 import { auditSystem } from '../../lib/audit';
 import { addDaysISO, todayISO, zonedDayStart } from '../../lib/dates';
+import { sendMail, smtpConfigured } from '../../lib/mail';
 import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { toAttachmentRow } from '../assets/attachments.service';
@@ -52,6 +53,7 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
       raisedById: c.raisedById,
       raisedByName: c.raisedBy.name,
       description: c.description,
+      urgent: c.urgent,
       status: c.status,
       escalatedAt: c.escalatedAt?.toISOString() ?? null,
       escalationNote: c.escalatedAt ? (escalationNote.get(c.id) ?? null) : null,
@@ -203,4 +205,20 @@ export function machineDownMs(complaints: { raisedAt: Date; resolvedAt: Date | n
     end = b;
   }
   return total;
+}
+
+// Gap review #4: an urgent complaint (the machine cannot be used, or patient care is affected) is emailed at once to
+// everyone who works on complaints, when the hospital has email; the bell alone waits until someone opens the app.
+// Sent after the complaint is saved: a mail failure is logged and never stops the complaint.
+export async function emailUrgent(c: { complaintNo: string; description: string }, asset: { assetCode: string; name: string; department: { name: string }; location: { name: string } }, raisedBy: string) {
+  try {
+    const settings = await prisma.hospitalSettings.findFirstOrThrow();
+    if (!smtpConfigured(settings)) return;
+    const people = await prisma.user.findMany({ where: { id: { in: await usersWithPermissions('complaint.start') } }, select: { email: true } });
+    const subject = `URGENT complaint ${c.complaintNo}: ${asset.assetCode} ${asset.name} cannot be used`;
+    const text = `${raisedBy} reports that ${asset.name} (${asset.assetCode}) in ${asset.department.name}, ${asset.location.name} cannot be used or patient care is affected.\n\nProblem: ${c.description}\n\nSign in to the BME Asset Management system to take it.`;
+    await Promise.all(people.map((p) => sendMail(settings, p.email, subject, text)));
+  } catch (e) {
+    console.error(`Could not email urgent complaint ${c.complaintNo}:`, e instanceof Error ? e.message : e);
+  }
 }

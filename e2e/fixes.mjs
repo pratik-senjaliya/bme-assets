@@ -157,13 +157,22 @@ await step('Asset register: clicking a column sorts all pages, both ways, and is
   await ap.reload(); await ap.waitForLoadState('networkidle');
   expect(/sortBy=nextPmsDue/.test(ap.url()), 'sort lost on reload');
 }, ap);
+// The records in an exported sheet: the rows below its frozen header, without the totals or "No records" line.
+const dataRows = (ws) => {
+  let n = 0;
+  ws.eachRow((row, i) => {
+    const first = String(row.getCell(1).value ?? '');
+    if (i > (ws.views[0]?.ySplit ?? 1) && first !== 'Total' && first !== 'No records in this period.') n++;
+  });
+  return n;
+};
 await step('Asset register: Export downloads exactly the filtered list', async () => {
   await ap.goto(BASE + '/assets?search=Ventilator'); await ap.waitForLoadState('networkidle'); await ap.waitForTimeout(800);
   const total = (await admin.api('GET', '/assets?search=Ventilator&pageSize=100')).body.total;
   await ap.getByRole('button', { name: 'Export' }).click();
   const [dl] = await Promise.all([ap.waitForEvent('download'), ap.getByText('Excel (.xlsx)', { exact: true }).click()]);
   const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(await dl.path());
-  const rows = wb.getWorksheet('Asset master').rowCount - 1;
+  const rows = dataRows(wb.getWorksheet('Asset master'));
   expect(rows === total && total > 0, `list shows ${total}, file has ${rows}`);
 }, ap);
 await step('Complaints history: sorts by number, and Export follows the status filter', async () => {
@@ -176,7 +185,7 @@ await step('Complaints history: sorts by number, and Export follows the status f
   await ap.getByRole('button', { name: 'Export' }).click();
   const [dl] = await Promise.all([ap.waitForEvent('download'), ap.getByText('Excel (.xlsx)', { exact: true }).click()]);
   const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(await dl.path());
-  expect(wb.getWorksheet('Breakdowns').rowCount - 1 === shown, `screen ${shown}, file ${wb.getWorksheet('Breakdowns').rowCount - 1}`);
+  expect(dataRows(wb.getWorksheet('Breakdowns')) === shown, `screen ${shown}, file ${dataRows(wb.getWorksheet('Breakdowns'))}`);
 }, ap);
 
 // ---------- Plain language ----------

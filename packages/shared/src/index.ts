@@ -195,6 +195,10 @@ export const updateSettingsSchema = z.object({
   criticalDowntimeHours: z.number().int().min(1).max(720).optional(),
   complaintCloseDays: z.number().int().min(1).max(30).optional(),
   transfersEnabled: z.boolean().optional(),
+  // Who the wards call for a broken machine, shown to everyone (e.g. "Biomedical on call: 98250 00000, ext. 214").
+  biomedContact: optionalText(200),
+  // Shared ward PCs: sign out after this many minutes without use; 0 = never.
+  idleLogoutMinutes: z.number().int().min(0).max(720).optional(),
   assetIdPattern: assetIdPatternSchema.optional(), // super admin only; rejected once locked
   // Email is optional: hospital servers may have no internet. Without these, reminders stay in-app.
   smtpHost: optionalText(200),
@@ -214,6 +218,8 @@ export type SettingsResponse = {
   criticalDowntimeHours: number;
   complaintCloseDays: number;
   transfersEnabled: boolean;
+  biomedContact: string | null;
+  idleLogoutMinutes: number;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpUser: string | null;
@@ -286,6 +292,8 @@ export const assetListQuerySchema = z.object({
   locationId: z.string().uuid().optional(),
   equipmentTypeId: z.string().uuid().optional(),
   criticality: z.enum(CRITICALITIES).optional(),
+  // failed = its latest PMS or calibration failed; unsafe = that, or an urgent fault not yet fixed (gap review).
+  condition: z.enum(['failed', 'unsafe']).optional(),
   // Condemned and not-in-use assets leave the active list; ask for them explicitly.
   status: z.enum([...ASSET_STATUSES, 'all']).default('active'),
   sortBy: z.enum(['assetCode', 'name', 'department', 'criticality', 'nextPmsDue', 'status']).default('assetCode'),
@@ -335,7 +343,12 @@ export type AssetRow = {
   ageMonths: number | null;
   nextPmsDue: string | null;
   nextCalibrationDue: string | null;
+  // Is it safe to use? Its unresolved complaints (oldest first) and a failed latest PMS / calibration (gap review).
+  openComplaints: OpenComplaintRef[];
+  pmsFailedOn: string | null;
+  calibrationFailedOn: string | null;
 };
+export type OpenComplaintRef = { id: string; complaintNo: string; status: ComplaintStatus; urgent: boolean; raisedAt: string };
 
 export type AssetDetail = AssetRow & {
   warrantyMonths: number | null;
@@ -525,6 +538,8 @@ export const COMPLAINT_STATUS_LABEL: Record<ComplaintStatus, string> = { open: '
 export const createComplaintSchema = z.object({
   assetId: z.string().uuid('Choose the equipment'),
   description: z.string().trim().min(5, 'Describe the problem in a few words').max(2000),
+  // The machine cannot be used or patient care is affected: listed first and emailed to the biomedical team.
+  urgent: z.boolean().default(false),
 });
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
 
@@ -580,6 +595,7 @@ export type ComplaintRow = {
   raisedById: string;
   raisedByName: string;
   description: string;
+  urgent: boolean;
   status: ComplaintStatus;
   // Escalated to the HOD and waiting for them (cleared once they put it on hold or back to work), with the reason.
   escalatedAt: string | null;
@@ -860,7 +876,8 @@ export type TransferRequestInput = z.infer<typeof transferRequestSchema>;
 export type TransferInfo = { toUnit: string; reason: string; requestedByName: string; approvedByName: string; approvedAt: string };
 
 // What every signed-in person may know about the install: its name, and the optional parts it has turned on.
-export type HospitalInfo = { name: string; transfersEnabled: boolean };
+// What every signed-in user may know about the hospital's set-up.
+export type HospitalInfo = { name: string; transfersEnabled: boolean; biomedContact: string | null; idleLogoutMinutes: number };
 
 export const deleteRequestSchema = z.object({
   targetType: z.enum(DELETABLE_TARGETS),

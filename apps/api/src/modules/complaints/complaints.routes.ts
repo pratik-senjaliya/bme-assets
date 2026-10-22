@@ -28,7 +28,7 @@ import { idOf, validate } from '../../lib/validate';
 import { usersWithPermissions } from '../../lib/people';
 import { notify } from '../approvals/approvals.service';
 import { findScopedAsset } from '../assets/assets.service';
-import { complaintInclude, complaintNo, toComplaintDetail, toComplaintRows } from './complaints.service';
+import { complaintInclude, complaintNo, emailUrgent, toComplaintDetail, toComplaintRows } from './complaints.service';
 
 export const complaintsRouter = Router();
 
@@ -67,10 +67,10 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
     }),
     ...departmentScope(me), // last, so it cannot be widened from the query
   };
-  // Waiting complaints: longest-waiting first. Resolved: most recent first. Mixed: newest first.
+  // Waiting complaints: urgent ones first, then longest-waiting first. Resolved: most recent first. Mixed: newest first.
   const orderBy: Prisma.ComplaintOrderByWithRelationInput | Prisma.ComplaintOrderByWithRelationInput[] = q.sortBy
     ? [{ [q.sortBy]: q.order }, { complaintNo: 'desc' }]
-    : q.status && (UNRESOLVED_STATUSES as string[]).concat('unresolved').includes(q.status) ? { raisedAt: 'asc' } : q.status && ['resolved', 'closed', 'done'].includes(q.status) ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
+    : q.status && (UNRESOLVED_STATUSES as string[]).concat('unresolved').includes(q.status) ? [{ urgent: 'desc' }, { raisedAt: 'asc' }] : q.status && ['resolved', 'closed', 'done'].includes(q.status) ? { resolvedAt: 'desc' } : { raisedAt: 'desc' };
   const [total, rows] = await prisma.$transaction([
     prisma.complaint.count({ where }),
     prisma.complaint.findMany({ where, include: complaintInclude, orderBy, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
@@ -114,13 +114,15 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
         raisedById: me.id,
         departmentId: asset.departmentId,
         description: input.description,
+        urgent: input.urgent,
         createdBy: me.id,
       },
     });
     await audit(tx, req, { action: 'complaint.create', entityType: 'complaint', entityId: row.id, after: row });
-    await notify(tx, staff, `New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint');
+    await notify(tx, staff, `${input.urgent ? 'URGENT: machine cannot be used. ' : ''}New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint');
     return row;
   });
+  if (created.urgent) void emailUrgent(created, asset, me.name);
   res.status(201).json(await one(created.id));
 });
 

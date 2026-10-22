@@ -12,6 +12,7 @@ import {
   MAX_LABELS,
   purchaseOrderSchema,
   serviceContractSchema,
+  UNRESOLVED_STATUSES,
   updateAssetSchema,
   type AssetLabelsResponse,
   type AssetListQuery,
@@ -84,8 +85,14 @@ const registerWhere = (req: Request, q: Omit<AssetListQuery, 'sortBy' | 'order' 
   ...(q.search && {
     OR: ['assetCode', 'name', 'serialNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
   }),
+  ...(q.condition && { AND: [CONDITION[q.condition]] }),
   ...departmentScope(currentUser(req)), // last, so a nursing user cannot widen it with ?departmentId=
 });
+const FAILED: Prisma.AssetWhereInput[] = [{ pmsFailedOn: { not: null } }, { calibrationFailedOn: { not: null } }];
+const CONDITION: Record<NonNullable<AssetListQuery['condition']>, Prisma.AssetWhereInput> = {
+  failed: { OR: FAILED },
+  unsafe: { OR: [...FAILED, { complaints: { some: { status: { in: UNRESOLVED_STATUSES }, urgent: true } } }] },
+};
 
 assetsRouter.get('/', requirePermission('asset.view'), async (req, res) => {
   const q = assetListQuerySchema.parse(req.query);

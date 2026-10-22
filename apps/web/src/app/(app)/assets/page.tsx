@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PhoneFilters } from '@/components/PhoneFilters';
 import { CriticalityTag, DueCell, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
+import { ConditionPills } from '@/components/AssetSafety';
 import { EmptyState } from '@/components/Skeletons';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -130,10 +131,14 @@ function AssetList() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <PhoneFilters active={[q.departmentId, q.equipmentTypeId, q.criticality].filter(Boolean).length}>
+        <PhoneFilters active={[q.departmentId, q.equipmentTypeId, q.criticality, q.condition].filter(Boolean).length}>
           {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
           {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
           {select('criticality', 'Criticality', [...CRITICALITIES].reverse().map((c) => ({ value: c, label: CRITICALITY_LABEL[c] })))}
+          {select('condition', 'Condition', [
+            { value: 'unsafe', label: 'Not safe to use' },
+            { value: 'failed', label: 'Failed PMS or calibration' },
+          ])}
         </PhoneFilters>
         {filtered && (
           <Button
@@ -204,6 +209,12 @@ function AssetList() {
               <div style={{ lineHeight: 1.35 }}>
                 <div style={{ fontWeight: 700, color: COLORS.ink }}>{name}</div>
                 <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 1 }}>{[row.equipmentTypeName, row.make, row.model].filter(Boolean).join(' · ')}</div>
+                {/* Not safe to use: shown with the name, so it is seen without scrolling across. */}
+                {(row.openComplaints.length > 0 || row.pmsFailedOn || row.calibrationFailedOn) && (
+                  <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <ConditionPills asset={row} />
+                  </div>
+                )}
               </div>
             ),
           },

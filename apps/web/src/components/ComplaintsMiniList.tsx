@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { CRITICALITY_LABEL, isCritical, type ComplaintRow } from '@bme/shared';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { EmptyState } from '@/components/Skeletons';
-import { StatusTag } from '@/components/StatusTag';
+import { Pill, StatusTag } from '@/components/StatusTag';
 import { COLORS } from '@/theme';
 import { formatDateTime } from '@/lib/format';
 
@@ -25,7 +25,10 @@ export function ComplaintsMiniList({ rows }: { rows: ComplaintRow[] }) {
             </Typography.Paragraph>
             <div style={{ color: COLORS.faint, fontSize: 12 }} className="num">{formatDateTime(c.raisedAt)}</div>
           </div>
-          <StatusTag status={c.status} />
+          <span style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+            <StatusTag status={c.status} />
+            {c.urgent && !c.resolvedAt && <Pill tone="bad">Urgent</Pill>}
+          </span>
         </div>
       ))}
     </>

@@ -39,6 +39,8 @@ function SettingsPageScreen() {
       criticalDowntimeHours: values.criticalDowntimeHours,
       complaintCloseDays: values.complaintCloseDays,
       transfersEnabled: values.transfersEnabled,
+      biomedContact: values.biomedContact ?? null,
+      idleLogoutMinutes: values.idleLogoutMinutes ?? 0,
       smtpHost: values.smtpHost ?? null,
       smtpPort: values.smtpPort ?? null,
       smtpUser: values.smtpUser ?? null,
@@ -159,6 +161,20 @@ function SettingsPageScreen() {
               extra="For hospitals with other units. Equipment can then be transferred to another unit with the HOD's approval; it keeps its history here, marked transferred."
             >
               <Switch aria-label="Allow transfers to other units" />
+            </Form.Item>
+            <Form.Item
+              label="Biomedical contact for the wards"
+              name="biomedContact"
+              extra="Shown to nursing on their dashboard and when they raise a complaint, for emergencies."
+            >
+              <Input maxLength={200} placeholder="e.g. Biomedical on call: 98250 00000, ext. 214" />
+            </Form.Item>
+            <Form.Item
+              label="Sign out after inactivity (minutes)"
+              name="idleLogoutMinutes"
+              extra="For shared ward computers: a login that has not been used for this long is signed out, so the next person does not act under someone else's name. 0 = never."
+            >
+              <InputNumber min={0} max={720} style={{ width: 160 }} />
             </Form.Item>
             </Card>
           <Card title="Email for reminders (optional)">

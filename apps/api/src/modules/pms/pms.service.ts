@@ -4,6 +4,7 @@ import type { Criticality, DueRow, PmsAnswer, PmsItem, PmsRecordRow, PmsResult }
 import { departmentScope, currentUser } from '../../lib/auth';
 import { addMonths, daysFromToday, isoDate, parseDate, todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
+import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 
 export const latestTemplate = (equipmentTypeId: string) =>
@@ -110,4 +111,22 @@ export async function dueList(req: Request, field: 'nextPmsDue' | 'nextCalibrati
       daysLeft: daysFromToday(due),
     };
   });
+}
+
+// Gap review #1: a machine whose latest PMS failed is flagged until one passes (a corrected record counts as its
+// correction). The schedule is not touched; the flag is what keeps the failure in sight.
+export async function refreshPmsFlag(tx: Prisma.TransactionClient, assetId: string) {
+  const records = await tx.pmsRecord.findMany({ where: { assetId }, select: { id: true, performedOn: true, result: true, correctsRecordId: true }, orderBy: [{ performedOn: 'desc' }, { submittedAt: 'desc' }] });
+  const corrected = new Set(records.map((r) => r.correctsRecordId));
+  const last = records.find((r) => !corrected.has(r.id));
+  const failedOn = last?.result === 'fail' ? last.performedOn : null;
+  await tx.asset.update({ where: { id: assetId }, data: { pmsFailedOn: failedOn } });
+  return failedOn;
+}
+
+// The HOD hears of a failed PMS or calibration at once (the bell; the machine page offers to raise a complaint).
+export async function tellFailed(tx: Prisma.TransactionClient, asset: { id: string; assetCode: string; name: string }, what: 'PMS' | 'Calibration') {
+  const hods = await usersWithPermissions('complaint.assign', 'notification.view');
+  const message = `${what} FAILED on ${asset.assetCode} ${asset.name}. The machine is flagged until a ${what === 'PMS' ? 'PMS' : 'calibration'} passes.`;
+  if (hods.length) await tx.notification.createMany({ data: hods.map((userId) => ({ userId, type: what === 'PMS' ? 'pms' : 'calibration', assetId: asset.id, message })) });
 }

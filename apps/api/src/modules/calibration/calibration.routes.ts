@@ -9,7 +9,7 @@ import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
 import { storeAttachment, toAttachmentRow, upload } from '../assets/attachments.service';
-import { dueList } from '../pms/pms.service';
+import { dueList, tellFailed } from '../pms/pms.service';
 import { clearReminders } from '../reminders/reminders.service';
 
 export const calibrationRouter = Router();
@@ -58,7 +58,10 @@ calibrationRouter.post('/assets/:id/calibrations', requirePermission('calibratio
       data: { assetId: asset.id, doneOn, dueOn, agency: input.agency, result: input.result, createdBy: currentUser(req).id },
     });
     const latest = await tx.calibrationRecord.findFirstOrThrow({ where: { assetId: asset.id }, orderBy: [{ doneOn: 'desc' }, { createdAt: 'desc' }] });
-    await tx.asset.update({ where: { id: asset.id }, data: { nextCalibrationDue: latest.dueOn } });
+    // Gap review #3: the latest calibration failing flags the machine until one passes. The due date rule is unchanged
+    // (an open decision for the hospital).
+    await tx.asset.update({ where: { id: asset.id }, data: { nextCalibrationDue: latest.dueOn, calibrationFailedOn: latest.result === 'fail' ? latest.doneOn : null } });
+    if (latest.id === record.id && record.result === 'fail') await tellFailed(tx, asset, 'Calibration');
     await clearReminders(tx, asset.id, ['calibration']);
     await audit(tx, req, { action: 'calibration.create', entityType: 'calibration_record', entityId: record.id, after: record });
     return record;

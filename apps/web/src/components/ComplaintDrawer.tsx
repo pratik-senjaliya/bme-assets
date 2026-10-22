@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { StepNote, useComplaintWork } from '@/components/ComplaintWork';
 import { DocumentList } from '@/components/DocumentList';
 import { RequestDeleteModal, type DeleteTarget } from '@/components/RequestApprovalModals';
-import { CriticalityTag, StatusTag } from '@/components/StatusTag';
+import { CriticalityTag, Pill, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDateTime, formatDuration, formatMoney } from '@/lib/format';
@@ -61,6 +61,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
             <span className="code">{c.complaintNo}</span>
             <StatusTag status={c.status} />
+            {c.urgent && <Pill tone="bad">Urgent</Pill>}
           </span>
         ) : (
           'Complaint'

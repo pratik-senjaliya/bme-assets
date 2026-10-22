@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { AssetDetail, AssetRow, Criticality, VendorCard, WarrantyStatus } from '@bme/shared';
+import { UNRESOLVED_STATUSES, type AssetDetail, type AssetRow, type Criticality, type VendorCard, type WarrantyStatus } from '@bme/shared';
 import { auditMany } from '../../lib/audit';
 import { currentUser, departmentScope } from '../../lib/auth';
 import { formatAssetCode } from '../../lib/assetCode';
@@ -12,7 +12,14 @@ import { idOf } from '../../lib/validate';
 type Db = Prisma.TransactionClient;
 
 const vendorCard = { include: { contacts: { orderBy: { name: 'asc' } } } } as const;
-export const assetInclude = { equipmentType: true, department: true, location: true, supplier: vendorCard, serviceVendor: vendorCard } satisfies Prisma.AssetInclude;
+export const assetInclude = {
+  equipmentType: true,
+  department: true,
+  location: true,
+  supplier: vendorCard,
+  serviceVendor: vendorCard,
+  complaints: { where: { status: { in: UNRESOLVED_STATUSES } }, select: { id: true, complaintNo: true, status: true, urgent: true, raisedAt: true }, orderBy: { raisedAt: 'asc' } },
+} satisfies Prisma.AssetInclude;
 export type AssetWithRefs = Prisma.AssetGetPayload<{ include: typeof assetInclude }>;
 
 const WARRANTY_EXPIRING_DAYS = 30;
@@ -53,6 +60,9 @@ export function toAssetRow(a: AssetWithRefs): AssetRow {
     ageMonths,
     nextPmsDue: isoDateOrNull(a.nextPmsDue),
     nextCalibrationDue: isoDateOrNull(a.nextCalibrationDue),
+    openComplaints: a.complaints.map((c) => ({ id: c.id, complaintNo: c.complaintNo, status: c.status, urgent: c.urgent, raisedAt: c.raisedAt.toISOString() })),
+    pmsFailedOn: isoDateOrNull(a.pmsFailedOn),
+    calibrationFailedOn: isoDateOrNull(a.calibrationFailedOn),
   };
 }
 
