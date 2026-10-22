@@ -83,9 +83,11 @@ The containers start again by themselves after a server reboot.
 
 ## Backups and restoring
 
-Each night the `backup` container writes two files to the `backups/` folder (`BACKUP_DIR` in `.env`):
-`db-<date>.sql.gz` (the whole database) and `uploads-<date>.tar.gz` (attachments and certificates). Files older than
-14 days are deleted. **Copy that folder off the server regularly** (another machine, a USB disk, the hospital's own backup
+Each night the `backup` container writes three files to the `backups/` folder (`BACKUP_DIR` in `.env`):
+`db-<date>.sql.gz` (the whole database), `uploads-<date>.tar.gz` (attachments and certificates) and `env-<date>` (a copy
+of `.env`, with the passwords and secrets a rebuilt server needs). Files older than 14 days are deleted. Every run is
+recorded: Admin > Hospital settings > Backups shows the last one, and if a backup fails or has not run for two days the
+HOD gets a notice in the bell. **Copy that folder off the server regularly** (another machine, a USB disk, the hospital's own backup
 system): a backup on the same disk does not survive the disk failing.
 
 To restore (this replaces everything currently in the system):
@@ -99,6 +101,22 @@ docker compose run --rm --no-deps -v "$PWD/backups:/backups:ro" --entrypoint sh 
 docker compose up -d
 ```
 Try a restore on a spare machine before you need it.
+
+### Rebuilding the server
+
+If the server itself is lost (disk failure, theft), on a new machine with the latest copy of the `backups/` folder:
+
+1. Install Docker and get this release as in steps 1–2 of **Install**.
+2. Instead of writing a new `.env`, copy the latest `backups/env-<date>` to `.env` in the release folder. It keeps the
+   database password, the session secret (signed-in sessions stay valid) and `PUBLIC_URL`. If the new server has a
+   different address, change `PUBLIC_URL` (QR labels already printed point at the old address, so keep the old name in
+   the hospital's DNS if you can).
+3. Put the backup files in `backups/` and start only the database: `docker compose up -d db`.
+4. Restore the database and the attachments with the commands above, then `docker compose up -d`.
+5. Sign in and check a few assets, their documents and Admin > Hospital settings > Backups (run a backup now with
+   `docker compose exec backup bash /backup.sh once`).
+
+Keep the `env-<date>` files as carefully as the database backups: they contain the passwords.
 
 ## If someone cannot sign in
 

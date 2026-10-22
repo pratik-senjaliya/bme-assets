@@ -88,7 +88,8 @@ export async function toComplaintDetail(c: ComplaintWithRefs, canSeeCosts: boole
     prisma.complaintStep.findMany({ where: { complaintId: c.id }, orderBy: { at: 'asc' } }),
   ]);
   const stepPeople = await prisma.user.findMany({ where: { id: { in: steps.map((s) => s.by).filter((id): id is string => !!id) } }, select: { id: true, name: true } });
-  const STEP_TITLE: Record<string, string> = { escalated: 'Escalated to the HOD', held: 'Put on hold', resumed: 'Back to work', closed: 'Closed' };
+  // `resolved` steps are earlier resolutions of a complaint that was then reopened (the current one is on the complaint).
+  const STEP_TITLE: Record<string, string> = { escalated: 'Escalated to the HOD', held: 'Put on hold', resumed: 'Back to work', resolved: 'Resolved', reopened: 'Not fixed: sent back', closed: 'Closed' };
   // Only the current assignment is shown; earlier ones are in the audit log. Taking a complaint, or starting it,
   // reads as the engineer's own doing.
   const selfTaken = c.assignedBy === c.assignedToId;

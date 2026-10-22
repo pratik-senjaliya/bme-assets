@@ -66,7 +66,7 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
-  # Nightly database + uploads backup, 14 days kept, written to ./backups on the server (BACKUP_DIR).
+  # Nightly database + uploads + .env backup, 14 days kept, written to ./backups on the server (BACKUP_DIR).
   backup:
     image: postgres:16
     restart: unless-stopped
@@ -84,6 +84,7 @@ services:
     command: ["bash", "/backup.sh"]
     volumes:
       - ./deploy/backup.sh:/backup.sh:ro
+      - ./.env:/config/.env:ro # copied with each backup: a rebuilt server needs its passwords and secrets
       - uploads:/data/uploads:ro
       - ${BACKUP_DIR:-./backups}:/backups
 

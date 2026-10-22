@@ -53,6 +53,8 @@ before(async () => {
   };
   ids.nurse2User = await make('icu2', ids.icu);
   await make('rad', ids.rad);
+  // Passwords given by the HOD must be changed first (workflow.test.ts); here they count as chosen already.
+  await prisma.user.updateMany({ where: { email: { startsWith: EMAIL } }, data: { mustChangePassword: false } });
   [nurse2, radNurse] = await Promise.all([login(base, `${EMAIL}icu2@demo.local`), login(base, `${EMAIL}rad@demo.local`)]);
 });
 after(async () => {

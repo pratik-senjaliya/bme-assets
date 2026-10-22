@@ -47,7 +47,7 @@ await step('Scanning a label opens the machine; an unknown label says so', async
 await step('Scanning while signed out: sign in, then straight to the machine', async () => {
   const ctx = await b.newContext(); const p = await ctx.newPage();
   await p.goto(`${BASE}/q/${icu.assetCode}`); await p.waitForURL(/\/login\?next=%2Fq%2F/);
-  await p.fill('input[type=email]', 'nursing@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.click('button[type=submit]');
+  await p.fill('input[autocomplete=username]', 'nursing@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.click('button[type=submit]');
   await p.waitForURL(`${BASE}/assets/${icu.id}`);
   await ctx.close();
 });

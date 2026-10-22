@@ -88,8 +88,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, readonly PermissionCode[
 
 // ---------- Auth ----------
 
+// `email` takes the email or the short username (gap review #20: ward staff often have no email of their own).
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
+  email: z.string().trim().toLowerCase().min(1, 'Enter your email or username').max(150),
   password: z.string().min(1),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -102,6 +103,10 @@ export const changePasswordSchema = z
   .refine((v) => v.currentPassword !== v.newPassword, { message: 'Choose a password different from the current one', path: ['newPassword'] });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+// "Forgot password": the HOD is told and resets it (no email needed; hospital servers may have no internet).
+export const forgotPasswordSchema = z.object({ login: z.string().trim().toLowerCase().min(1, 'Enter your email or username').max(150) });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
 export type SessionUser = {
   id: string;
   name: string;
@@ -110,6 +115,8 @@ export type SessionUser = {
   roleLabel: string;
   departmentId: string | null;
   permissions: PermissionCode[];
+  // Set when the HOD gives or resets a password: nothing else works until the person chooses their own.
+  mustChangePassword: boolean;
 };
 
 // ---------- Setup ----------
@@ -140,6 +147,14 @@ export type EquipmentTypeInput = z.infer<typeof equipmentTypeSchema>;
 const userBase = {
   name: z.string().trim().min(1).max(100),
   email: z.string().trim().toLowerCase().email(),
+  // A short sign-in name, e.g. "icu.sister1"; empty = sign in with the email only.
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9._-]{3,30}$/, '3–30 letters, digits, dots, dashes or underscores')
+    .nullish()
+    .or(z.literal('').transform(() => null)),
   role: z.enum(ROLE_NAMES),
   departmentId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
@@ -163,6 +178,8 @@ export type UserRow = {
   id: string;
   name: string;
   email: string;
+  username: string | null;
+  mustChangePassword: boolean;
   role: RoleName;
   roleLabel: string;
   departmentId: string | null;
@@ -232,6 +249,10 @@ export type SettingsResponse = {
   mailLastSentAt: string | null;
   mailLastError: string | null;
   mailLastErrorAt: string | null;
+  // Written by the nightly backup on the hospital server (deploy/backup.sh); all null where nothing backs up here.
+  backupLastAt: string | null;
+  backupLastError: string | null;
+  backupLastErrorAt: string | null;
 };
 
 // ---------- Assets ----------
@@ -283,7 +304,8 @@ const assetFields = {
   serviceVendorId: z.string().uuid().nullish(),
 };
 
-export const createAssetSchema = z.object(assetFields);
+// Adding an asset may record its purchase order at the same time (gap review #13).
+export const createAssetSchema = z.object(assetFields).extend({ purchaseOrder: z.lazy(() => purchaseOrderSchema).optional() });
 export type CreateAssetInput = z.infer<typeof createAssetSchema>;
 
 // Condemnation goes through the approval flow, so it is not a status you can set here.
@@ -550,8 +572,10 @@ export const createComplaintSchema = z.object({
 });
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
 
+// What it cost can be booked while resolving (parts, the OEM's bill): dated today, linked to the complaint.
 export const resolveComplaintSchema = z.object({
   resolutionNotes: z.string().trim().min(3, 'Say what was done').max(2000),
+  costs: z.array(z.lazy(() => expenseLineSchema)).max(10).default([]),
 });
 export type ResolveComplaintInput = z.infer<typeof resolveComplaintSchema>;
 
@@ -633,7 +657,7 @@ export type ComplaintRow = {
 
 export type ComplaintEvent = {
   at: string; // ISO date-time
-  kind: 'raised' | 'assigned' | 'started' | 'escalated' | 'held' | 'resumed' | 'resolved' | 'closed' | 'document' | 'expense';
+  kind: 'raised' | 'assigned' | 'started' | 'escalated' | 'held' | 'resumed' | 'resolved' | 'reopened' | 'closed' | 'document' | 'expense';
   title: string;
   detail?: string | null;
   by?: string | null;
@@ -673,12 +697,16 @@ export type ServiceLogRow = {
 export const EXPENSE_TYPES = ['repair', 'spare_part'] as const;
 export type ExpenseType = (typeof EXPENSE_TYPES)[number];
 
-export const createExpenseSchema = z.object({
+export const expenseLineSchema = z.object({
   type: z.enum(EXPENSE_TYPES),
   description: z.string().trim().min(2, 'Describe what was paid for').max(500),
   amount: z.number().positive('Enter an amount above zero').max(1_000_000_000),
-  date: isoDateSchema,
   vendor: optionalText(150),
+});
+export type ExpenseLineInput = z.infer<typeof expenseLineSchema>;
+
+export const createExpenseSchema = expenseLineSchema.extend({
+  date: isoDateSchema,
   complaintId: z.string().uuid().nullish(),
 });
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
@@ -796,8 +824,12 @@ export const createCalibrationSchema = z
     dueOn: isoDateSchema.nullish(), // blank = done date + the equipment type's usual interval
     agency: z.string().trim().min(2, 'Enter the agency or engineer').max(150),
     result: z.enum(CALIBRATION_RESULTS),
+    // A record entered wrongly is corrected by a new one that replaces it (gap review #12); the original stays, marked.
+    correctsRecordId: z.string().uuid().nullish(),
+    correctionReason: z.string().trim().min(5, 'Say why this correction is needed').max(500).nullish(),
   })
-  .refine((c) => !c.dueOn || c.dueOn > c.doneOn, { message: 'Next due date must be after the calibration date', path: ['dueOn'] });
+  .refine((c) => !c.dueOn || c.dueOn > c.doneOn, { message: 'Next due date must be after the calibration date', path: ['dueOn'] })
+  .refine((v) => !v.correctsRecordId || !!v.correctionReason, { message: 'Say why this correction is needed', path: ['correctionReason'] });
 export type CreateCalibrationInput = z.infer<typeof createCalibrationSchema>;
 
 export type CalibrationRow = {
@@ -807,6 +839,9 @@ export type CalibrationRow = {
   agency: string;
   result: PmsResult;
   certificates: { id: string; fileName: string }[]; // oldest first; an agency may send more than one
+  correctsRecordId: string | null;
+  correctionReason: string | null;
+  correctedById: string | null; // replaced by this later record: no longer counts
 };
 
 // ---------- Due lists ----------
@@ -827,7 +862,8 @@ export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
 
 // ---------- Notifications ----------
 
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock'] as const;
+// backup: the nightly backup failed or stopped; account: someone asks the HOD for a new password.
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'backup', 'account'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {

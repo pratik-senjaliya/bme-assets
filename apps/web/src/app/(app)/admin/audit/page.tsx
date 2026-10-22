@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, DatePicker, Input, Select, Space, Switch, Tag, Typography } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
+import { App, Button, DatePicker, Input, Select, Space, Switch, Tag, Typography } from 'antd';
 import type { Dayjs } from 'dayjs';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -9,6 +10,7 @@ import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { downloadFile } from '@/lib/download';
 import { formatDateTime } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { COLORS } from '@/theme';
@@ -26,6 +28,8 @@ const Json = ({ value }: { value: unknown }) => (
 
 export default function AuditPage() {
   const { can } = useAuth();
+  const { message } = App.useApp();
+  const [exporting, setExporting] = useState(false);
   const [entityType, setEntityType] = useState<string>();
   const [actorId, setActorId] = useState<string>();
   const [action, setAction] = useState('');
@@ -63,7 +67,33 @@ export default function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" subtitle="Every create, change, delete, approval and sign-in. It cannot be edited or deleted." crumbs={['Admin', 'Audit log']} />
+      <PageHeader
+        title="Audit log"
+        subtitle="Every create, change, delete, approval and sign-in. It cannot be edited or deleted."
+        crumbs={['Admin', 'Audit log']}
+        action={
+          // For the auditor: everything the filters show (up to 50,000 entries), as an Excel workbook. The export is itself logged.
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={async () => {
+              const x = new URLSearchParams(q);
+              x.delete('page');
+              x.delete('pageSize');
+              setExporting(true);
+              try {
+                await downloadFile(`/audit-logs/export?${x}`, 'bme-audit-log.xlsx');
+              } catch (e) {
+                message.error(e instanceof Error ? e.message : 'Could not export');
+              } finally {
+                setExporting(false);
+              }
+            }}
+          >
+            Export to Excel
+          </Button>
+        }
+      />
       <Space wrap style={{ marginBottom: 16 }}>
         <Input.Search allowClear placeholder="Action, e.g. asset.update" aria-label="Action contains" style={{ width: 240 }} value={typed} onChange={(e) => setTyped(e.target.value)} />
         <Select allowClear showSearch placeholder="Record type" aria-label="Record type" style={{ width: 190 }} value={entityType} options={ENTITY_TYPES.map((t) => ({ value: t, label: t.replace(/_/g, ' ') }))} onChange={(v) => { setEntityType(v); setPage(1); }} />

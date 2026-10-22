@@ -28,7 +28,7 @@ await step('Biomedical staff get no user / role / settings / audit menu; the HOD
 {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.setDefaultTimeout(15000);
   await step('Login: wrong password says so in plain words and stays on the page', async () => {
-    await p.goto(BASE + '/login'); await p.fill('input[type=email]', 'admin@demo.local'); await p.fill('input[type=password]', 'nope'); await p.keyboard.press('Enter');
+    await p.goto(BASE + '/login'); await p.fill('input[autocomplete=username]', 'admin@demo.local'); await p.fill('input[type=password]', 'nope'); await p.keyboard.press('Enter');
     const m = await p.locator('.ant-message-error').first().innerText();
     expect(!/stack|undefined|500|TypeError/i.test(m) && m.length > 5, `message "${m}"`);
     expect(/\/login/.test(p.url()), 'left the login page');
@@ -40,7 +40,7 @@ await step('Biomedical staff get no user / role / settings / audit menu; the HOD
   }, p);
   await step('Deep link while signed out goes to login, then returns to the page asked for', async () => {
     await p.goto(BASE + '/complaints'); await p.waitForURL(/\/login/);
-    await p.fill('input[type=email]', 'nursing@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.keyboard.press('Enter');
+    await p.fill('input[autocomplete=username]', 'nursing@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.keyboard.press('Enter');
     await p.waitForURL((u) => !/\/login/.test(u.pathname));
     expect(/\/complaints/.test(p.url()), `landed on ${p.url()} instead of /complaints`);
   }, p);
@@ -52,7 +52,7 @@ await step('Biomedical staff get no user / role / settings / audit menu; the HOD
     const r = await ctx.request.get(BASE + '/api/v1/assets'); expect(r.status() === 401, `API status ${r.status()}`);
   }, p);
   await step('Session that expires mid-use sends the person to login instead of showing broken pages', async () => {
-    await p.goto(BASE + '/login'); await p.fill('input[type=email]', 'biomed@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.keyboard.press('Enter'); await p.waitForURL(BASE + '/');
+    await p.goto(BASE + '/login'); await p.fill('input[autocomplete=username]', 'biomed@demo.local'); await p.fill('input[type=password]', 'Demo@1234'); await p.keyboard.press('Enter'); await p.waitForURL(BASE + '/');
     await ctx.clearCookies();
     // The app may already have noticed (the bell checks every minute); either way the person must end up at sign-in.
     await p.getByRole('link', { name: 'Complaints', exact: true }).click({ timeout: 4000 }).catch(() => undefined);

@@ -10,6 +10,7 @@ type AuthState = {
   loading: boolean;
   login: (input: LoginInput) => Promise<void>;
   logout: (reason?: 'idle') => Promise<void>;
+  refresh: () => Promise<void>; // ask "who am I" again (e.g. after choosing a new password)
   can: (code: PermissionCode) => boolean;
   signedOutReason: () => SignedOutReason;
 };
@@ -60,9 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refresh = useCallback(async () => {
+    setUser(await api<SessionUser>('/auth/me'));
+  }, []);
+
   const value = useMemo<AuthState>(
-    () => ({ user, loading, login, logout, can: (code) => !!user?.permissions.includes(code), signedOutReason: () => expiredRef.current }),
-    [user, loading, login, logout],
+    () => ({ user, loading, login, logout, refresh, can: (code) => !!user?.permissions.includes(code), signedOutReason: () => expiredRef.current }),
+    [user, loading, login, logout, refresh],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

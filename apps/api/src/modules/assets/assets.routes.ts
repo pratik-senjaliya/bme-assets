@@ -112,11 +112,19 @@ assetsRouter.get('/', requirePermission('asset.view'), async (req, res) => {
 });
 
 assetsRouter.post('/', requirePermission('asset.create'), validate(createAssetSchema), async (req, res) => {
-  const input = req.body as CreateAssetInput;
+  const { purchaseOrder, ...input } = req.body as CreateAssetInput;
   await assertLocationInDepartment(input.departmentId, input.locationId);
   await assertSerialFree(input.serialNo);
   await assertVendors(input);
-  const [row] = await prisma.$transaction((tx) => createAssets(tx, req, [input]), CREATE_TX_OPTIONS);
+  const [row] = await prisma.$transaction(async (tx) => {
+    const rows = await createAssets(tx, req, [input]);
+    // The purchase order, when given, is recorded with the asset (gap review #13).
+    if (purchaseOrder) {
+      const po = await tx.purchaseOrder.create({ data: { ...purchaseOrder, poDate: parseDate(purchaseOrder.poDate), assetId: rows[0].id, createdBy: currentUser(req).id } });
+      await audit(tx, req, { action: 'purchase_order.create', entityType: 'purchase_order', entityId: po.id, after: po });
+    }
+    return rows;
+  }, CREATE_TX_OPTIONS);
   res.status(201).json(await detail(row.id));
 });
 

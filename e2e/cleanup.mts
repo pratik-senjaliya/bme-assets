@@ -25,6 +25,8 @@ const e2eItems = await prisma.consumableItem.findMany({ where: { name: { startsW
 await prisma.consumableMovement.deleteMany({ where: { OR: [{ assetId: { in: ids } }, { itemId: { in: e2eItems.map((i) => i.id) } }] } });
 await prisma.consumableItem.deleteMany({ where: { id: { in: e2eItems.map((i) => i.id) } } });
 await prisma.notification.deleteMany({ where: { type: 'stock', message: { startsWith: 'E2E-' } } });
+// The workflow suite's "forgot password" request for the demo nurse.
+await prisma.notification.deleteMany({ where: { type: 'account', message: { contains: 'nursing@demo.local' } } });
 await prisma.asset.deleteMany({ where: { id: { in: ids } } });
 await prisma.vendor.deleteMany({ where: { name: { startsWith: 'E2E-' } } });
 // The safety suite sets a 1-minute idle sign-out; put it back if that run stopped half-way.

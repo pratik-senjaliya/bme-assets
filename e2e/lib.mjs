@@ -33,7 +33,7 @@ export async function session(browser, email, viewport = { width: 1440, height: 
   // A form with unsaved input asks before the page is left; the tests move on like a person choosing "Leave".
   page.on('dialog', (d) => d.accept().catch(() => {}));
   await page.goto(BASE + '/login');
-  await page.fill('input[type=email]', email);
+  await page.fill('input[autocomplete=username]', email);
   await page.fill('input[type=password]', password);
   await page.click('button[type=submit]');
   await page.waitForURL((u) => !/\/login/.test(u.pathname));

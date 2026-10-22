@@ -65,7 +65,7 @@ await step('A session that ends sends the person to sign in, and back to where t
   await p.waitForURL(/\/login/);
   expect(/expired=1/.test(p.url()) && /next=/.test(p.url()), `address ${p.url()}`);
   expect(/signed out/i.test(await p.locator('body').innerText()), 'no explanation on the sign-in page');
-  await p.fill('input[type=email]', 'biomed@demo.local'); await p.fill('input[type=password]', PASSWORD); await p.keyboard.press('Enter');
+  await p.fill('input[autocomplete=username]', 'biomed@demo.local'); await p.fill('input[type=password]', PASSWORD); await p.keyboard.press('Enter');
   await p.waitForURL((u) => !/\/login/.test(u.pathname));
   expect(/\/complaints|\/due/.test(p.url()), `returned to ${p.url()}`);
   await s.ctx.close();
@@ -73,7 +73,7 @@ await step('A session that ends sends the person to sign in, and back to where t
 await step('A link opened while signed out leads to the sign-in and then to that page', async () => {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } }); const p = await ctx.newPage(); p.setDefaultTimeout(20000);
   await p.goto(BASE + '/reports/pms?group=month'); await p.waitForURL(/\/login/);
-  await p.fill('input[type=email]', 'admin@demo.local'); await p.fill('input[type=password]', PASSWORD); await p.keyboard.press('Enter');
+  await p.fill('input[autocomplete=username]', 'admin@demo.local'); await p.fill('input[type=password]', PASSWORD); await p.keyboard.press('Enter');
   await p.waitForURL((u) => !/\/login/.test(u.pathname));
   expect(/\/reports\/pms/.test(p.url()), `landed on ${p.url()}`);
   await p.goto(BASE + '/login?next=//evil.example.com'); await p.waitForTimeout(1500);
@@ -84,7 +84,7 @@ await step('Wrong passwords lock that login for a while, with a plain message; o
   const u = await newUser('e2e.lock@demo.local');
   const ctx = await b.newContext(); const p = await ctx.newPage(); p.setDefaultTimeout(15000);
   await p.goto(BASE + '/login');
-  for (let i = 0; i < 6; i++) { await p.fill('input[type=email]', 'e2e.lock@demo.local'); await p.fill('input[type=password]', `wrong${i}`); await p.keyboard.press('Enter'); await p.waitForTimeout(500); }
+  for (let i = 0; i < 6; i++) { await p.fill('input[autocomplete=username]', 'e2e.lock@demo.local'); await p.fill('input[type=password]', `wrong${i}`); await p.keyboard.press('Enter'); await p.waitForTimeout(500); }
   const msg = await p.locator('.ant-message-error').last().innerText();
   expect(/Too many wrong passwords.*minutes/i.test(msg), `message "${msg}"`);
   await p.fill('input[type=password]', PASSWORD); await p.keyboard.press('Enter'); await p.waitForTimeout(800);
@@ -92,19 +92,22 @@ await step('Wrong passwords lock that login for a while, with a plain message; o
   const ok = await session(b, 'nursing@demo.local'); expect(ok.page.url() === BASE + '/', 'another person could not sign in');
   await ctx.close(); await ok.ctx.close();
 });
-await step('Anyone can change their own password: mismatches and a wrong current password are explained; the new one works', async () => {
+await step('A new login chooses its own password first: mismatches and a wrong given password are explained; the new one works', async () => {
   await newUser('e2e.pw@demo.local');
   const s = await session(b, 'e2e.pw@demo.local'); const p = s.page;
-  await p.locator('[data-testid="account-menu"]').click(); await p.getByText('Change password').click();
-  const m = p.locator('.ant-modal');
-  await m.getByLabel('Current password', { exact: true }).fill(PASSWORD); await m.getByLabel('New password', { exact: true }).fill('Brand@New123'); await m.getByLabel('Type the new password again').fill('different');
+  // The password was set by the HOD, so the dialog is open at once and cannot be dismissed.
+  const m = p.locator('.ant-modal', { hasText: 'Choose your own password' });
+  await m.waitFor();
+  const given = () => m.getByLabel('Password given to you', { exact: true });
+  await given().fill(PASSWORD); await m.getByLabel('New password', { exact: true }).fill('Brand@New123'); await m.getByLabel('Type the new password again').fill('different');
   await m.locator('.ant-modal-footer .ant-btn-primary').click(); await p.waitForTimeout(500);
   expect(/do not match/i.test(await m.innerText()), 'a mismatch was not explained');
-  await m.getByLabel('Type the new password again').fill('Brand@New123'); await m.getByLabel('Current password', { exact: true }).fill('not-my-password');
+  await m.getByLabel('Type the new password again').fill('Brand@New123'); await given().fill('not-my-password');
   await m.locator('.ant-modal-footer .ant-btn-primary').click(); await p.waitForTimeout(800);
   expect(/not right/i.test(await m.innerText()), 'a wrong current password was not explained');
-  await m.getByLabel('Current password', { exact: true }).fill(PASSWORD); await m.locator('.ant-modal-footer .ant-btn-primary').click();
+  await given().fill(PASSWORD); await m.locator('.ant-modal-footer .ant-btn-primary').click();
   await p.locator('.ant-message-success', { hasText: /Password changed/ }).waitFor();
+  await p.locator('[data-testid="account-menu"]').waitFor(); // the app opens once the password is the person's own
   const old = await fetch(`${BASE}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'e2e.pw@demo.local', password: PASSWORD }) });
   const now = await fetch(`${BASE}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'e2e.pw@demo.local', password: 'Brand@New123' }) });
   expect(old.status === 401 && now.status === 200, `old ${old.status}, new ${now.status}`);

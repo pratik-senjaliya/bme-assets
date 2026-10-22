@@ -21,7 +21,7 @@ import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors, useLeaveGuard, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
-import { hospitalToday } from '@/lib/format';
+import { hospitalToday, moneyInputProps } from '@/lib/format';
 
 type Department = { id: string; name: string };
 type Location = { id: string; departmentId: string; name: string };
@@ -44,6 +44,8 @@ type Values = {
   openingCalibrationOn?: dayjs.Dayjs | null;
   supplierId?: string | null;
   serviceVendorId?: string | null;
+  // Add asset only: the purchase order record (number, date, vendor, cost).
+  purchaseOrder?: { poNumber?: string; poDate?: dayjs.Dayjs | null; vendor?: string; cost?: number | null };
 };
 
 const toForm = (a: AssetDetail): Values => ({
@@ -65,9 +67,12 @@ const toForm = (a: AssetDetail): Values => ({
   serviceVendorId: a.serviceVendor?.id ?? null,
 });
 
-// Form values → API body (dates as YYYY-MM-DD, empty numbers as null).
-const toBody = (v: Values) => ({
+// Form values → API body (dates as YYYY-MM-DD, empty numbers as null). The purchase order goes only when any of it is filled.
+const toBody = ({ purchaseOrder: po, ...v }: Values) => ({
   ...v,
+  ...((po?.poNumber || po?.poDate || po?.vendor || po?.cost != null) && {
+    purchaseOrder: { poNumber: po.poNumber ?? '', poDate: po.poDate ? po.poDate.format('YYYY-MM-DD') : undefined, vendor: po.vendor ?? '', cost: po.cost ?? undefined },
+  }),
   installationDate: v.installationDate ? v.installationDate.format('YYYY-MM-DD') : null,
   warrantyMonths: v.warrantyMonths ?? null,
   pmsFrequencyMonths: v.pmsFrequencyMonths ?? null,
@@ -362,6 +367,33 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
           message={`Installed ${monthsAgo >= 24 ? `${Math.floor(monthsAgo / 12)} years` : `${monthsAgo} months`} ago`}
           description={`Without the date ${pmsLate && calLate ? 'PMS and calibration were' : pmsLate ? 'PMS was' : 'calibration was'} last done, this equipment will show as overdue as soon as it is saved. If it has been maintained, enter the date${pmsLate && calLate ? 's' : ''} under "Already in use?" above.`}
         />
+      )}
+
+      {!asset && (
+        <FormSection title="Purchase order" hint="Optional. Recorded with the asset, so its cost counts in the reports. More can be added later on the asset's page.">
+          <Row gutter={16}>
+            <Col {...half}>
+              <Form.Item label="PO number" name={['purchaseOrder', 'poNumber']}>
+                <Input maxLength={60} placeholder="e.g. PO/2026/0412" />
+              </Form.Item>
+            </Col>
+            <Col {...half}>
+              <Form.Item label="PO date" name={['purchaseOrder', 'poDate']}>
+                <DatePicker format="DD MMM YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(hospitalToday(), 'day')} />
+              </Form.Item>
+            </Col>
+            <Col {...half}>
+              <Form.Item label="Vendor" name={['purchaseOrder', 'vendor']}>
+                <Input maxLength={150} placeholder="Who the order was placed with" />
+              </Form.Item>
+            </Col>
+            <Col {...half}>
+              <Form.Item label="Cost (₹)" name={['purchaseOrder', 'cost']}>
+                <InputNumber min={0} {...moneyInputProps} placeholder="0" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </FormSection>
       )}
 
       {!asset && (

@@ -22,7 +22,7 @@ import {
 import { audit } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
-import { addDaysISO, zonedDayStart } from '../../lib/dates';
+import { addDaysISO, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { usersWithPermissions } from '../../lib/people';
@@ -145,7 +145,12 @@ async function transition(
   changes: Changes | ((before: Before) => Changes),
   action: string,
   wrong: string,
-  opts: { step?: { kind: string; note?: string | null }; check?: (before: Before) => void; also?: Prisma.ComplaintWhereInput } = {},
+  opts: {
+    step?: { kind: string; note?: string | null };
+    check?: (before: Before) => void;
+    also?: Prisma.ComplaintWhereInput;
+    extra?: (tx: Prisma.TransactionClient, before: Before) => Promise<void>; // more work in the same transaction
+  } = {},
 ) {
   const before = await findScoped(req);
   if (!from.includes(before.status)) throw new HttpError(409, wrong);
@@ -154,6 +159,7 @@ async function transition(
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.complaint.updateMany({ where: { id: before.id, status: { in: from }, ...opts.also }, data });
     if (count === 0) throw new HttpError(409, wrong);
+    await opts.extra?.(tx, before);
     if (opts.step) await tx.complaintStep.create({ data: { complaintId: before.id, kind: opts.step.kind, note: opts.step.note ?? null, by: currentUser(req).id } });
     const after = await tx.complaint.findUniqueOrThrow({ where: { id: before.id } });
     await audit(tx, req, { action, entityType: 'complaint', entityId: before.id, before, after });
@@ -230,20 +236,38 @@ complaintsRouter.post('/:id/resume', requirePermission('complaint.hold'), valida
   res.json(await one(after.id));
 });
 
-// Fixed: the downtime clock stops here. Also straight from on hold, once the OEM engineer has done the work.
+// Fixed: the downtime clock stops here. Also straight from on hold, once the OEM engineer has done the work. What it
+// cost (parts, the OEM's bill) can be booked in the same step, dated today and linked to the complaint (gap review #10).
 complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), validate(resolveComplaintSchema), async (req, res) => {
-  const { resolutionNotes } = req.body as ResolveComplaintInput;
+  const { resolutionNotes, costs } = req.body as ResolveComplaintInput;
+  const me = currentUser(req);
+  if (costs.length && !me.permissions.includes('expense.manage')) throw new HttpError(403, 'You cannot book costs');
   const { after } = await transition(
     req,
     ['in_progress', 'on_hold'],
-    { status: 'resolved', resolvedAt: new Date(), resolvedBy: currentUser(req).id, resolutionNotes, holdNote: null, escalatedAt: null, escalatedBy: null },
+    { status: 'resolved', resolvedAt: new Date(), resolvedBy: me.id, resolutionNotes, holdNote: null, escalatedAt: null, escalatedBy: null },
     'complaint.resolve',
     'Start the complaint before resolving it (or it is already resolved)',
+    {
+      extra: async (tx, b) => {
+        for (const cost of costs) {
+          const row = await tx.serviceExpense.create({ data: { ...cost, vendor: cost.vendor ?? null, date: parseDate(todayISO()), assetId: b.assetId, complaintId: b.id, createdBy: me.id } });
+          await audit(tx, req, { action: 'service_expense.create', entityType: 'service_expense', entityId: row.id, after: row });
+        }
+      },
+    },
   );
   // Whoever raised it hears that it is fixed and that it is theirs to close.
   await tell(req, [after.raisedById], `Complaint ${after.complaintNo} resolved: check the equipment works, then close the complaint.`, after);
   res.json(await one(after.id));
 });
+
+// Whoever raised it, or someone of that department who can raise complaints (the next shift checks the machine),
+// confirms the fix: closes it, or sends it back.
+function assertChecksFix(me: ReturnType<typeof currentUser>, b: Before) {
+  const sameWard = !!me.departmentId && me.departmentId === b.departmentId && me.permissions.includes('complaint.create');
+  if (b.raisedById !== me.id && !sameWard) throw new HttpError(403, `Only ${b.raisedBy.name}, who raised it, or someone from ${b.department.name} can close this complaint`);
+}
 
 // Whoever raised it confirms the equipment works and closes it, so a complaint is never marked fixed on the
 // engineer's word alone. Downtime is not changed: it ended when the engineer resolved it.
@@ -252,12 +276,25 @@ complaintsRouter.post('/:id/close', requirePermission('complaint.view'), validat
   const me = currentUser(req);
   const { after } = await transition(req, ['resolved'], { status: 'closed', closedAt: new Date(), closedBy: me.id, closeNote: note ?? null }, 'complaint.close', 'Only a resolved complaint can be closed', {
     step: { kind: 'closed', note },
-    // Whoever raised it, or someone of that department who can raise complaints (the next shift checks the machine).
-    check: (b) => {
-      const sameWard = !!me.departmentId && me.departmentId === b.departmentId && me.permissions.includes('complaint.create');
-      if (b.raisedById !== me.id && !sameWard) throw new HttpError(403, `Only ${b.raisedBy.name}, who raised it, or someone from ${b.department.name} can close this complaint`);
-    },
+    check: (b) => assertChecksFix(me, b),
   });
+  res.json(await one(after.id));
+});
+
+// Not fixed after all (gap review #7): instead of closing, the same people send it back to the engineer with what is
+// still wrong. It is the same fault, so the downtime runs on from when it was raised; the earlier resolution stays in
+// its history as a step. A closed complaint is final: a new fault is a new complaint.
+complaintsRouter.post('/:id/reopen', requirePermission('complaint.view'), validate(complaintNoteSchema), async (req, res) => {
+  const { note } = req.body as ComplaintNoteInput;
+  const me = currentUser(req);
+  const { before, after } = await transition(req, ['resolved'], { status: 'in_progress', resolvedAt: null, resolvedBy: null, resolutionNotes: null }, 'complaint.reopen', 'Only a resolved complaint (not yet closed) can be reopened', {
+    check: (b) => assertChecksFix(me, b),
+    extra: async (tx, b) => {
+      await tx.complaintStep.create({ data: { complaintId: b.id, kind: 'resolved', note: b.resolutionNotes, at: b.resolvedAt!, by: b.resolvedBy } });
+    },
+    step: { kind: 'reopened', note },
+  });
+  await tell(req, [before.assignedToId ?? before.resolvedBy], `Complaint ${before.complaintNo} is not fixed: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}" (${me.name})`, before);
   res.json(await one(after.id));
 });
 

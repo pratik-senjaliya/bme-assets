@@ -215,6 +215,24 @@ function SettingsPageScreen() {
             </Typography.Paragraph>
             <Button loading={busy === 'run'} onClick={runReminders}>Run reminders now</Button>
           </Card>
+          {/* Written by the nightly backup on the hospital server (deploy/backup.sh). The daily check tells the HOD if
+              it failed or stopped (gap review #23). */}
+          <Card title="Backups">
+            {!settings.data.backupLastAt && !settings.data.backupLastErrorAt ? (
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                No backup has been recorded on this server. On the hospital server the backup runs every night by itself (see the install guide); a hosted demo is backed up by its provider.
+              </Typography.Paragraph>
+            ) : settings.data.backupLastErrorAt && (!settings.data.backupLastAt || settings.data.backupLastErrorAt > settings.data.backupLastAt) ? (
+              <Alert
+                type="error"
+                showIcon
+                message={`The last backup failed (${formatDateTime(settings.data.backupLastErrorAt)})`}
+                description={`${settings.data.backupLastError ?? 'No details'}. Ask whoever looks after the server to check it (docker compose logs backup).`}
+              />
+            ) : (
+              <Alert type="success" showIcon message={`Last backup: ${formatDateTime(settings.data.backupLastAt)}`} description="Copy the backups folder off the server regularly: a backup on the same disk does not survive the disk failing." />
+            )}
+          </Card>
           </Space>
         </Form>
       )}

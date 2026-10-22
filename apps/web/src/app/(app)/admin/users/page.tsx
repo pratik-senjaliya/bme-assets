@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { ROLE_LABELS, ROLE_NAMES, createUserSchema, updateUserSchema, type RoleName, type UserRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
-import { StatusTag } from '@/components/StatusTag';
+import { Pill, StatusTag } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
@@ -14,7 +14,7 @@ import { RequirePermission } from '@/components/RequirePermission';
 import { COLORS } from '@/theme';
 
 type Department = { id: string; name: string };
-type FormValues = { name: string; email: string; role: RoleName; departmentId?: string; password?: string; active: boolean };
+type FormValues = { name: string; email: string; username?: string; role: RoleName; departmentId?: string; password?: string; active: boolean };
 
 function UsersPageScreen() {
   const { message } = App.useApp();
@@ -37,7 +37,7 @@ function UsersPageScreen() {
     form.setFieldsValue(
       row === 'new'
         ? { role: 'biomed', active: true }
-        : { name: row.name, email: row.email, role: row.role, departmentId: row.departmentId ?? undefined, active: row.active },
+        : { name: row.name, email: row.email, username: row.username ?? undefined, role: row.role, departmentId: row.departmentId ?? undefined, active: row.active },
     );
     setEditing(row);
   }
@@ -48,6 +48,7 @@ function UsersPageScreen() {
     const isNew = editing === 'new';
     const input = parseForm(form, isNew ? createUserSchema : updateUserSchema, {
       ...form.getFieldsValue(),
+      username: form.getFieldValue('username') ?? null,
       password: form.getFieldValue('password') || undefined,
       departmentId: form.getFieldValue('departmentId') ?? null,
     });
@@ -96,10 +97,25 @@ function UsersPageScreen() {
         emptyText="No users yet. Add the first one."
         columns={[
           { title: 'Name', dataIndex: 'name', className: 'm-title' },
-          { title: 'Email', dataIndex: 'email', className: 'm-plain' },
+          {
+            title: 'Sign-in',
+            dataIndex: 'email',
+            className: 'm-plain',
+            render: (email: string, row) => (
+              <div style={{ lineHeight: 1.35 }}>
+                <div>{email}</div>
+                {row.username && <div className="code" style={{ color: COLORS.muted, fontSize: 12.5 }}>{row.username}</div>}
+              </div>
+            ),
+          },
           { title: 'Role', dataIndex: 'roleLabel' },
           { title: 'Department', dataIndex: 'departmentName', render: (v) => v ?? '—' },
-          { title: 'Status', dataIndex: 'active', className: 'm-end', render: (a: boolean) => <StatusTag status={a ? 'active' : 'inactive'} /> },
+          { title: 'Status', dataIndex: 'active', className: 'm-end', render: (a: boolean, row) => (
+              <Space size={4} wrap>
+                <StatusTag status={a ? 'active' : 'inactive'} />
+                {a && row.mustChangePassword && <Pill tone="warn">New password not chosen yet</Pill>}
+              </Space>
+            ) },
           { title: 'Added', dataIndex: 'createdAt', className: 'm-hide', render: formatDate },
           {
             title: <span className="sr-only">Actions</span>,
@@ -114,7 +130,7 @@ function UsersPageScreen() {
                 {row.active && row.id !== me?.id && (
                   <Popconfirm
                     title={`Deactivate ${row.name}?`}
-                    description="They can no longer sign in. Their history is kept."
+                    description="They can no longer sign in. Their history is kept. Complaints assigned to them go back to the board, and the HOD is told."
                     okText="Deactivate"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => deactivate(row)}
@@ -145,6 +161,9 @@ function UsersPageScreen() {
           <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Enter an email' }]}>
             <Input type="email" placeholder="name@hospital.in" />
           </Form.Item>
+          <Form.Item label="Username (optional)" name="username" extra="A short name to sign in with instead of the email, e.g. icu.sister1.">
+            <Input autoComplete="off" maxLength={30} placeholder="e.g. icu.sister1" />
+          </Form.Item>
           <Form.Item label="Role" name="role" rules={[{ required: true }]}>
             <Select options={roleOptions} />
           </Form.Item>
@@ -161,7 +180,7 @@ function UsersPageScreen() {
           <Form.Item
             label={editing === 'new' ? 'Password' : 'New password'}
             name="password"
-            extra={editing === 'new' ? 'At least 8 characters.' : 'Leave blank to keep the current password.'}
+            extra={editing === 'new' ? 'At least 8 characters. They choose their own when they first sign in.' : 'Leave blank to keep the current password. A new one must be changed at the next sign-in.'}
             rules={editing === 'new' ? [{ required: true, message: 'Set a password' }] : []}
           >
             <Input.Password autoComplete="new-password" />

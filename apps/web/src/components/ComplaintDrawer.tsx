@@ -22,6 +22,7 @@ const DOT: Record<ComplaintEvent['kind'], string> = {
   held: COLORS.info.dot,
   resumed: COLORS.warn.dot,
   resolved: COLORS.good.dot,
+  reopened: COLORS.bad.dot,
   closed: COLORS.neutral.dot,
   document: COLORS.neutral.dot,
   expense: COLORS.neutral.dot,
