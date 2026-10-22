@@ -3,10 +3,18 @@
 # Full steps: docs/install.md. (Local development uses docker-compose.dev.yml instead.)
 name: bme
 
+# Logs rotate (5 files of 10 MB per service), so a busy or failing service cannot fill the server's disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:16
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: bme
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
@@ -24,6 +32,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy
@@ -47,6 +56,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       api:
         condition: service_healthy
@@ -57,6 +67,7 @@ services:
   proxy:
     image: caddy:2
     restart: unless-stopped
+    logging: *logging
     depends_on:
       web:
         condition: service_healthy
@@ -70,6 +81,7 @@ services:
   backup:
     image: postgres:16
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy

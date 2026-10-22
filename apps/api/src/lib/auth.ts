@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ROLE_LABELS, type PermissionCode, type RoleName, type SessionUser } from '@bme/shared';
 import { config } from './config';
 import { HttpError } from './errors';
+import { effectivePermissions } from './people';
 import { prisma } from './prisma';
 
 declare global {
@@ -51,7 +52,7 @@ export async function loadSessionUser(id: string, sessionVersion?: number): Prom
     role,
     roleLabel: ROLE_LABELS[role] ?? user.role.label,
     departmentId: user.departmentId,
-    permissions: user.role.rolePermissions.map((rp) => rp.permission.code as PermissionCode),
+    permissions: effectivePermissions(user),
     mustChangePassword: user.mustChangePassword,
   };
 }

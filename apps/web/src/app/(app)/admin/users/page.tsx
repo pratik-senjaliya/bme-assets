@@ -14,7 +14,7 @@ import { RequirePermission } from '@/components/RequirePermission';
 import { COLORS } from '@/theme';
 
 type Department = { id: string; name: string };
-type FormValues = { name: string; email: string; username?: string; role: RoleName; departmentId?: string; password?: string; active: boolean };
+type FormValues = { name: string; email: string; username?: string; deputy?: boolean; role: RoleName; departmentId?: string; password?: string; active: boolean };
 
 function UsersPageScreen() {
   const { message } = App.useApp();
@@ -37,7 +37,7 @@ function UsersPageScreen() {
     form.setFieldsValue(
       row === 'new'
         ? { role: 'biomed', active: true }
-        : { name: row.name, email: row.email, username: row.username ?? undefined, role: row.role, departmentId: row.departmentId ?? undefined, active: row.active },
+        : { name: row.name, email: row.email, username: row.username ?? undefined, deputy: row.deputy, role: row.role, departmentId: row.departmentId ?? undefined, active: row.active },
     );
     setEditing(row);
   }
@@ -49,6 +49,7 @@ function UsersPageScreen() {
     const input = parseForm(form, isNew ? createUserSchema : updateUserSchema, {
       ...form.getFieldsValue(),
       username: form.getFieldValue('username') ?? null,
+      deputy: form.getFieldValue('role') === 'biomed' && !!form.getFieldValue('deputy'),
       password: form.getFieldValue('password') || undefined,
       departmentId: form.getFieldValue('departmentId') ?? null,
     });
@@ -108,7 +109,7 @@ function UsersPageScreen() {
               </div>
             ),
           },
-          { title: 'Role', dataIndex: 'roleLabel' },
+          { title: 'Role', dataIndex: 'roleLabel', render: (r: string, row) => (row.deputy ? <Space size={4} wrap>{r}<Pill tone="info">Deputy HOD</Pill></Space> : r) },
           { title: 'Department', dataIndex: 'departmentName', render: (v) => v ?? '—' },
           { title: 'Status', dataIndex: 'active', className: 'm-end', render: (a: boolean, row) => (
               <Space size={4} wrap>
@@ -167,6 +168,16 @@ function UsersPageScreen() {
           <Form.Item label="Role" name="role" rules={[{ required: true }]}>
             <Select options={roleOptions} />
           </Form.Item>
+          {role === 'biomed' && (
+            <Form.Item
+              label="Deputy HOD"
+              name="deputy"
+              valuePropName="checked"
+              extra="Can also decide approvals, assign complaints and put them on hold, for when the HOD is away. Every decision is recorded under their name."
+            >
+              <Switch aria-label="Deputy HOD" />
+            </Form.Item>
+          )}
           {role === 'nursing' && (
             <Form.Item
               label="Department"

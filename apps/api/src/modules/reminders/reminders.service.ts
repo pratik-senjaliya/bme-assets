@@ -4,6 +4,7 @@ import { addMonths, daysBetween, parseDate, prettyDate } from '../../lib/dates';
 import { sendMail, smtpConfigured } from '../../lib/mail';
 import { usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
+import { diskSpace } from '../../lib/storage';
 
 // Who gets which reminder: people whose role can act on it (and can read notifications).
 const RECIPIENT_PERMISSION: Record<'pms' | 'calibration' | 'warranty' | 'contract', PermissionCode> = {
@@ -33,6 +34,7 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
   const settings = await prisma.hospitalSettings.findFirst();
   if (!settings) return { created: 0, emailed: 0 }; // a brand-new install that has not been set up yet
   await checkBackup(settings, today);
+  await checkDisk(today);
   const thresholds = [...settings.reminderDays].sort((a, b) => a - b);
   if (thresholds.length === 0) return { created: 0, emailed: 0 };
 
@@ -91,11 +93,26 @@ async function checkBackup(s: { backupLastAt: Date | null; backupLastError: stri
   const message = failed
     ? `Backup failed on ${prettyDate(s.backupLastErrorAt!)}: ${s.backupLastError ?? 'no details'}. Ask whoever looks after the server to check it.`
     : `No backup since ${prettyDate(s.backupLastAt!)}. Ask whoever looks after the server to check the backup is running.`;
+  await tellSystem(today, message);
+}
+
+// Uploads (certificates, reports, photos) and the database share the server's disk: warn before it fills (gap
+// review #24), when under 2 GB or 10% is left.
+const DISK_LOW_BYTES = 2 * 1024 ** 3;
+async function checkDisk(today: string) {
+  const disk = await diskSpace();
+  if (!disk || (disk.free >= DISK_LOW_BYTES && disk.free >= disk.total * 0.1)) return;
+  const gb = (b: number) => `${(b / 1024 ** 3).toFixed(1)} GB`;
+  await tellSystem(today, `The server is running out of disk space: ${gb(disk.free)} free of ${gb(disk.total)}. Ask whoever looks after the server to make room.`);
+}
+
+// A server notice to whoever keeps the settings, once a day per message.
+async function tellSystem(today: string, message: string) {
   const dueDate = parseDate(today);
   const people = await usersWithPermissions('setup.manage', 'notification.view');
-  const told = new Set((await prisma.notification.findMany({ where: { type: 'backup', dueDate, userId: { in: people } }, select: { userId: true } })).map((x) => x.userId));
+  const told = new Set((await prisma.notification.findMany({ where: { type: 'system', dueDate, message, userId: { in: people } }, select: { userId: true } })).map((x) => x.userId));
   const to = people.filter((id) => !told.has(id));
-  if (to.length) await prisma.notification.createMany({ data: to.map((userId) => ({ userId, type: 'backup', dueDate, message })) });
+  if (to.length) await prisma.notification.createMany({ data: to.map((userId) => ({ userId, type: 'system', dueDate, message })) });
 }
 
 // A reminder is about something still to do. Once it is done (PMS, calibration) or no longer applies (equipment

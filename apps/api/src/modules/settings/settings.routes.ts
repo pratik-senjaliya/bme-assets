@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { updateSettingsSchema, type SettingsResponse, type UpdateSettingsInput } from '@bme/shared';
+import { APP_VERSION, updateSettingsSchema, type SettingsResponse, type UpdateSettingsInput } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
+import { diskSpace } from '../../lib/storage';
 import { validate } from '../../lib/validate';
 
 export const settingsRouter = Router();
@@ -11,7 +12,9 @@ settingsRouter.use(requirePermission('setup.manage'));
 
 type Row = Awaited<ReturnType<typeof prisma.hospitalSettings.findFirstOrThrow>>;
 
-const toResponse = (s: Row): SettingsResponse => ({
+const toResponse = async (s: Row): Promise<SettingsResponse> => {
+  const disk = await diskSpace();
+  return {
   name: s.name,
   shortCode: s.shortCode,
   assetIdPattern: s.assetIdPattern,
@@ -33,13 +36,16 @@ const toResponse = (s: Row): SettingsResponse => ({
   backupLastAt: s.backupLastAt?.toISOString() ?? null,
   backupLastError: s.backupLastError,
   backupLastErrorAt: s.backupLastErrorAt?.toISOString() ?? null,
-});
+  labelBaseUrl: s.labelBaseUrl,
+  system: { version: APP_VERSION, dailyJobLastRunAt: s.dailyJobLastRunAt?.toISOString() ?? null, storageFreeBytes: disk?.free ?? null, storageTotalBytes: disk?.total ?? null },
+  };
+};
 
 // One row per install (no multi-tenancy).
 const load = () => prisma.hospitalSettings.findFirstOrThrow();
 
 settingsRouter.get('/', async (_req, res) => {
-  res.json(toResponse(await load()));
+  res.json(await toResponse(await load()));
 });
 
 settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
@@ -65,5 +71,5 @@ settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
   const row = await audited(req, { action: 'settings.update', entityType: 'hospital_settings', before }, (tx) =>
     tx.hospitalSettings.update({ where: { id: before.id }, data: { ...rest, ...(smtpPassword ? { smtpPassword } : {}) } }),
   );
-  res.json(toResponse(row));
+  res.json(await toResponse(row));
 });

@@ -9,11 +9,13 @@ Plan for a few minutes when nobody is entering data.
    ```
    Check that new `db-...sql.gz` and `uploads-...tar.gz` files appeared in `backups/`, and copy them somewhere safe.
 
-2. **Get the new version** into the same folder (`git pull`, or unzip the new release over it). Keep your `.env`.
+2. **Read `CHANGELOG.md`** for the releases between yours and the new one (anything marked *Before upgrading*).
+
+3. **Get the new version** into the same folder (`git pull`, or unzip the new release over it). Keep your `.env`.
    Compare `.env.example` with your `.env` in case a new setting was added; `docker compose up` will tell you if a
    required one is missing.
 
-3. **Rebuild and restart.**
+4. **Rebuild and restart.**
    ```bash
    docker compose up -d --build
    ```
@@ -21,12 +23,13 @@ Plan for a few minutes when nobody is entering data.
    `N migrations found` and `All migrations have been successfully applied` or `No pending migrations`).
    The `db` and `backup` containers are not touched.
 
-4. **Check.**
+5. **Check.**
    ```bash
    docker compose ps                  # all healthy
    docker compose logs --tail 30 api
    ```
-   Sign in, open the dashboard and an asset. New permission codes introduced by a release are added automatically when the API starts, and are given to the roles that have them by default. Permission changes you made yourself (Admin > Roles) are never overwritten. If a release *changes a default* for an existing permission, the release notes say so, because existing roles keep what they have.
+   Sign in, open the dashboard and an asset. The account menu (and Admin > Hospital settings > System) shows the
+   version now running; `CHANGELOG.md` lists what changed in each release. New permission codes introduced by a release are added automatically when the API starts, and are given to the roles that have them by default. Permission changes you made yourself (Admin > Roles) are never overwritten. If a release *changes a default* for an existing permission, the release notes say so, because existing roles keep what they have.
 
 ## Rolling back
 

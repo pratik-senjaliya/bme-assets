@@ -46,7 +46,8 @@ export const formatAge = (months: number | null | undefined) => {
 };
 
 // 3.5 MB, 120 KB
-export const formatSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+export const formatSize = (bytes: number) =>
+  bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 // 2 h 15 m, 25 m, 3 d 4 h, < 1 m. Used for response time and downtime.
 export const formatDuration = (seconds: number | null | undefined) => {

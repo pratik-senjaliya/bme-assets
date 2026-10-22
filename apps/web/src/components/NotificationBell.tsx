@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { EmptyState } from '@/components/Skeletons';
 
-const TAB: Record<Exclude<NotificationRow['type'], 'approval' | 'report' | 'stock' | 'backup' | 'account'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase', complaint: 'complaints' };
+const TAB: Record<Exclude<NotificationRow['type'], 'approval' | 'report' | 'stock' | 'system' | 'account'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase', complaint: 'complaints' };
 
 // In-app reminders (PMS, calibration, warranty, contracts) and notices (approvals, complaints). Checked every minute while the app is open.
 export function NotificationBell() {
@@ -39,7 +39,7 @@ export function NotificationBell() {
     if (n.type === 'approval') router.push('/approvals');
     else if (n.complaintId) router.push(`/complaints?open=${n.complaintId}`);
     else if (n.type === 'stock') router.push('/consumables?low=true');
-    else if (n.type === 'backup') router.push('/admin/settings');
+    else if (n.type === 'system') router.push('/admin/settings');
     else if (n.type === 'account') router.push('/admin/users');
     else if (n.type === 'report') router.push(`/reports/monthly${n.dueDate ? `?month=${n.dueDate.slice(0, 7)}` : ''}`);
     else if (n.assetId) router.push(`/assets/${n.assetId}?tab=${TAB[n.type]}`);

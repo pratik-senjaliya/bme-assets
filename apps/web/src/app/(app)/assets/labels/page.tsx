@@ -12,9 +12,10 @@ import { EmptyState, ListPageSkeleton } from '@/components/Skeletons';
 import { useFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
-// The address a label opens: this site's /q/<asset ID>. Printed from the address staff use, so a phone on the same
-// network opens it.
-const labelUrl = (code: string) => `${window.location.origin}/q/${encodeURIComponent(code)}`;
+// The address a label opens: <site>/q/<asset ID>. The site is the fixed address from Hospital settings when one is set,
+// else the address the labels are printed from, so a phone on the same network opens it.
+const siteOf = (d: AssetLabelsResponse | null | undefined) => d?.baseUrl ?? window.location.origin;
+const labelUrl = (site: string, code: string) => `${site}/q/${encodeURIComponent(code)}`;
 
 // A sheet of labels for the equipment asked for (?ids=…) or matching the asset list's filters. Laid out for A4
 // sticker sheets of 3 × 7 labels (63.5 × 38.1 mm); on plain paper the faint borders are the cutting lines.
@@ -31,7 +32,7 @@ function LabelSheet() {
   useEffect(() => {
     if (!labels.data || pms) return;
     let live = true;
-    void Promise.all(labels.data.items.map(async (a) => [a.id, await QRCode.toString(labelUrl(a.assetCode), { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })] as const)).then(
+    void Promise.all(labels.data.items.map(async (a) => [a.id, await QRCode.toString(labelUrl(siteOf(labels.data), a.assetCode), { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })] as const)).then(
       (pairs) => live && setSvgs(Object.fromEntries(pairs)),
     );
     return () => {
@@ -88,7 +89,7 @@ function LabelSheet() {
             showIcon
             style={{ marginBottom: 16 }}
             message="Stick a label on each machine. Scanning it with a phone camera opens that machine's page."
-            description={`The labels link to ${window.location.origin}, so print them from the address staff use on the hospital network. Print at 100% (actual size) on A4 sheets of 21 labels.`}
+            description={`The labels link to ${siteOf(d)}${d.baseUrl ? ' (set in Hospital settings)' : ', so print them from the address staff use on the hospital network'}. Print at 100% (actual size) on A4 sheets of 21 labels.`}
           />
         )}
         {d && d.total > d.items.length && (
@@ -119,7 +120,7 @@ function LabelSheet() {
               </div>
             ))}
             {!pms && d.items.map((a) => (
-              <div key={a.id} className="qr-label" data-url={labelUrl(a.assetCode)}>
+              <div key={a.id} className="qr-label" data-url={labelUrl(siteOf(d), a.assetCode)}>
                 <div className="qr-label-code" role="img" aria-label={`QR code for ${a.assetCode}`} dangerouslySetInnerHTML={{ __html: svgs[a.id] ?? '' }} />
                 <div className="qr-label-text">
                   <div className="qr-label-hospital">{d.hospitalName}</div>

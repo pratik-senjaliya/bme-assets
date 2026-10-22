@@ -25,7 +25,7 @@ async function cleanUp() {
   const assetIds = (await prisma.asset.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } })).map((a) => a.id);
   const complaints = (await prisma.complaint.findMany({ where: { assetId: { in: assetIds } }, select: { id: true } })).map((c) => c.id);
   const users = (await prisma.user.findMany({ where: { email: { startsWith: EMAIL } }, select: { id: true } })).map((u) => u.id);
-  await prisma.notification.deleteMany({ where: { OR: [{ assetId: { in: assetIds } }, { userId: { in: users } }, { createdAt: { gte: startedAt }, type: { in: ['backup', 'account'] } }] } });
+  await prisma.notification.deleteMany({ where: { OR: [{ assetId: { in: assetIds } }, { userId: { in: users } }, { createdAt: { gte: startedAt }, type: { in: ['system', 'account'] } }] } });
   await prisma.serviceExpense.deleteMany({ where: { assetId: { in: assetIds } } });
   await prisma.purchaseOrder.deleteMany({ where: { assetId: { in: assetIds } } });
   await prisma.complaintStep.deleteMany({ where: { complaintId: { in: complaints } } });
@@ -246,7 +246,7 @@ describe('Backups', () => {
   it('Hospital settings show the last backup; a failed or stopped one reaches the HOD once a day', async () => {
     const settings = async () => (await (await call(base, admin, 'GET', '/settings')).json()) as SettingsResponse;
     const run = () => call(base, admin, 'POST', '/reminders/run');
-    const told = () => prisma.notification.count({ where: { userId: ids.adminUser, type: 'backup', createdAt: { gte: startedAt } } });
+    const told = () => prisma.notification.count({ where: { userId: ids.adminUser, type: 'system', createdAt: { gte: startedAt } } });
 
     // Nothing backs up here (the hosted demo): nothing to say.
     assert.equal((await run()).status, 200);
@@ -261,12 +261,12 @@ describe('Backups', () => {
     await run();
     await run();
     assert.equal(await told(), 1);
-    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'backup' }, orderBy: { createdAt: 'desc' } })).message, /failed/i);
+    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'system' }, orderBy: { createdAt: 'desc' } })).message, /failed/i);
 
     // Stopped: the last one is more than two days old.
-    await prisma.notification.deleteMany({ where: { type: 'backup', createdAt: { gte: startedAt } } });
+    await prisma.notification.deleteMany({ where: { type: 'system', createdAt: { gte: startedAt } } });
     await prisma.hospitalSettings.updateMany({ data: { backupLastAt: new Date(Date.now() - 3 * 86_400_000), backupLastError: null, backupLastErrorAt: null } });
     await run();
-    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'backup' } })).message, /no backup/i);
+    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'system' } })).message, /no backup/i);
   });
 });

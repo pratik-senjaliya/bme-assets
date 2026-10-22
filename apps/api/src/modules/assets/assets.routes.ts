@@ -146,6 +146,7 @@ assetsRouter.get('/labels', requirePermission('asset.edit'), async (req, res) =>
   const day = (d: Date | null | undefined) => (d ? isoDate(d) : null);
   const body: AssetLabelsResponse = {
     hospitalName: settings.name,
+    baseUrl: settings.labelBaseUrl,
     total,
     items: rows.map((a) => ({
       id: a.id, assetCode: a.assetCode, name: a.name, departmentName: a.department.name, locationName: a.location.name,
