@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // Order matters: flows continues with the equipment that core creates.
-const all = ['core', 'flows', 'ops', 'checklists', 'misc', 'fixes', 'journeys', 'a11y', 'phone', 'labels', 'assign', 'management', 'holdclose', 'oempms', 'transfer', 'vendors', 'consumables', 'safety', 'workflow', 'operations', 'register', 'facility', 'ward', 'licences', 'logbook'];
+const all = ['core', 'flows', 'ops', 'checklists', 'misc', 'fixes', 'journeys', 'a11y', 'phone', 'labels', 'assign', 'management', 'holdclose', 'oempms', 'transfer', 'vendors', 'consumables', 'safety', 'workflow', 'operations', 'register', 'facility', 'ward', 'licences', 'logbook', 'facilityreports'];
 const only = process.argv.slice(2).filter((a) => all.includes(a));
 const run = (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', cwd: path.join(here, '..') }).status ?? 1;
 const cleanup = () => run('npx', ['tsx', '--env-file=apps/api/.env', 'e2e/cleanup.mts']);

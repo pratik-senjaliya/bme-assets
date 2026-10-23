@@ -1,7 +1,7 @@
 'use client';
 
 import { DownloadOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, DatePicker, Select, Space } from 'antd';
+import { Segmented, Alert, Button, Card, DatePicker, Select, Space } from 'antd';
 import dayjs from 'dayjs';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { KpiSkeleton } from '@/components/Skeletons';
 import { StatusResult } from '@/components/StatusResult';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { COLORS } from '@/theme';
 import { hospitalToday } from '@/lib/format';
 
@@ -42,17 +42,20 @@ function AuditPackPage() {
   const from = params.get('from') ?? fmt(fyStart(today).subtract(1, 'year'));
   const to = params.get('to') ?? fmt(fyStart(today).subtract(1, 'day'));
   const departmentId = params.get('departmentId') ?? '';
+  const twoTeams = useTwoTeams();
+  const register = twoTeams && (params.get('register') === 'biomedical' || params.get('register') === 'facility') ? (params.get('register') as 'biomedical' | 'facility') : undefined;
   const allowed = can('report.view');
   const wholeHospital = user?.role !== 'nursing';
-  const q = auditPackQuerySchema.safeParse({ from, to, ...(departmentId ? { departmentId } : {}) });
-  const query = q.success ? new URLSearchParams({ from: q.data.from, to: q.data.to, ...(q.data.departmentId ? { departmentId: q.data.departmentId } : {}) }) : null;
+  const q = auditPackQuerySchema.safeParse({ from, to, ...(departmentId ? { departmentId } : {}), ...(register && { register }) });
+  const query = q.success ? new URLSearchParams({ from: q.data.from, to: q.data.to, ...(q.data.departmentId ? { departmentId: q.data.departmentId } : {}), ...(q.data.register ? { register: q.data.register } : {}) }) : null;
   const summary = useFetch<AuditPackSummary>(allowed && query ? `/reports/audit-pack/summary?${query}` : null, { fresh: true });
   const departments = useFetch<Option[]>(allowed && wholeHospital ? '/departments' : null);
 
   if (!allowed) return <StatusResult status="403" title="You cannot see reports" />;
   const set = (next: Record<string, string>) => {
-    const p = new URLSearchParams({ from, to, departmentId, ...next });
+    const p = new URLSearchParams({ from, to, departmentId, register: register ?? '', ...next });
     if (!p.get('departmentId')) p.delete('departmentId');
+    if (!p.get('register')) p.delete('register');
     router.replace(`${pathname}?${p}`);
   };
   const problem = q.success ? summary.error : q.error.issues[0]?.message;
@@ -89,6 +92,7 @@ function AuditPackPage() {
             onChange={(v) => set({ departmentId: v })}
           />
         )}
+        {twoTeams && <Segmented aria-label="Equipment" value={register ?? ''} onChange={(v) => set({ register: String(v) })} options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]} />}
       </Space>
       {problem ? (
         <Alert type="error" showIcon message="Cannot make this pack" description={problem} />

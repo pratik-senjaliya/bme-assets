@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { isCritical, registerQuerySchema, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
+import { isCritical, registerQuerySchema, type DashboardFacility, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
 import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { complaintInclude, machineDownMs, toComplaintRows } from '../complaints/complaints.service';
+import { licenceInclude, toLicenceRows } from '../licences/licences.routes';
+import { hoursDue, toTypeRows, typeInclude } from '../readings/readings.service';
+import { facilityOn } from '../../lib/people';
+import type { Scope } from '../../lib/auth';
 
 export const dashboardRouter = Router();
 
@@ -185,6 +189,30 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     charts,
     topBreakdowns,
     expiring: expiring && expiring.slice(0, 8),
+    facility: await facilityFigures(me, scope),
   };
   res.json(body);
 });
+
+// The maintenance side at a glance (facility add-on, F5): ward faults, licences, the logbook. Only for people who work
+// on facility equipment (or the HOD) and only when the dashboard's view includes the facility register.
+async function facilityFigures(me: ReturnType<typeof currentUser>, scope: Scope): Promise<DashboardFacility | null> {
+  if (!scope.register?.in.includes('facility') || !(await facilityOn()) || !me.permissions.includes('complaint.start')) return null;
+  const facilityOnly = { ...scope, register: { in: ['facility' as const] } };
+  const can = (p: (typeof me.permissions)[number]) => me.permissions.includes(p);
+  const [ward, licences, types, hours] = await Promise.all([
+    toComplaintRows(await prisma.complaint.findMany({ where: { tradeId: { not: null }, status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude })),
+    can('licence.manage') ? prisma.licence.findMany({ where: { register: scope.register, renewal: null }, include: licenceInclude }).then(toLicenceRows) : [],
+    can('reading.record') ? prisma.readingType.findMany({ where: { active: true, asset: { ...facilityOnly, status: 'active' } }, include: typeInclude }).then(toTypeRows) : [],
+    can('reading.record') ? hoursDue(facilityOnly) : [],
+  ]);
+  return {
+    wardOpen: ward.length,
+    wardOverTarget: ward.filter((c) => c.overResponseTarget).length,
+    licencesExpired: licences.filter((l) => l.status === 'expired').length,
+    licencesEnding: licences.filter((l) => l.status === 'ending').length,
+    readingsMissed: types.filter((t) => t.dueNow).length,
+    readingsOutOfRange: types.filter((t) => t.last?.outOfRange).length,
+    pmsHoursDue: hours.length,
+  };
+}

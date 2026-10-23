@@ -109,7 +109,7 @@ run hours. The audit pack adds a facility section (licences, logbooks, facility 
 3. **F3. Statutory licences.** Done (branch `facility-f3`). Register, reminders, compliance report, audit pack.
 4. **F4. Logs and readings.** Done (branch `facility-f4`). Reading types per item, server-dated entries, out-of-range flags, missed readings, run-hour
    PMS, consumption charts.
-5. **F5. Facility reports.** Dashboard, monthly report and the audit-pack section, by register.
+5. **F5. Facility reports.** Done (branch `facility-f5`). Dashboard, monthly report and the audit-pack section, by register.
 
 Later, not planned: QR checkpoints for rounds, energy cost per bed, work permits (hot work, electrical shutdown), a
 signed licence file for paid modules.

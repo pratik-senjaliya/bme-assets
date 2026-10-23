@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export type HealthResponse = {
   status: 'ok';
@@ -1305,6 +1305,18 @@ export type DashboardResponse = {
   charts: ChartSpec[];
   topBreakdowns: DashboardTopAsset[] | null; // the equipment that broke down most in the last 12 months
   expiring: DashboardExpiry[] | null; // warranties and contracts ending within 60 days
+  // Facility add-on (F5): the maintenance side at a glance, for people who look after facility equipment and when the
+  // view includes it; null otherwise.
+  facility: DashboardFacility | null;
+};
+export type DashboardFacility = {
+  wardOpen: number; // ward complaints without a machine, unresolved
+  wardOverTarget: number; // of those, past their trade's response target
+  licencesExpired: number;
+  licencesEnding: number;
+  readingsMissed: number; // logbook readings not taken in their period
+  readingsOutOfRange: number; // items whose last reading is out of range
+  pmsHoursDue: number; // machines whose PMS by run hours is due within 25 h or past
 };
 
 // ---------- Reports (screen, Excel, PDF) ----------

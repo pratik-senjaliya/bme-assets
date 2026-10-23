@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, DatePicker, Select, Space } from 'antd';
+import { Alert, Button, DatePicker, Segmented, Select, Space } from 'antd';
 import dayjs from 'dayjs';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ExportMenu } from '@/components/ExportMenu';
 import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { formatDate, hospitalToday, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { DashboardSkeleton } from '@/components/Skeletons';
@@ -27,11 +27,15 @@ function MonthlyPage() {
   const asked = params.get('month');
   const month = asked && monthSchema.safeParse(asked).success && asked <= todayIST().slice(0, 7) ? asked : lastMonth;
   const allowed = can('report.view');
-  const report = useFetch<ReportData>(allowed ? `/reports/monthly?month=${month}&format=json` : null);
+  // One team's equipment, for people who see both (then it is made from the records, not the saved copy).
+  const twoTeams = useTwoTeams();
+  const register = twoTeams && (params.get('register') === 'biomedical' || params.get('register') === 'facility') ? params.get('register')! : '';
+  const path = `/reports/monthly?month=${month}${register ? `&register=${register}` : ''}`;
+  const report = useFetch<ReportData>(allowed ? `${path}&format=json` : null);
   const saved = useFetch<SavedMonthlyReport[]>(allowed && user?.role !== 'nursing' ? '/reports/monthly/saved' : null);
 
   if (!allowed) return <StatusResult status="403" title="You cannot see reports" />;
-  const set = (m: string) => router.replace(`${pathname}?month=${m}`);
+  const set = (m: string, r = register) => router.replace(`${pathname}?month=${m}${r ? `&register=${r}` : ''}`);
 
   return (
     <>
@@ -39,7 +43,7 @@ function MonthlyPage() {
         title="Monthly report"
         subtitle="Uptime, breakdowns, PMS and calibration, spend and what needs attention, for one month. Saved and sent to the HOD on the 1st."
         crumbs={['Reports', 'Monthly report']}
-        action={<ExportMenu path={`/reports/monthly?month=${month}`} name={`bme-monthly-report-${month}`} />}
+        action={<ExportMenu path={path} name={`bme-monthly-report-${month}${register ? `-${register}` : ''}`} />}
       />
       <Space wrap size={16} style={{ marginBottom: 20 }}>
         <DatePicker
@@ -52,7 +56,8 @@ function MonthlyPage() {
           disabledDate={(d) => d.isAfter(hospitalToday(), 'month') || d.isBefore(dayjs('2000-01-01'))}
           onChange={(d) => d && set(d.format('YYYY-MM'))}
         />
-        {!!saved.data?.length && (
+        {twoTeams && <Segmented aria-label="Equipment" value={register} onChange={(v) => set(month, String(v))} options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]} />}
+        {!!saved.data?.length && !register && (
           <Select
             aria-label="Reports sent on the 1st"
             placeholder={`Reports sent (${saved.data.length})`}
@@ -60,7 +65,7 @@ function MonthlyPage() {
             value={null}
             popupMatchSelectWidth={false}
             options={saved.data.map((s) => ({ value: s.month, label: `${monthLabel(s.month)} · sent ${formatDate(s.savedAt)}` }))}
-            onChange={set}
+            onChange={(m: string) => set(m)}
           />
         )}
       </Space>
