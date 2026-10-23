@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';
 
 export type HealthResponse = {
   status: 'ok';
@@ -69,6 +69,7 @@ export const PERMISSIONS = [
   'report.view',
   'notification.view',
   'consumable.manage',
+  'licence.manage', // statutory licences and inspections (facility add-on, F3)
   // Which equipment a person works on (decision H): lists, records, notices and reports follow these, as they follow
   // the department for nursing.
   'register.biomedical',
@@ -91,6 +92,7 @@ const BIOMED: PermissionCode[] = [
   'report.view',
   'notification.view',
   'consumable.manage',
+  'licence.manage',
 ];
 
 export const REGISTER_PERMISSION: Record<Register, PermissionCode> = { biomedical: 'register.biomedical', facility: 'register.facility' };
@@ -609,7 +611,7 @@ export type ServiceContractRow = {
 export const attachmentUploadSchema = z.object({ kind: z.enum(ATTACHMENT_KINDS) });
 
 // Documents can hang off the asset or off one of its records (a complaint photo, a service report, an invoice).
-export const ATTACHMENT_OWNER_TYPES = ['asset', 'complaint', 'service_log', 'service_expense', 'service_contract', 'purchase_order', 'calibration_record', 'pms_record'] as const;
+export const ATTACHMENT_OWNER_TYPES = ['asset', 'complaint', 'service_log', 'service_expense', 'service_contract', 'purchase_order', 'calibration_record', 'pms_record', 'licence'] as const;
 export type AttachmentOwnerType = (typeof ATTACHMENT_OWNER_TYPES)[number];
 export const attachmentOwnerSchema = z.object({ ownerType: z.enum(ATTACHMENT_OWNER_TYPES), ownerId: z.string().uuid() });
 export const attachmentCreateSchema = attachmentOwnerSchema.extend({ kind: z.enum(ATTACHMENT_KINDS) });
@@ -968,11 +970,77 @@ export type DueRow = {
 
 export const dueQuerySchema = z.object({ until: isoDateSchema.optional(), register: z.enum(REGISTERS).optional() });
 
+// ---------- Statutory licences and inspections (facility add-on, F3) ----------
+
+// Certificates the law requires, with an authority, a number and a validity. A licence covers one item (a lift, the
+// DG set, the oxygen tank) or the whole site (fire NOC, water test).
+export const LICENCE_KINDS = ['lift', 'fire_noc', 'dg_pollution', 'electrical', 'peso', 'pressure_vessel', 'water_test', 'aerb', 'other'] as const;
+export type LicenceKind = (typeof LICENCE_KINDS)[number];
+export const LICENCE_KIND_LABEL: Record<LicenceKind, string> = {
+  lift: 'Lift licence',
+  fire_noc: 'Fire NOC',
+  dg_pollution: 'DG pollution certificate',
+  electrical: 'Electrical inspector’s approval',
+  peso: 'PESO licence',
+  pressure_vessel: 'Boiler / pressure vessel inspection',
+  water_test: 'Water test report',
+  aerb: 'AERB licence',
+  other: 'Other',
+};
+// valid; ending: within the hospital's longest reminder lead (e.g. 30 days); expired; renewed: a newer one replaced it.
+export const LICENCE_STATUSES = ['valid', 'ending', 'expired', 'renewed'] as const;
+export type LicenceStatus = (typeof LICENCE_STATUSES)[number];
+
+export const licenceSchema = z
+  .object({
+    kind: z.enum(LICENCE_KINDS),
+    name: z.string().trim().min(2, 'Name it, e.g. "Lift licence, Bed Lift 1"').max(150),
+    authority: z.string().trim().min(2, 'Who issued it').max(150),
+    number: optionalText(100),
+    validFrom: isoDateSchema.nullish(),
+    validTo: isoDateSchema,
+    // The item it covers; none = the whole site (then `register` says which team keeps it).
+    assetId: z.string().uuid().nullish(),
+    register: z.enum(REGISTERS).optional(),
+    notes: optionalText(1000),
+  })
+  .refine((v) => !v.validFrom || v.validFrom <= v.validTo, { message: 'Valid to is before valid from', path: ['validTo'] });
+export type LicenceInput = z.infer<typeof licenceSchema>;
+// A renewal is a new licence for the same thing: new number and dates; the old one stays, marked renewed.
+export const renewLicenceSchema = z
+  .object({ number: optionalText(100), validFrom: isoDateSchema.nullish(), validTo: isoDateSchema, notes: optionalText(1000) })
+  .refine((v) => !v.validFrom || v.validFrom <= v.validTo, { message: 'Valid to is before valid from', path: ['validTo'] });
+export type RenewLicenceInput = z.infer<typeof renewLicenceSchema>;
+export const licenceListQuerySchema = z.object({
+  status: z.enum([...LICENCE_STATUSES, 'current', 'attention']).optional(), // current = not renewed; attention = ending or expired
+  register: z.enum(REGISTERS).optional(),
+  assetId: z.string().uuid().optional(),
+});
+export type LicenceRow = {
+  id: string;
+  kind: LicenceKind;
+  name: string;
+  authority: string;
+  number: string | null;
+  validFrom: string | null;
+  validTo: string;
+  daysLeft: number; // negative once expired
+  status: LicenceStatus;
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  register: Register;
+  notes: string | null;
+  renewsId: string | null; // the licence this one renewed
+  attachmentCount: number;
+};
+
 // ---------- Notifications ----------
 
 // system: the nightly backup failed or stopped, or the server is short of disk space; account: someone asks the HOD
 // for a new password.
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'system', 'account'] as const;
+// licence: a statutory licence or inspection ending or ended (facility add-on, F3).
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'system', 'account', 'licence'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -980,6 +1048,7 @@ export type NotificationRow = {
   type: NotificationType;
   assetId: string | null;
   complaintId: string | null; // a complaint notice opens the complaint
+  licenceId: string | null; // a licence reminder opens the licences list
   message: string;
   dueDate: string | null;
   thresholdDays: number | null;
@@ -1178,6 +1247,7 @@ export const REPORTS = [
   { type: 'consumables', title: 'Consumables register', description: 'Everything given out in the period (to which department, machine or complaint, and why), what was received, and the stock today with its value.', range: true },
   { type: 'engineers', title: 'Engineer performance', description: 'Per engineer in the period: complaints taken and fixed, response and repair times, fixes sent back as not working, PMS and calibrations recorded.', range: true },
   { type: 'suppliers', title: 'Supplier performance', description: 'Per supplier and service company: the equipment they sold or service, its breakdowns and downtime in the period, what was spent on it, and their contracts.', range: true },
+  { type: 'compliance', title: 'Compliance register', description: 'Statutory licences and inspections (lift, fire NOC, DG pollution, electrical, PESO, pressure vessels, water tests): who issued them, valid until when, and which are ending or have expired.', range: false, facility: true },
   { type: 'trades', title: 'Ward complaints by trade', description: 'Complaints without a machine (lights, water, AC, civil…) in the period: by trade and by location, response and resolution times, and those over the trade’s response target.', range: true, facility: true },
   { type: 'replacement', title: 'Replacement and renewals', description: 'Equipment to consider replacing (age, breakdowns, repair spend against its cost), and warranties and contracts ending in the next 90 days.', range: false },
 ] as const;
@@ -1234,6 +1304,7 @@ export type AuditPackSummary = {
   complaints: number;
   condemnations: number;
   documents: number; // condemnation letters and forms
+  licences: number; // statutory licence documents (facility add-on), 0 when it is off
 };
 export type ReportQuery = z.infer<typeof reportQuerySchema>;
 

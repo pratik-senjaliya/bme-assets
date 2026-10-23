@@ -79,8 +79,35 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
   });
 
   const created = data.length ? await prisma.notification.createManyAndReturn({ data, skipDuplicates: true, select: { id: true } }) : [];
+  const licences = settings.facilityEnabled ? await licenceReminders(todayDate, horizon, thresholds) : 0;
   const emailed = await sendPendingEmails();
-  return { created: created.length, emailed };
+  return { created: created.length + licences, emailed };
+}
+
+// Statutory licences (facility add-on, F3): the same lead days, then one "expired" notice, to whoever keeps that
+// team's licences. A renewed licence says nothing more. Site-wide licences have no asset, so the unique index cannot
+// tell repeats apart: the ones already sent are looked up by licence and threshold.
+async function licenceReminders(today: Date, horizon: Date, thresholds: number[]) {
+  const due = await prisma.licence.findMany({ where: { validTo: { lte: horizon }, renewal: null }, include: { asset: { select: { assetCode: true, name: true } } } });
+  if (!due.length) return 0;
+  const team = new Map<Register, string[]>();
+  for (const register of REGISTERS) team.set(register, await registerTeam(register, 'licence.manage', 'notification.view'));
+  const sent = new Set(
+    (await prisma.notification.findMany({ where: { type: 'licence', licenceId: { in: due.map((l) => l.id) } }, select: { userId: true, licenceId: true, thresholdDays: true, dueDate: true } }))
+      .map((n) => `${n.userId}|${n.licenceId}|${n.thresholdDays}|${n.dueDate?.toISOString()}`),
+  );
+  const data = due.flatMap((l) => {
+    const daysLeft = daysBetween(today, l.validTo);
+    const threshold = daysLeft < 0 ? OVERDUE_THRESHOLD : thresholds.find((t) => daysLeft <= t);
+    if (threshold === undefined) return [];
+    const what = `${l.name}${l.asset ? ` (${l.asset.assetCode})` : ''}`;
+    const message = daysLeft < 0 ? `Licence expired ${inDays(-daysLeft)} ago: ${what} (${prettyDate(l.validTo)}). Renew it and record the new one.` : `Licence ${daysLeft === 0 ? 'ends today' : `ends in ${inDays(daysLeft)}`}: ${what} (${prettyDate(l.validTo)})`;
+    return (team.get(l.register) ?? [])
+      .filter((userId) => !sent.has(`${userId}|${l.id}|${threshold}|${l.validTo.toISOString()}`))
+      .map((userId) => ({ userId, type: 'licence', assetId: l.assetId, licenceId: l.id, dueDate: l.validTo, thresholdDays: threshold, message }));
+  });
+  if (!data.length) return 0;
+  return (await prisma.notification.createMany({ data, skipDuplicates: true })).count;
 }
 
 // The nightly backup on the hospital server records each run (deploy/backup.sh). When the last one failed, or none has

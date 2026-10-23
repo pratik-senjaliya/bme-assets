@@ -39,6 +39,7 @@ import { approvers, notify } from '../approvals/approvals.service';
 import { moveOpenComplaints } from '../complaints/complaints.service';
 import { clearReminders } from '../reminders/reminders.service';
 import { complaintScope } from '../complaints/complaints.service';
+import { licenceScope } from '../licences/licences.routes';
 import { assetIdOfOwner, storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
@@ -427,6 +428,7 @@ const READ_PERMISSION: Record<AttachmentOwnerType, PermissionCode> = {
   purchase_order: 'expense.manage',
   calibration_record: 'calibration.manage',
   pms_record: 'pms.perform',
+  licence: 'licence.manage',
 };
 const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   asset: ['asset.edit'],
@@ -437,6 +439,7 @@ const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   purchase_order: ['asset.edit'],
   calibration_record: ['calibration.manage'],
   pms_record: [], // the OEM's report is saved with the PMS record, which is read-only afterwards
+  licence: ['licence.manage'],
 };
 
 // The owner's asset, loaded with the person's scope: a foreign record looks like a missing one. A complaint is
@@ -446,6 +449,12 @@ async function scopedOwnerAsset(req: Request, ownerType: AttachmentOwnerType, ow
     const c = await prisma.complaint.findFirst({ where: { id: ownerId, AND: [complaintScope(currentUser(req))] }, include: { asset: true } });
     if (!c) throw new HttpError(404, 'Not found');
     return c.asset;
+  }
+  // A licence: in the person's licence scope; a site-wide one has no machine.
+  if (ownerType === 'licence') {
+    const l = await prisma.licence.findFirst({ where: { id: ownerId, ...licenceScope(currentUser(req)) }, include: { asset: true } });
+    if (!l) throw new HttpError(404, 'Not found');
+    return l.asset;
   }
   const assetId = await assetIdOfOwner(ownerType, ownerId);
   const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;

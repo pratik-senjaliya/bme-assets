@@ -47,7 +47,7 @@ export async function storeAttachment(
   req: Request,
   owner: { assetId: string | null; ownerType: string; ownerId: string; kind: DbAttachmentKind },
 ) {
-  const staged = await stageUpload(req, owner.assetId ? `assets/${owner.assetId}` : `complaints/${owner.ownerId}`);
+  const staged = await stageUpload(req, owner.assetId ? `assets/${owner.assetId}` : `${owner.ownerType}s/${owner.ownerId}`);
   const key = staged.filePath;
   const storage = getStorage();
   try {

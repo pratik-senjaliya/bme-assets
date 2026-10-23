@@ -3,7 +3,8 @@
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { Card } from 'antd';
 import Link from 'next/link';
-import { REPORTS, type ReportType } from '@bme/shared';
+import { REPORTS, type HospitalInfo, type ReportType } from '@bme/shared';
+import { useFetch } from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/lib/auth';
 import { COLORS } from '@/theme';
@@ -27,6 +28,7 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
   { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts', 'condemnation'] as ReportType[]).map(entry) },
   { title: 'Maintenance', entries: (['pms', 'calibration'] as ReportType[]).map(entry) },
   { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime', 'trades'] as ReportType[]).map(entry) },
+  { title: 'Compliance', entries: (['compliance'] as ReportType[]).map(entry) },
   { title: 'Cost', entries: (['expenses', 'consumables'] as ReportType[]).map(entry) },
   { title: 'Team and suppliers', entries: (['engineers', 'suppliers'] as ReportType[]).map(entry) },
 ];
@@ -34,13 +36,15 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
 export default function ReportsPage() {
   const { can, user } = useAuth();
   // Ward complaints by trade are the facility add-on's, for people who work with the facility register.
-  const shown = (e: Entry) => e.href !== '/reports/trades' || !!user?.registers.includes('facility');
+  const hospital = useFetch<HospitalInfo>('/hospital');
+  // Licences are kept by both teams (AERB for biomedical), so the compliance register only needs the add-on.
+  const shown = (e: Entry) => (e.href !== '/reports/trades' || !!user?.registers.includes('facility')) && (e.href !== '/reports/compliance' || !!hospital.data?.facilityEnabled);
   if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
   return (
     <>
       <PageHeader title="Reports" subtitle="Open a report to read it here. Export to Excel or PDF from the report if you need a file." />
       <div style={{ display: 'grid', gap: 28 }}>
-        {GROUPS.map((g) => (
+        {GROUPS.filter((g) => g.entries.some(shown)).map((g) => (
           <section key={g.title}>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: COLORS.ink, margin: '0 0 12px' }}>{g.title}</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 16 }}>

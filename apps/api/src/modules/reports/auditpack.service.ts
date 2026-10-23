@@ -2,6 +2,7 @@ import archiver from 'archiver';
 import type { Response } from 'express';
 import type { AuditPackQuery, AuditPackSummary, PmsAnswer, ReportData, ReportQuery, ReportType } from '@bme/shared';
 import { isoDate, parseDate, prettyDate, todayISO, zonedDayStart, addDaysISO } from '../../lib/dates';
+import { facilityOn } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
 import { templateItems } from '../pms/pms.service';
@@ -35,6 +36,8 @@ const REPORT_FILES: { file: string; type: ReportType; what: string; extra?: Part
   { file: '09 Condemnation register.xlsx', type: 'condemnation', what: 'Equipment condemned in the period by committee date: reason, purchase cost, estimated value and approval' },
   { file: '10 Consumables register.xlsx', type: 'consumables', what: 'Consumables given out in the period (department, machine, complaint, reason), received, and stock today' },
 ];
+// With the facility add-on: the statutory licences as at today, and their documents.
+const COMPLIANCE_FILE = { file: '11 Compliance register.xlsx', type: 'compliance' as ReportType, what: 'Statutory licences and inspections as at today: valid, ending soon or expired, with their renewal history' };
 
 const DOC_KIND: Record<string, string> = { eol_letter: 'End-of-life letter', condemnation_form: 'Condemnation form' };
 // Names inside the ZIP: no path separators or characters Windows refuses, nothing empty.
@@ -76,7 +79,12 @@ async function gather(q: AuditPackQuery, scope: Ctx['scope']) {
     // The OEM engineer's report for each PMS they did in the period.
     prisma.attachment.findMany({ where: { ownerType: 'pms_record', ownerId: { in: pms.filter((r) => r.kind === 'oem').map((r) => r.id) }, kind: 'service_report' }, orderBy: { createdAt: 'asc' } }),
   ]);
-  return { assets, pms, calibrations, complaints, condemnations, certificates, letters, oemReports };
+  // Current licence documents (the latest of each renewal chain), with the add-on on.
+  const licences = (await facilityOn())
+    ? await prisma.licence.findMany({ where: { register: scope.register, renewal: null, ...(scope.departmentId && { OR: [{ assetId: null }, { asset: { departmentId: scope.departmentId } }] }) }, include: { asset: { select: { assetCode: true } } } })
+    : null;
+  const licenceDocs = licences ? await prisma.attachment.findMany({ where: { ownerType: 'licence', ownerId: { in: licences.map((l) => l.id) } }, orderBy: { createdAt: 'asc' } }) : [];
+  return { assets, pms, calibrations, complaints, condemnations, certificates, letters, oemReports, licences, licenceDocs };
 }
 
 export async function auditPackSummary(q: AuditPackQuery, scope: Ctx['scope']): Promise<AuditPackSummary> {
@@ -90,6 +98,7 @@ export async function auditPackSummary(q: AuditPackQuery, scope: Ctx['scope']): 
     complaints: g.complaints,
     condemnations: g.condemnations.length,
     documents: g.letters.length,
+    licences: g.licenceDocs.length,
   };
 }
 
@@ -143,7 +152,7 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
 
   const reportQ = (extra?: Partial<ReportQuery>) => ({ from: q.from, to: q.to, group: 'month', format: 'xlsx', ...(q.departmentId && { departmentId: q.departmentId }), ...extra }) as ReportQuery;
   const reports = await Promise.all(
-    REPORT_FILES.map(async (f) => {
+    [...REPORT_FILES, ...(g.licences ? [COMPLIANCE_FILE] : [])].map(async (f: (typeof REPORT_FILES)[number]) => {
       const { data } = await buildReportAs(f.type, reportQ(f.extra), viewer.name, scope);
       return { ...f, data, buffer: Buffer.from(await toWorkbook(data).xlsx.writeBuffer()) };
     }),
@@ -193,6 +202,11 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
     const r = pmsById.get(a.ownerId)!;
     await addFile('PMS reports (OEM)', `${r.asset.assetCode} ${isoDate(r.performedOn)} ${a.fileName || `report${extension(a.mime)}`}`, a.filePath);
   }
+  const licenceById = new Map((g.licences ?? []).map((l) => [l.id, l]));
+  for (const a of g.licenceDocs) {
+    const l = licenceById.get(a.ownerId)!;
+    await addFile('Licences', `${l.asset?.assetCode ?? 'Site'} ${l.name} ${isoDate(l.validTo)} ${a.fileName || `licence${extension(a.mime)}`}`, a.filePath);
+  }
   const assetOf = (id: string) => g.condemnations.find((c) => c.asset.id === id || (c.request.payload as { attachmentId?: string | null }).attachmentId === id)?.asset;
   for (const a of g.letters) {
     const asset = assetOf(a.ownerId) ?? assetOf(a.id);
@@ -223,6 +237,7 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
     { file: 'PMS reports (OEM)/', what: `${g.oemReports.length - missing.filter((m) => m.file.startsWith('PMS reports')).length} service reports of PMS done by the OEM engineer` },
     { file: 'Calibration certificates/', what: `${g.certificates.length - missing.filter((m) => m.file.startsWith('Calibration')).length} certificates of calibrations done in the period` },
     { file: 'Condemnation/', what: `${g.letters.length - missing.filter((m) => m.file.startsWith('Condemnation')).length} end-of-life letters and condemnation forms` },
+    ...(g.licences ? [{ file: 'Licences/', what: `${g.licenceDocs.length - missing.filter((m) => m.file.startsWith('Licences')).length} documents of current statutory licences and inspections` }] : []),
   ]);
   addSheet(index, 'Equipment condemned in the period', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 }, { header: 'Reason', key: 'reason', width: 40 },

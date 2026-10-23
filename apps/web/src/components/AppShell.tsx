@@ -16,6 +16,7 @@ import {
   LogoutOutlined,
   MedicineBoxOutlined,
   BuildOutlined,
+  SafetyCertificateOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -43,7 +44,7 @@ import { useIdleSignOut } from '@/lib/idle';
 import { loginHref } from '@/lib/nav';
 import { COLORS } from '@/theme';
 
-// facility: only while the facility add-on is on (the person then has the facility register).
+// facility: only while the facility add-on is on.
 type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[]; short?: string; facility?: true };
 type Group = { title?: string; items: Item[] };
 
@@ -61,6 +62,7 @@ const GROUPS: Group[] = [
       { href: '/assets', label: 'Assets', icon: <BarcodeOutlined />, permission: 'asset.view' },
       { href: '/due', label: 'Due & overdue', short: 'Due', icon: <CalendarOutlined />, permission: 'pms.perform' },
       { href: '/consumables', label: 'Consumables', icon: <InboxOutlined />, permission: 'consumable.manage' },
+      { href: '/licences', label: 'Licences', icon: <SafetyCertificateOutlined />, permission: 'licence.manage', facility: true },
       { href: '/vendors', label: 'Suppliers', icon: <ShopOutlined />, permission: 'asset.edit' },
     ],
   },
@@ -148,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can)) && (!i.facility || !!user?.registers.includes('facility'));
+  const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can)) && (!i.facility || !!hospital.data?.facilityEnabled);
   const toItem = (i: Item) => ({
     key: i.href,
     icon: i.icon,

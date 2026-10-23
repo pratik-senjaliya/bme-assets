@@ -17,6 +17,7 @@ const toRow = (n: Prisma.NotificationGetPayload<object>): NotificationRow => ({
   type: n.type as NotificationType,
   assetId: n.assetId,
   complaintId: n.complaintId,
+  licenceId: n.licenceId,
   message: n.message,
   dueDate: isoDateOrNull(n.dueDate),
   thresholdDays: n.thresholdDays,

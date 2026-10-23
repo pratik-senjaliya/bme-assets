@@ -5,7 +5,7 @@ import { Card, Col, Row, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import type { AssetRow, Assignee, ComplaintRow, ConsumableRow, DueRow, Paged } from '@bme/shared';
+import { LICENCE_KIND_LABEL, type AssetRow, type Assignee, type ComplaintRow, type ConsumableRow, type DueRow, type HospitalInfo, type LicenceRow, type Paged } from '@bme/shared';
 import { UnsafeList } from '@/components/AssetSafety';
 import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
@@ -58,6 +58,8 @@ function MyWork() {
   const calibration = useFetch<DueRow[]>(can('calibration.manage') ? `/calibration/due?until=${until}` : null);
   const failed = useFetch<Paged<AssetRow>>(can('pms.perform') || can('calibration.manage') ? '/assets?condition=failed&pageSize=100' : null);
   const low = useFetch<ConsumableRow[]>(can('consumable.manage') ? '/consumables?low=true' : null);
+  const hospital = useFetch<HospitalInfo>(can('licence.manage') ? '/hospital' : null);
+  const licences = useFetch<LicenceRow[]>(hospital.data?.facilityEnabled ? '/licences?status=attention' : null);
   const team = useFetch<Assignee[]>(can('complaint.assign') ? `/complaints/assignees?k=${version}` : null, { fresh: true });
 
   const cards = (list: typeof mine, empty: string) =>
@@ -134,6 +136,21 @@ function MyWork() {
                 <span className="num" style={{ color: i.stock === 0 ? COLORS.bad.fg : COLORS.warn.fg, fontWeight: 600 }}>
                   {i.stock === 0 ? 'Out of stock' : `${i.stock} ${i.unit} left`}
                 </span>
+              </div>
+            ))}
+          </Card>
+        </Section>
+      )}
+      {licences.data && licences.data.length > 0 && (
+        <Section title="Licences" count={licences.data.length} hint="Expired or ending soon">
+          <Card styles={{ body: { padding: '4px 20px' } }}>
+            {licences.data.map((l) => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>
+                <div>
+                  <Link href="/licences" style={{ fontWeight: 600 }}>{l.name}</Link>
+                  <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{LICENCE_KIND_LABEL[l.kind]} · valid to {formatDate(l.validTo)}</div>
+                </div>
+                <DueText daysLeft={l.daysLeft} />
               </div>
             ))}
           </Card>

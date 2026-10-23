@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REGISTER_LABEL, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
+import { LICENCE_KIND_LABEL, ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REGISTER_LABEL, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
 import { currentUser, scopeOf, type Scope } from '../../lib/auth';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
@@ -8,6 +8,7 @@ import { prisma } from '../../lib/prisma';
 import { facilityOn } from '../../lib/people';
 import { assetInclude, toAssetRow, type AssetWithRefs } from '../assets/assets.service';
 import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
+import { licenceInclude, toLicenceRows } from '../licences/licences.routes';
 
 // ---------- What a builder produces ----------
 
@@ -274,6 +275,32 @@ async function breakdowns(wb: Collector, c: Ctx) {
     const resp = g.map((r) => r.m.responseSeconds).filter((v): v is number => v != null);
     return { period: periodName(period, group, true), count: g.length, resolved: down.length, resp: avg(resp) == null ? null : avg(resp)! / 3600, down: down.reduce((a, b) => a + b, 0) / 3600, avgDown: avg(down) == null ? null : avg(down)! / 3600 };
   }), ['count', 'resolved', 'down']);
+}
+
+// Statutory licences and inspections as at today (facility add-on, F3): the compliance register an inspector asks
+// for. Only the latest of each renewal chain is "current"; the earlier ones are the history.
+async function compliance(wb: Collector, c: Ctx) {
+  const where = { register: c.scope.register, ...(c.scope.departmentId && { OR: [{ assetId: null }, { asset: { departmentId: c.scope.departmentId } }] }) } satisfies Prisma.LicenceWhereInput;
+  const rows = await toLicenceRows(await prisma.licence.findMany({ where, include: licenceInclude, orderBy: [{ validTo: 'asc' }, { name: 'asc' }] }));
+  const current = rows.filter((r) => r.status !== 'renewed');
+  const STATUS = { valid: 'Valid', ending: 'Ending soon', expired: 'EXPIRED', renewed: 'Renewed' } as const;
+  const expired = current.filter((r) => r.status === 'expired').length;
+  const ending = current.filter((r) => r.status === 'ending').length;
+  kpi(wb, 'Licences', current.length, 'int', 'Current, one per renewal chain');
+  kpi(wb, 'Expired', expired, 'int', expired ? 'Renew now' : 'None', expired ? 'bad' : 'good');
+  kpi(wb, 'Ending soon', ending, 'int', ending ? 'Start the renewal' : 'None', ending ? 'warn' : 'good');
+  const cols = [
+    { header: 'Licence', key: 'name', width: 30 }, { header: 'Kind', key: 'kind', width: 22 }, { header: 'Covers', key: 'covers', width: 26 }, { header: 'Authority', key: 'authority', width: 24 },
+    { header: 'Number', key: 'number', width: 18 }, { header: 'Valid from', key: 'from', fmt: 'date' as const }, { header: 'Valid to', key: 'to', fmt: 'date' as const }, { header: 'Days left', key: 'days', fmt: 'int' as const },
+    { header: 'Status', key: 'status' }, { header: 'Team', pdf: false, key: 'team' }, { header: 'Documents', pdf: false, key: 'docs', fmt: 'int' as const },
+  ];
+  const line = (r: (typeof rows)[number]) => ({
+    name: r.name, kind: LICENCE_KIND_LABEL[r.kind], covers: r.assetCode ? `${r.assetCode} ${r.assetName}` : 'Whole site', authority: r.authority, number: r.number,
+    from: r.validFrom ? parseDate(r.validFrom) : null, to: parseDate(r.validTo), days: r.daysLeft, status: STATUS[r.status], team: REGISTER_LABEL[r.register], docs: r.attachmentCount,
+  });
+  addSheet(wb, 'Licences', cols, current.map(line));
+  addSheet(wb, 'Expired or ending', cols, current.filter((r) => r.status !== 'valid').map(line));
+  addSheet(wb, 'Renewal history', cols, rows.filter((r) => r.status === 'renewed').map(line));
 }
 
 // Ward complaints without a machine (facility add-on, F2): by trade and by location, with response and resolution
@@ -625,7 +652,7 @@ async function warrantyContracts(wb: Collector, c: Ctx) {
 // ---------- Entry point ----------
 
 // Reports that are "as at today" rather than for a period.
-const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contracts', 'replacement'];
+const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contracts', 'replacement', 'compliance'];
 
 export async function buildReport(type: ReportType, req: Request, q: ReportQuery): Promise<{ data: ReportData; filename: string }> {
   const me = currentUser(req);
@@ -659,6 +686,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     suppliers: () => suppliers(out, ctx),
     replacement: () => replacement(out, ctx),
     trades: () => trades(out, ctx),
+    compliance: () => compliance(out, ctx),
   };
   await builders[type]();
 
@@ -702,6 +730,8 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
             ? 'Response = work started − complaint raised; repair = resolved − work started. "Sent back" counts fixes the ward reported as still not working. PMS counts each PMS once (corrections are not another PMS).'
             : type === 'suppliers'
               ? 'A company looks after equipment it services, or that it sold when no service company is set. Downtime adds up each breakdown, so overlapping faults on one machine count twice here (the uptime report counts them once).'
+              : type === 'compliance'
+                ? 'As at the day this report was made. A renewed licence is listed once, as its latest renewal; earlier ones are in the renewal history.'
               : type === 'trades'
                 ? 'Ward complaints without a machine. Response = work started − raised; resolution = resolved − raised. Over target: work started (or has still not started) later than the trade’s response target.'
               : type === 'replacement'

@@ -320,6 +320,7 @@ model Asset {
   serviceLogs        ServiceLog[]
   notifications      Notification[]
   consumablesIssued  ConsumableMovement[]
+  licences           Licence[]
 
   @@index([departmentId])
   @@index([status])
@@ -507,6 +508,33 @@ model Complaint {
   @@map("complaints")
 }
 
+// A statutory licence or inspection (facility add-on, F3): lift licence, fire NOC, PESO… for one item or the whole
+// site. A renewal is a new row pointing at the one it renews (renewsId); the old one stays as history.
+model Licence {
+  id        String    @id @default(uuid())
+  kind      String // LICENCE_KINDS
+  name      String
+  authority String
+  number    String?
+  validFrom DateTime? @db.Date
+  validTo   DateTime  @db.Date
+  assetId   String?
+  // Who keeps it: the covered item's team, or (site-wide) the team chosen.
+  register  Register  @default(facility)
+  notes     String?
+  renewsId  String?   @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+
+  asset   Asset?   @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  renews  Licence? @relation("LicenceRenewal", fields: [renewsId], references: [id], onDelete: Restrict)
+  renewal Licence? @relation("LicenceRenewal")
+
+  @@index([validTo])
+  @@map("licences")
+}
+
 // What a ward fault without a machine is about (decision J): Electrical, Plumbing and water, AC... Each goes to one
 // team; the Medical gas trade (medicalGas) follows hospital_settings.medicalGasRegister.
 model Trade {
@@ -590,6 +618,8 @@ model Notification {
   assetId       String?
   // The complaint a complaint notice is about, so the bell opens it (a plain id: a deleted complaint leaves it dangling).
   complaintId   String?
+  // The licence a licence reminder is about (a plain id, like complaintId).
+  licenceId     String?
   dueDate       DateTime? @db.Date
   thresholdDays Int?
   message       String

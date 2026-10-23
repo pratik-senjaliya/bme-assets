@@ -27,6 +27,13 @@ await prisma.consumableItem.deleteMany({ where: { id: { in: e2eItems.map((i) => 
 await prisma.notification.deleteMany({ where: { type: 'stock', message: { startsWith: 'E2E-' } } });
 // The workflow suite's "forgot password" request for the demo nurse.
 await prisma.notification.deleteMany({ where: { type: 'account', message: { contains: 'nursing@demo.local' } } });
+// Licences (F3) named E2E or on E2E equipment, renewals first (they point at the one they renew), with their files.
+const licences = (await prisma.licence.findMany({ where: { OR: [{ name: { startsWith: 'E2E' } }, { assetId: { in: ids } }] }, select: { id: true } })).map((l) => l.id);
+for (const f of await prisma.attachment.findMany({ where: { ownerType: 'licence', ownerId: { in: licences } } })) await rm(path.join(root, f.filePath), { force: true });
+await prisma.attachment.deleteMany({ where: { ownerType: 'licence', ownerId: { in: licences } } });
+await prisma.notification.deleteMany({ where: { licenceId: { in: licences } } });
+await prisma.licence.deleteMany({ where: { id: { in: licences }, renewsId: { not: null } } });
+await prisma.licence.deleteMany({ where: { id: { in: licences } } });
 await prisma.asset.deleteMany({ where: { id: { in: ids } } });
 await prisma.vendor.deleteMany({ where: { name: { startsWith: 'E2E-' } } });
 // The operations suite sets a label address and makes the demo engineer deputy; put both back if it stopped half-way.
