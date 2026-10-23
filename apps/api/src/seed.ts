@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import type { Criticality, RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
 import { ensureRolesAndPermissions, ensureStarterTrades, ensureStarterTypes } from './lib/baseData';
-import { addDaysISO, addMonths, parseDate, todayISO } from './lib/dates';
+import { addDaysISO, addMonths, parseDate, todayISO, zonedDayStart } from './lib/dates';
 import { prisma } from './lib/prisma';
 
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
@@ -145,6 +145,30 @@ async function main() {
     await prisma.hospitalSettings.update({ where: { id: settings.id }, data: { facilityEnabled: true } });
   }
   await ensureStarterTrades(); // what ward faults without a machine are about (once)
+
+  // A logbook (F4), once: the DG set's run hours (PMS every 250 h) and diesel, the chiller's supply temperature and the
+  // RO plant's TDS, read daily for the last two weeks; today's are still to take, and one TDS reading was high.
+  if ((await prisma.readingType.count()) === 0) {
+    const by = (await prisma.user.findUnique({ where: { email: 'maintenance@demo.local' } }))?.id;
+    const item = (code: string) => prisma.asset.findFirst({ where: { equipmentType: { code } } });
+    const [dg, chiller, ro] = await Promise.all([item('DG'), item('CHLR'), item('RO')]);
+    const types = [
+      ...(dg ? [{ asset: dg, name: 'Run hours', unit: 'h', kind: 'meter', runHours: true, start: 1180, step: () => 6 + Math.round(Math.random() * 4) }, { asset: dg, name: 'Diesel level', unit: '%', kind: 'level', min: 30, max: 100, start: 80, step: () => -2 }] : []),
+      ...(chiller ? [{ asset: chiller, name: 'Chilled water supply', unit: '°C', kind: 'level', min: 5, max: 9, start: 7, step: () => (Math.random() - 0.5) / 2 }] : []),
+      ...(ro ? [{ asset: ro, name: 'Product water TDS', unit: 'ppm', kind: 'level', min: 0, max: 50, start: 22, step: () => Math.round((Math.random() - 0.5) * 6) }] : []),
+    ];
+    for (const t of types) {
+      const type = await prisma.readingType.create({ data: { assetId: t.asset.id, name: t.name, unit: t.unit, kind: t.kind, min: t.min ?? null, max: t.max ?? null, runHours: !!t.runHours } });
+      let value = t.start;
+      for (let d = 14; d >= 1; d--) {
+        const takenAt = new Date(zonedDayStart(addDaysISO(todayISO(), -d)).getTime() + 9 * 3_600_000);
+        const v = t.name === 'Product water TDS' && d === 1 ? 58 : Math.round(value * 10) / 10;
+        if (by) await prisma.reading.create({ data: { readingTypeId: type.id, assetId: t.asset.id, value: v, takenAt, takenBy: by, outOfRange: (t.min != null && v < t.min) || (t.max != null && v > t.max) } });
+        value += t.step();
+      }
+    }
+    if (dg) await prisma.asset.update({ where: { id: dg.id }, data: { pmsEveryHours: 250, lastPmsHours: 1180 } });
+  }
 
   // A few statutory licences (F3), once: one ending soon, one expired, one site-wide and valid.
   if ((await prisma.licence.count()) === 0) {

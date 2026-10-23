@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export type HealthResponse = {
   status: 'ok';
@@ -70,6 +70,7 @@ export const PERMISSIONS = [
   'notification.view',
   'consumable.manage',
   'licence.manage', // statutory licences and inspections (facility add-on, F3)
+  'reading.record', // plant-room logbook: readings and run hours (facility add-on, F4)
   // Which equipment a person works on (decision H): lists, records, notices and reports follow these, as they follow
   // the department for nursing.
   'register.biomedical',
@@ -93,6 +94,7 @@ const BIOMED: PermissionCode[] = [
   'notification.view',
   'consumable.manage',
   'licence.manage',
+  'reading.record',
 ];
 
 export const REGISTER_PERMISSION: Record<Register, PermissionCode> = { biomedical: 'register.biomedical', facility: 'register.facility' };
@@ -1035,12 +1037,86 @@ export type LicenceRow = {
   attachmentCount: number;
 };
 
+// ---------- Logbook: readings and run hours (facility add-on, F4) ----------
+
+// What an item is read for: a level (diesel %, chilled water °C, TDS, manifold pressure) or a meter that only goes up
+// (run hours, kWh, water m³), whose consumption is the difference between readings. How often it should be read.
+export const READING_KINDS = ['level', 'meter'] as const;
+export type ReadingKind = (typeof READING_KINDS)[number];
+export const READING_EVERY = ['day', 'week', 'month'] as const;
+export type ReadingEvery = (typeof READING_EVERY)[number];
+export const READING_EVERY_LABEL: Record<ReadingEvery, string> = { day: 'Every day', week: 'Every week', month: 'Every month' };
+
+export const readingTypeSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Name the reading, e.g. Diesel level').max(80),
+    unit: z.string().trim().min(1, 'Unit, e.g. %, °C, kWh, h').max(20),
+    kind: z.enum(READING_KINDS).default('level'),
+    min: z.number().finite().nullable().optional(),
+    max: z.number().finite().nullable().optional(),
+    every: z.enum(READING_EVERY).default('day'),
+    // This meter counts the machine's run hours (DG set): PMS can then be due every N hours.
+    runHours: z.boolean().optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((v) => v.min == null || v.max == null || v.min <= v.max, { message: 'The lowest normal value is above the highest', path: ['max'] })
+  .refine((v) => !v.runHours || v.kind === 'meter', { message: 'Run hours are counted by a meter', path: ['kind'] });
+export type ReadingTypeInput = z.infer<typeof readingTypeSchema>;
+// The time is the server's (like an in-house PMS): only the value and a note come from the person.
+export const recordReadingSchema = z.object({ value: z.number({ message: 'Enter the reading' }).finite(), note: optionalText(500) });
+export type RecordReadingInput = z.infer<typeof recordReadingSchema>;
+// A wrong entry is put right by a new reading linked to it; the original stays.
+export const correctReadingSchema = z.object({ value: z.number({ message: 'Enter the right value' }).finite(), reason: z.string().trim().min(3, 'Say what was wrong').max(500) });
+export type CorrectReadingInput = z.infer<typeof correctReadingSchema>;
+// PMS every N run hours (in addition to any months interval); null = by months only.
+export const pmsHoursSchema = z.object({ pmsEveryHours: z.number().int().min(1).max(100000).nullable() });
+export type PmsHoursInput = z.infer<typeof pmsHoursSchema>;
+
+export type ReadingRow = {
+  id: string;
+  readingTypeId: string;
+  typeName: string;
+  unit: string;
+  value: number;
+  takenAt: string;
+  takenByName: string;
+  note: string | null;
+  outOfRange: boolean;
+  correctsId: string | null;
+  correctionReason: string | null;
+  corrected: boolean; // a later correction replaced it
+};
+export type ReadingTypeRow = {
+  id: string;
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  locationName: string;
+  register: Register;
+  name: string;
+  unit: string;
+  kind: ReadingKind;
+  min: number | null;
+  max: number | null;
+  every: ReadingEvery;
+  runHours: boolean;
+  active: boolean;
+  last: ReadingRow | null;
+  dueNow: boolean; // not read yet today / this week / this month
+};
+// The PMS-by-hours picture of one machine.
+export type RunHoursInfo = { pmsEveryHours: number | null; lastPmsHours: number | null; hoursNow: number | null; pmsDueAtHours: number | null; hoursLeft: number | null };
+export type AssetReadings = { types: ReadingTypeRow[]; readings: ReadingRow[]; runHours: RunHoursInfo };
+export type HoursDueRow = { assetId: string; assetCode: string; assetName: string; hoursNow: number; pmsDueAtHours: number; hoursLeft: number };
+export type ReadingAttention = { missed: ReadingTypeRow[]; outOfRange: ReadingTypeRow[]; hoursDue: HoursDueRow[] };
+
 // ---------- Notifications ----------
 
 // system: the nightly backup failed or stopped, or the server is short of disk space; account: someone asks the HOD
 // for a new password.
 // licence: a statutory licence or inspection ending or ended (facility add-on, F3).
-export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'system', 'account', 'licence'] as const;
+// reading: a logbook reading outside its normal range (F4).
+export const NOTIFICATION_TYPES = ['pms', 'calibration', 'warranty', 'contract', 'approval', 'complaint', 'report', 'stock', 'system', 'account', 'licence', 'reading'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export type NotificationRow = {
@@ -1248,6 +1324,7 @@ export const REPORTS = [
   { type: 'engineers', title: 'Engineer performance', description: 'Per engineer in the period: complaints taken and fixed, response and repair times, fixes sent back as not working, PMS and calibrations recorded.', range: true },
   { type: 'suppliers', title: 'Supplier performance', description: 'Per supplier and service company: the equipment they sold or service, its breakdowns and downtime in the period, what was spent on it, and their contracts.', range: true },
   { type: 'compliance', title: 'Compliance register', description: 'Statutory licences and inspections (lift, fire NOC, DG pollution, electrical, PESO, pressure vessels, water tests): who issued them, valid until when, and which are ending or have expired.', range: false, facility: true },
+  { type: 'consumption', title: 'Consumption and readings', description: 'From the logbook: diesel, energy and water used per month from the meters, run hours, and every reading outside its normal range in the period.', range: true, facility: true },
   { type: 'trades', title: 'Ward complaints by trade', description: 'Complaints without a machine (lights, water, AC, civil…) in the period: by trade and by location, response and resolution times, and those over the trade’s response target.', range: true, facility: true },
   { type: 'replacement', title: 'Replacement and renewals', description: 'Equipment to consider replacing (age, breakdowns, repair spend against its cost), and warranties and contracts ending in the next 90 days.', range: false },
 ] as const;

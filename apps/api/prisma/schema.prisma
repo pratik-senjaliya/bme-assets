@@ -292,6 +292,9 @@ model Asset {
   nextCalibrationDue   DateTime?   @db.Date
   // The last PMS / calibration failed: the machine is flagged until one passes (cleared by a passing record).
   pmsFailedOn          DateTime?   @db.Date
+  // PMS by run hours (F4): due every this many hours on its run-hours meter, counted from the meter at the last PMS.
+  pmsEveryHours        Int?
+  lastPmsHours         Float?
   calibrationFailedOn  DateTime?   @db.Date
   // Last PMS / calibration done before this system was used. Set once when existing equipment is registered;
   // the first due date runs from it. Never a PMS record, so the PMS date lock is untouched.
@@ -321,6 +324,8 @@ model Asset {
   notifications      Notification[]
   consumablesIssued  ConsumableMovement[]
   licences           Licence[]
+  readingTypes       ReadingType[]
+  readings           Reading[]
 
   @@index([departmentId])
   @@index([status])
@@ -506,6 +511,53 @@ model Complaint {
   @@index([register])
   @@index([tradeId])
   @@map("complaints")
+}
+
+// The plant-room logbook (facility add-on, F4): what an item is read for, and each reading. A reading is dated by the
+// server and never changed (a database trigger refuses UPDATE and DELETE, as for PMS records); a wrong one is put
+// right by a new reading pointing at it (correctsId).
+model ReadingType {
+  id        String   @id @default(uuid())
+  assetId   String
+  name      String
+  unit      String
+  kind      String   @default("level") // level | meter
+  min       Float?
+  max       Float?
+  every     String   @default("day") // day | week | month
+  runHours  Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  asset    Asset     @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  readings Reading[]
+
+  @@unique([assetId, name])
+  @@map("reading_types")
+}
+
+model Reading {
+  id               String   @id @default(uuid())
+  readingTypeId    String
+  assetId          String
+  value            Float
+  takenAt          DateTime @default(now())
+  takenBy          String
+  note             String?
+  outOfRange       Boolean  @default(false)
+  correctsId       String?  @unique
+  correctionReason String?
+
+  type      ReadingType @relation(fields: [readingTypeId], references: [id], onDelete: Restrict)
+  asset     Asset       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  corrects  Reading?    @relation("ReadingCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
+  correctedBy Reading?  @relation("ReadingCorrection")
+
+  @@index([readingTypeId, takenAt])
+  @@index([assetId, takenAt])
+  @@map("readings")
 }
 
 // A statutory licence or inspection (facility add-on, F3): lift licence, fire NOC, PESO… for one item or the whole

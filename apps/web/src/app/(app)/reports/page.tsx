@@ -28,7 +28,7 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
   { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts', 'condemnation'] as ReportType[]).map(entry) },
   { title: 'Maintenance', entries: (['pms', 'calibration'] as ReportType[]).map(entry) },
   { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime', 'trades'] as ReportType[]).map(entry) },
-  { title: 'Compliance', entries: (['compliance'] as ReportType[]).map(entry) },
+  { title: 'Compliance and logbook', entries: (['compliance', 'consumption'] as ReportType[]).map(entry) },
   { title: 'Cost', entries: (['expenses', 'consumables'] as ReportType[]).map(entry) },
   { title: 'Team and suppliers', entries: (['engineers', 'suppliers'] as ReportType[]).map(entry) },
 ];
@@ -38,7 +38,7 @@ export default function ReportsPage() {
   // Ward complaints by trade are the facility add-on's, for people who work with the facility register.
   const hospital = useFetch<HospitalInfo>('/hospital');
   // Licences are kept by both teams (AERB for biomedical), so the compliance register only needs the add-on.
-  const shown = (e: Entry) => (e.href !== '/reports/trades' || !!user?.registers.includes('facility')) && (e.href !== '/reports/compliance' || !!hospital.data?.facilityEnabled);
+  const shown = (e: Entry) => (e.href !== '/reports/trades' || !!user?.registers.includes('facility')) && (!['/reports/compliance', '/reports/consumption'].includes(e.href) || !!hospital.data?.facilityEnabled);
   if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
   return (
     <>

@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 import { EmptyState } from '@/components/Skeletons';
 
-const TAB: Record<Exclude<NotificationRow['type'], 'approval' | 'report' | 'stock' | 'system' | 'account' | 'licence'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase', complaint: 'complaints' };
+const TAB: Record<Exclude<NotificationRow['type'], 'approval' | 'report' | 'stock' | 'system' | 'account' | 'licence'>, string> = { pms: 'pms', calibration: 'calibration', warranty: 'purchase', contract: 'purchase', complaint: 'complaints', reading: 'logbook' };
 
 // In-app reminders (PMS, calibration, warranty, contracts) and notices (approvals, complaints). Checked every minute while the app is open.
 export function NotificationBell() {
