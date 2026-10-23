@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 export type HealthResponse = {
   status: 'ok';
@@ -174,8 +174,21 @@ export const equipmentTypeSchema = z.object({
   defaultPmsMonths: z.number().int().positive().max(120).nullable().optional(),
   defaultCalibrationMonths: z.number().int().positive().max(120).nullable().optional(),
   register: z.enum(REGISTERS).optional(), // biomedical when left out
+  // A medical gas type (oxygen plant, manifold, outlets): its register is the hospital's medical gas setting.
+  medicalGas: z.boolean().optional(),
 });
 export type EquipmentTypeInput = z.infer<typeof equipmentTypeSchema>;
+
+// What a ward fault without a machine is about (facility add-on, decision J). The Medical gas trade's team is the
+// hospital's medical gas setting, so `register` is ignored for it.
+export const tradeSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  register: z.enum(REGISTERS).default('facility'),
+  responseHours: z.number().int().min(1).max(720).nullable().optional(),
+  active: z.boolean().optional(),
+});
+export type TradeInput = z.infer<typeof tradeSchema>;
+export type TradeRow = { id: string; name: string; register: Register; medicalGas: boolean; responseHours: number | null; active: boolean; complaintCount: number };
 
 // ---------- Users ----------
 
@@ -254,6 +267,9 @@ export const updateSettingsSchema = z.object({
   complaintCloseDays: z.number().int().min(1).max(30).optional(),
   transfersEnabled: z.boolean().optional(),
   facilityEnabled: z.boolean().optional(), // super admin only (decision K)
+  // Who looks after medical gases (decision I); facility only while the add-on is on.
+  medicalGasRegister: z.enum(REGISTERS).optional(),
+  facilityContact: optionalText(200), // who the wards call for lights, water, AC, lifts
   // Who the wards call for a broken machine, shown to everyone (e.g. "Biomedical on call: 98250 00000, ext. 214").
   biomedContact: optionalText(200),
   // Shared ward PCs: sign out after this many minutes without use; 0 = never.
@@ -287,7 +303,9 @@ export type SettingsResponse = {
   complaintCloseDays: number;
   transfersEnabled: boolean;
   facilityEnabled: boolean;
+  medicalGasRegister: Register;
   biomedContact: string | null;
+  facilityContact: string | null;
   idleLogoutMinutes: number;
   smtpHost: string | null;
   smtpPort: number | null;
@@ -626,13 +644,25 @@ export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
 export const UNRESOLVED_STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'on_hold'];
 export const COMPLAINT_STATUS_LABEL: Record<ComplaintStatus, string> = { open: 'Open', in_progress: 'In progress', on_hold: 'On hold', resolved: 'Resolved', closed: 'Closed' };
 
-// The department and the time are set by the server; the browser only says which asset and what is wrong.
-export const createComplaintSchema = z.object({
-  assetId: z.string().uuid('Choose the equipment'),
-  description: z.string().trim().min(5, 'Describe the problem in a few words').max(2000),
-  // The machine cannot be used or patient care is affected: listed first and emailed to the biomedical team.
-  urgent: z.boolean().default(false),
-});
+// The department and the time are set by the server; the browser only says what it is about and what is wrong:
+// a machine, or (facility add-on) a trade at a location of the ward, e.g. Plumbing at Toilet 2.
+export const createComplaintSchema = z
+  .object({
+    assetId: z.string().uuid('Choose the equipment').optional(),
+    tradeId: z.string().uuid('Choose what it is about').optional(),
+    locationId: z.string().uuid('Choose where it is').optional(),
+    description: z.string().trim().min(5, 'Describe the problem in a few words').max(2000),
+    // The machine cannot be used or patient care is affected: listed first and emailed to the team.
+    urgent: z.boolean().default(false),
+  })
+  .superRefine((v, ctx) => {
+    if (v.assetId) return;
+    if (!v.tradeId && !v.locationId) ctx.addIssue({ code: 'custom', message: 'Choose the equipment', path: ['assetId'] });
+    else {
+      if (!v.tradeId) ctx.addIssue({ code: 'custom', message: 'Choose what it is about', path: ['tradeId'] });
+      if (!v.locationId) ctx.addIssue({ code: 'custom', message: 'Choose where it is', path: ['locationId'] });
+    }
+  });
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
 
 // What it cost can be booked while resolving (parts, the OEM's bill): dated today, linked to the complaint.
@@ -661,9 +691,10 @@ export const complaintListQuerySchema = z.object({
   // 'me' = assigned to whoever is asking, 'none' = nobody yet, or one person's id.
   assignedTo: z.union([z.enum(['me', 'none']), z.string().uuid()]).optional(),
   assetId: z.string().uuid().optional(),
+  tradeId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
   register: z.enum(REGISTERS).optional(),
-  search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, problem text
+  search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, trade, location, problem text
   from: isoDateSchema.optional(), // raised on or after (hospital date)
   to: isoDateSchema.optional(), // raised on or before
   sortBy: z.enum(['raisedAt', 'complaintNo', 'status']).optional(),
@@ -684,10 +715,16 @@ export type Assignee = { id: string; name: string; openCount: number; registers:
 export type ComplaintRow = {
   id: string;
   complaintNo: string;
-  assetId: string;
-  assetCode: string;
-  assetName: string;
-  criticality: Criticality;
+  // The machine, or null for a ward fault without one (then trade and location say what and where).
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  criticality: Criticality | null;
+  tradeId: string | null;
+  tradeName: string | null;
+  locationName: string | null; // the machine's location, or where the fault is
+  // What the complaint is about in a few words: "SHL-ICU-VENT-001 Ventilator" or "Plumbing · Toilet 2".
+  subject: string;
   departmentId: string;
   departmentName: string;
   register: Register;
@@ -713,11 +750,16 @@ export type ComplaintRow = {
   assignedToId: string | null;
   assignedToName: string | null;
   assignedAt: string | null;
-  // started − raised, resolved − raised (seconds); null until that step has happened.
+  // started − raised, resolved − raised (seconds); null until that step has happened. Downtime is only for machines;
+  // resolution time (resolved − raised) is for every complaint.
   responseSeconds: number | null;
   downtimeSeconds: number | null;
+  resolutionSeconds: number | null;
   // Critical equipment that has been down (or is still down) for longer than the hospital's limit.
   overDowntimeLimit: boolean;
+  // The trade's response target in hours, and whether work started (or has still not started) later than that.
+  responseTargetHours: number | null;
+  overResponseTarget: boolean;
   attachmentCount: number;
 };
 
@@ -990,7 +1032,7 @@ export type TransferInfo = { toUnit: string; reason: string; requestedByName: st
 
 // What every signed-in person may know about the install: its name, and the optional parts it has turned on.
 // What every signed-in user may know about the hospital's set-up.
-export type HospitalInfo = { name: string; transfersEnabled: boolean; facilityEnabled: boolean; biomedContact: string | null; idleLogoutMinutes: number };
+export type HospitalInfo = { name: string; transfersEnabled: boolean; facilityEnabled: boolean; biomedContact: string | null; facilityContact: string | null; idleLogoutMinutes: number };
 
 export const deleteRequestSchema = z.object({
   targetType: z.enum(DELETABLE_TARGETS),
@@ -1136,6 +1178,7 @@ export const REPORTS = [
   { type: 'consumables', title: 'Consumables register', description: 'Everything given out in the period (to which department, machine or complaint, and why), what was received, and the stock today with its value.', range: true },
   { type: 'engineers', title: 'Engineer performance', description: 'Per engineer in the period: complaints taken and fixed, response and repair times, fixes sent back as not working, PMS and calibrations recorded.', range: true },
   { type: 'suppliers', title: 'Supplier performance', description: 'Per supplier and service company: the equipment they sold or service, its breakdowns and downtime in the period, what was spent on it, and their contracts.', range: true },
+  { type: 'trades', title: 'Ward complaints by trade', description: 'Complaints without a machine (lights, water, AC, civil…) in the period: by trade and by location, response and resolution times, and those over the trade’s response target.', range: true, facility: true },
   { type: 'replacement', title: 'Replacement and renewals', description: 'Equipment to consider replacing (age, breakdowns, repair spend against its cost), and warranties and contracts ending in the next 90 days.', range: false },
 ] as const;
 export type ReportType = (typeof REPORTS)[number]['type'];

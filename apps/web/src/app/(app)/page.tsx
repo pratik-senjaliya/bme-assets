@@ -209,8 +209,16 @@ export default function Home() {
               <UnsafeList rows={unsafe.data.items} />
             </Card>
           )}
-          {hospital.data?.biomedContact && can('complaint.create') && !can('complaint.start') && (
-            <Alert style={{ marginBottom: 20 }} type="info" showIcon message={`Machine broken? Raise a complaint here. For an emergency, also call the biomedical team: ${hospital.data.biomedContact}`} />
+          {(hospital.data?.biomedContact || (hospital.data?.facilityEnabled && hospital.data.facilityContact)) && can('complaint.create') && !can('complaint.start') && (
+            <Alert
+              style={{ marginBottom: 20 }}
+              type="info"
+              showIcon
+              message={`${hospital.data.facilityEnabled ? 'Something broken in the ward?' : 'Machine broken?'} Raise a complaint here. For an emergency, also call ${[
+                hospital.data.biomedContact && `the biomedical team: ${hospital.data.biomedContact}`,
+                hospital.data.facilityEnabled && hospital.data.facilityContact && `maintenance: ${hospital.data.facilityContact}`,
+              ].filter(Boolean).join('; ')}`}
+            />
           )}
           <ToClose
             version={closedVersion}

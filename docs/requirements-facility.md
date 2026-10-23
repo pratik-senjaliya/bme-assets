@@ -102,8 +102,10 @@ run hours. The audit pack adds a facility section (licences, logbooks, facility 
    types are biomedical), the `maintenance` role and `register.*` permissions, register scope in every query that has
    department scope today, the register switch on lists, dashboard and reports, menus that follow it, consumables per
    register. Sellable on its own as "register + PMS + contracts + complaints for facility equipment".
-2. **F2. Ward complaints without a machine.** Optional asset on a complaint, location + trade, trades in Setup (name,
-   team, response target), routing, resolution time, complaints-by-trade report. Medical gases setting.
+2. **F2. Ward complaints without a machine.** Done (branch `facility-f2`). Optional asset on a complaint, location +
+   trade, trades in Setup (name, team, response target), routing, resolution time, complaints-by-trade report. Medical
+   gases setting. Not in F2: costs on a complaint without a machine (service expenses need a machine), a trade filter on
+   the complaints board (search finds trade and place).
 3. **F3. Statutory licences.** Register, reminders, compliance report, audit pack.
 4. **F4. Logs and readings.** Reading types per item, server-dated entries, out-of-range flags, missed readings, run-hour
    PMS, consumption charts.
@@ -115,5 +117,5 @@ signed licence file for paid modules.
 ## Open
 
 - The HOD's label is "Admin (Biomedical HOD)"; with the module on it could read "Admin (HOD)".
-- Which seed types to add for facility (DG set, chiller, AHU, lift, UPS, fire pump, RO plant, oxygen plant, manifold,
-  compressor, vacuum) and their starter checklists.
+- Starter types so far: DG set, chiller, AHU, UPS, lift, RO plant, oxygen plant, medical gas manifold. Fire pump,
+  compressor and vacuum are still to add, with their checklists.

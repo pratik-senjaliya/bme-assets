@@ -166,7 +166,7 @@ pmsRouter.post('/assets/:id/pms/oem', requirePermission('pms.perform'), upload.s
   const { clean, result } = template ? evaluateAnswers(templateItems(template.schema), input.answers) : { clean: {}, result: input.result! };
   if (!req.file) throw new HttpError(400, 'Attach the service report from the OEM engineer', { fieldErrors: { file: ['Attach the report (PDF, JPG or PNG)'] } });
 
-  const report = await stageUpload(req, asset.id);
+  const report = await stageUpload(req, `assets/${asset.id}`);
   try {
     const created = await prisma.$transaction(async (tx) => {
       const record = await tx.pmsRecord.create({

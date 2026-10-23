@@ -2,7 +2,7 @@
 import bcrypt from 'bcryptjs';
 import type { Criticality, RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
-import { ensureRolesAndPermissions, ensureStarterTypes } from './lib/baseData';
+import { ensureRolesAndPermissions, ensureStarterTrades, ensureStarterTypes } from './lib/baseData';
 import { addMonths } from './lib/dates';
 import { prisma } from './lib/prisma';
 
@@ -144,6 +144,7 @@ async function main() {
     await addAssets(facilityAssets);
     await prisma.hospitalSettings.update({ where: { id: settings.id }, data: { facilityEnabled: true } });
   }
+  await ensureStarterTrades(); // what ward faults without a machine are about (once)
 
   // Give equipment that has no due dates yet its first ones, counted from installation.
   const needDates = await prisma.asset.findMany({

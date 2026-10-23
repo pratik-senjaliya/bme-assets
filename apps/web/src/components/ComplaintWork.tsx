@@ -232,14 +232,14 @@ export function useComplaintWork(onChanged: () => void) {
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          This stops the downtime clock for {resolving?.assetCode}. The time is recorded by the system and cannot be changed.
+          This stops the {resolving?.assetId ? 'downtime' : 'resolution'} clock for {resolving?.subject}. The time is recorded by the system and cannot be changed.
         </Typography.Paragraph>
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item label="What was done?" name="resolutionNotes" rules={[{ required: true, message: 'Say what was done' }]}>
             <Input.TextArea rows={4} maxLength={2000} showCount />
           </Form.Item>
           {/* Parts and bills can be booked here, dated today and linked to this complaint (also later on the asset). */}
-          {can('expense.manage') && (
+          {can('expense.manage') && resolving?.assetId && (
             <Form.List name="costs">
               {(fields, { add, remove }) => (
                 <>
@@ -285,7 +285,7 @@ export function useComplaintWork(onChanged: () => void) {
         {noting && (
           <>
             <Typography.Paragraph type="secondary">
-              {noting.c.assetCode} · {noting.c.assetName}. {NOTE_STEPS[noting.step].intro}
+              {noting.c.subject}. {NOTE_STEPS[noting.step].intro}
             </Typography.Paragraph>
             <Form form={noteForm} layout="vertical" requiredMark>
               <Form.Item label={NOTE_STEPS[noting.step].label} name="note" rules={NOTE_STEPS[noting.step].required ? [{ required: true, message: 'Say why in a few words' }] : []}>
@@ -305,7 +305,7 @@ export function useComplaintWork(onChanged: () => void) {
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          {assigning?.assetCode} · {assigning?.assetName}. The person you choose is told at once. The number after each name is how many unresolved complaints they already have.
+          {assigning?.subject}. The person you choose is told at once. The number after each name is how many unresolved complaints they already have.
         </Typography.Paragraph>
         <Form form={assignForm} layout="vertical">
           <Form.Item label="Assign to" name="userId">
@@ -355,20 +355,16 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
     <Card size="small" styles={{ body: { padding: 14 } }} style={{ borderRadius: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className="code" style={{ color: COLORS.muted, fontSize: 12.5 }}>{c.complaintNo}</span>
-        <CriticalityTag value={c.criticality} />
+        {c.criticality ? <CriticalityTag value={c.criticality} /> : <Pill tone="neutral">No machine</Pill>}
       </div>
-      {(c.urgent || c.overDowntimeLimit) && (
+      {(c.urgent || c.overDowntimeLimit || c.overResponseTarget) && (
         <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {c.urgent && !c.resolvedAt && <Pill tone="bad">Urgent: cannot be used</Pill>}
+          {c.urgent && !c.resolvedAt && <Pill tone="bad">{c.assetId ? 'Urgent: cannot be used' : 'Urgent'}</Pill>}
           {c.overDowntimeLimit && <Pill tone="bad">Over downtime limit</Pill>}
+          {c.overResponseTarget && <Pill tone="warn">Over {c.responseTargetHours} h response target</Pill>}
         </div>
       )}
-      <div style={{ marginTop: 8 }}>
-        <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5 }}>{c.assetName}</div>
-        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontSize: 12.5 }}>
-          {c.assetCode}
-        </Link>
-      </div>
+      <ComplaintAbout c={c} />
       <Typography.Paragraph ellipsis={{ rows: 3, tooltip: c.description }} style={{ margin: '8px 0', color: COLORS.text }}>
         {c.description}
       </Typography.Paragraph>
@@ -387,7 +383,7 @@ export function ComplaintCard({ c, actions, onOpen }: { c: ComplaintRow; actions
       )}
       {c.resolvedAt && (
         <>
-          <div style={{ ...clock, background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.good.bg, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.good.fg }} className="num">Downtime {formatDuration(c.downtimeSeconds)}</div>
+          <div style={{ ...clock, background: c.overDowntimeLimit ? COLORS.bad.bg : COLORS.good.bg, color: c.overDowntimeLimit ? COLORS.bad.fg : COLORS.good.fg }} className="num">{c.assetId ? 'Downtime' : 'Resolved in'} {formatDuration(c.resolutionSeconds)}</div>
           <div style={{ ...muted, marginTop: 6 }}>{c.resolutionNotes}</div>
           <div style={{ ...muted, marginTop: 6 }}>
             {c.status === 'resolved' ? `Waiting for ${c.raisedByName} to close` : c.closedByName ? `Closed by ${c.closedByName}` : 'Closed automatically'}
@@ -418,7 +414,7 @@ export function ToClose({ version, onChanged, onOpen }: { version: number; onCha
     <Card style={{ marginBottom: 20, borderColor: COLORS.good.dot }} styles={{ body: { padding: '14px 18px' } }}>
       <div style={{ fontWeight: 700, color: COLORS.ink, fontSize: 15 }}>Fixed: please check and close ({items.length})</div>
       <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 6 }}>
-        Raised by you or your department. Close each one once the equipment works again; any not closed close by themselves after a few days.
+        Raised by you or your department. Close each one once it works again; any not closed close by themselves after a few days.
       </div>
       {items.map((c) => (
         <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>
@@ -430,7 +426,7 @@ export function ToClose({ version, onChanged, onOpen }: { version: number; onCha
             ) : (
               <span className="code">{c.complaintNo}</span>
             )}
-            <span style={{ color: COLORS.ink, fontWeight: 600 }}> · {c.assetName}</span>
+            <span style={{ color: COLORS.ink, fontWeight: 600 }}> · {c.assetName ?? c.subject}</span>
             <div style={{ color: COLORS.muted, fontSize: 12.5 }}>
               Resolved {c.resolvedAt ? formatDateTime(c.resolvedAt) : ''}
               {c.resolvedByName && ` by ${c.resolvedByName}`}
@@ -453,5 +449,22 @@ export function CardSkeleton() {
         <Bar key={i} w={`${w}%`} h={i === 2 ? 32 : 12} />
       ))}
     </Card>
+  );
+}
+
+// What a complaint is about: the machine (name, and its ID linking to it), or for a ward fault without one the trade
+// and where it is.
+export function ComplaintAbout({ c }: { c: ComplaintRow }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ color: COLORS.ink, fontWeight: 700, fontSize: 14.5 }}>{c.assetName ?? c.tradeName}</div>
+      {c.assetId ? (
+        <Link href={`/assets/${c.assetId}`} className="code" style={{ fontSize: 12.5 }}>
+          {c.assetCode}
+        </Link>
+      ) : (
+        <div style={{ color: COLORS.muted, fontSize: 12.5 }}>{c.locationName}</div>
+      )}
+    </div>
   );
 }

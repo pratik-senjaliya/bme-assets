@@ -38,7 +38,31 @@ export const STARTER_TYPES = [
   { name: 'UPS', code: 'UPS', defaultPmsMonths: 3, defaultCalibrationMonths: null, register: 'facility' },
   { name: 'Lift', code: 'LIFT', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
   { name: 'RO Plant', code: 'RO', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
+  // Medical gases: their team is the hospital's medical gas setting (biomedical until it says otherwise).
+  { name: 'Oxygen Plant', code: 'O2P', defaultPmsMonths: 1, defaultCalibrationMonths: 12, medicalGas: true },
+  { name: 'Medical Gas Manifold', code: 'MGM', defaultPmsMonths: 3, defaultCalibrationMonths: 12, medicalGas: true },
 ] as const;
+
+// What a ward fault without a machine can be about (decision J), with response targets the hospital can change.
+export const STARTER_TRADES: { name: string; responseHours: number | null; medicalGas?: boolean }[] = [
+  { name: 'Electrical', responseHours: 2 },
+  { name: 'Plumbing and water', responseHours: 4 },
+  { name: 'AC and ventilation', responseHours: 4 },
+  { name: 'Civil (seepage, tiles, doors, windows)', responseHours: 24 },
+  { name: 'Carpentry and furniture', responseHours: 24 },
+  { name: 'Lift', responseHours: 1 },
+  { name: 'Fire safety', responseHours: 1 },
+  { name: 'Medical gas', responseHours: 1, medicalGas: true },
+  { name: 'Other', responseHours: null },
+];
+
+// Made once, when the facility add-on is first switched on (and by the demo seed). The Medical gas trade gets the
+// hospital's medical gas team.
+export async function ensureStarterTrades() {
+  if (await prisma.trade.count()) return;
+  const { medicalGasRegister } = await prisma.hospitalSettings.findFirstOrThrow({ select: { medicalGasRegister: true } });
+  await prisma.trade.createMany({ data: STARTER_TRADES.map((t) => ({ ...t, register: t.medicalGas ? medicalGasRegister : 'facility' })) });
+}
 
 
 type Item = { id: string; label: string; type: 'check' | 'reading' | 'text'; unit?: string; min?: number; max?: number; required: boolean };
@@ -47,6 +71,21 @@ const reading = (id: string, label: string, unit: string, min: number, max: numb
 const remarks: Item = { id: 'remarks', label: 'Remarks', type: 'text', required: false };
 
 const PMS_TEMPLATES: Record<string, Item[]> = {
+  O2P: [
+    check('visual', 'Visual inspection: no leaks, compressor and dryer running'),
+    check('alarms', 'Low pressure and purity alarms work'),
+    check('backup', 'Changeover to cylinder bank / reserve works'),
+    reading('purity', 'Oxygen purity at outlet', '%', 93, 100),
+    reading('pressure', 'Line pressure', 'bar', 4, 5),
+    remarks,
+  ],
+  MGM: [
+    check('visual', 'Visual inspection: pigtails, valves and regulators, no leaks'),
+    check('changeover', 'Automatic changeover between banks works'),
+    check('alarms', 'Area alarm panel works'),
+    reading('pressure', 'Line pressure', 'bar', 4, 5),
+    remarks,
+  ],
   VENT: [
     check('visual', 'Visual inspection: casing, display, cables, no damage'),
     check('power', 'Power cord, plug and mains indicator'),
@@ -136,8 +175,9 @@ const PMS_TEMPLATES: Record<string, Item[]> = {
 
 // `register`: only that register's (the facility types, when the add-on is first switched on in an older install).
 export async function ensureStarterTypes(register?: 'facility') {
+  const gases = (await prisma.hospitalSettings.findFirst({ select: { medicalGasRegister: true } }))?.medicalGasRegister ?? 'biomedical';
   for (const t of STARTER_TYPES.filter((s) => !register || ('register' in s && s.register === register))) {
-    const type = await prisma.equipmentType.upsert({ where: { code: t.code }, update: {}, create: t });
+    const type = await prisma.equipmentType.upsert({ where: { code: t.code }, update: {}, create: { ...t, ...('medicalGas' in t && { register: gases }) } });
     if ((await prisma.pmsTemplate.count({ where: { equipmentTypeId: type.id } })) === 0) {
       await prisma.pmsTemplate.create({ data: { equipmentTypeId: type.id, version: 1, schema: { items: PMS_TEMPLATES[t.code] } } });
     }

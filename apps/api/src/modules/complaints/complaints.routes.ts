@@ -17,11 +17,10 @@ import {
   type CreateComplaintInput,
   type OptionalNoteInput,
   type Paged,
-  type Register,
   type ResolveComplaintInput,
 } from '@bme/shared';
 import { audit } from '../../lib/audit';
-import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
+import { currentUser, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { addDaysISO, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
@@ -29,17 +28,9 @@ import { idOf, validate } from '../../lib/validate';
 import { effectivePermissions, facilityOn, registersOf, registerTeam, usersWithPermissions } from '../../lib/people';
 import { notify } from '../approvals/approvals.service';
 import { findScopedAsset } from '../assets/assets.service';
-import { complaintInclude, complaintNo, emailUrgent, toComplaintDetail, toComplaintRows } from './complaints.service';
+import { complaintInclude, complaintNo, complaintScope, emailUrgent, subjectOf, toComplaintDetail, toComplaintRows } from './complaints.service';
 
 export const complaintsRouter = Router();
-
-// Nursing only sees its own department's complaints, and each team its own register's; a foreign id looks like a
-// missing one. Business rule 4 for complaints: nursing sees its own department's, and also the ones they raised
-// themselves (a nurse who moved department can still follow and close those; gap review #13).
-function complaintScope(me: ReturnType<typeof currentUser>, register?: Register): Prisma.ComplaintWhereInput {
-  const { departmentId, ...scope } = scopeOf(me, register);
-  return departmentId ? { ...scope, OR: [{ departmentId }, { raisedById: me.id }] } : scope;
-}
 
 async function findScoped(req: Request) {
   const complaint = await prisma.complaint.findFirst({
@@ -62,6 +53,7 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
     ...(q.escalated && { status: 'in_progress' as const, escalatedAt: { not: null } }),
     ...(q.assignedTo && { assignedToId: q.assignedTo === 'me' ? me.id : q.assignedTo === 'none' ? null : q.assignedTo }),
     ...(q.assetId && { assetId: q.assetId }),
+    ...(q.tradeId && { tradeId: q.tradeId }),
     ...(q.departmentId && { departmentId: q.departmentId }),
     // Dates are the hospital's calendar days, not UTC days.
     ...((q.from || q.to) && { raisedAt: { ...(q.from && { gte: zonedDayStart(q.from) }), ...(q.to && { lt: zonedDayStart(addDaysISO(q.to, 1)) }) } }),
@@ -71,6 +63,8 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
         { description: { contains: q.search, mode: 'insensitive' as const } },
         { asset: { assetCode: { contains: q.search, mode: 'insensitive' as const } } },
         { asset: { name: { contains: q.search, mode: 'insensitive' as const } } },
+        { trade: { name: { contains: q.search, mode: 'insensitive' as const } } },
+        { location: { name: { contains: q.search, mode: 'insensitive' as const } } },
       ],
     }),
     // Last, so they cannot be widened from the query. closable: resolved complaints the asker may close.
@@ -110,14 +104,31 @@ complaintsRouter.get('/:id', requirePermission('complaint.view'), async (req, re
   res.json(await toComplaintDetail(await findScoped(req), currentUser(req).permissions.includes('expense.manage')));
 });
 
-// The department comes from the asset and the time from the server, never from the request.
+// What a new complaint is about: a machine the person may see, or (facility add-on) a trade at a location of their
+// own department. The department and the team come from it, never from the request.
+async function aboutOf(req: Request, input: CreateComplaintInput) {
+  const me = currentUser(req);
+  if (input.assetId) {
+    const asset = await findScopedAsset(req, input.assetId);
+    if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so complaints can no longer be raised for it`);
+    return { assetId: asset.id, tradeId: null, locationId: null, departmentId: asset.departmentId, register: asset.register, asset, trade: null, location: asset.location, department: asset.department };
+  }
+  const [trade, location] = await Promise.all([
+    prisma.trade.findFirst({ where: { id: input.tradeId, active: true, register: { in: (await facilityOn()) ? me.registers : [] } } }),
+    prisma.location.findFirst({ where: { id: input.locationId, ...(me.departmentId && { departmentId: me.departmentId }) }, include: { department: true } }),
+  ]);
+  if (!trade) throw new HttpError(400, 'Choose what it is about', { fieldErrors: { tradeId: ['Choose what it is about'] } });
+  if (!location) throw new HttpError(400, 'Choose where it is', { fieldErrors: { locationId: ['Choose a place in your department'] } });
+  return { assetId: null, tradeId: trade.id, locationId: location.id, departmentId: location.departmentId, register: trade.register, asset: null, trade, location, department: location.department };
+}
+
+// The time comes from the server, never from the request.
 complaintsRouter.post('/', requirePermission('complaint.create'), validate(createComplaintSchema), async (req, res) => {
   const me = currentUser(req);
   const input = req.body as CreateComplaintInput;
-  const asset = await findScopedAsset(req, input.assetId);
-  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so complaints can no longer be raised for it`);
+  const about = await aboutOf(req, input);
   // The team that looks after it hears about it at once, not only when the board happens to be open.
-  const staff = (await registerTeam(asset.register, 'complaint.start', 'notification.view')).filter((id) => id !== me.id);
+  const staff = (await registerTeam(about.register, 'complaint.start', 'notification.view')).filter((id) => id !== me.id);
 
   const created = await prisma.$transaction(async (tx) => {
     // Atomic counter on the settings row: concurrent complaints get distinct numbers.
@@ -126,20 +137,25 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
     const row = await tx.complaint.create({
       data: {
         complaintNo: complaintNo(complaintSeq),
-        assetId: asset.id,
+        assetId: about.assetId,
+        tradeId: about.tradeId,
+        locationId: about.locationId,
         raisedById: me.id,
-        departmentId: asset.departmentId,
-        register: asset.register,
+        departmentId: about.departmentId,
+        register: about.register,
         description: input.description,
         urgent: input.urgent,
         createdBy: me.id,
       },
     });
     await audit(tx, req, { action: 'complaint.create', entityType: 'complaint', entityId: row.id, after: row });
-    await notify(tx, staff, `${input.urgent ? 'URGENT: machine cannot be used. ' : ''}New complaint ${row.complaintNo}: ${asset.assetCode} ${asset.name}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, asset.id, 'complaint', row.id);
+    const urgent = input.urgent ? (about.asset ? 'URGENT: machine cannot be used. ' : 'URGENT. ') : '';
+    await notify(tx, staff, `${urgent}New complaint ${row.complaintNo}: ${subjectOf(about)}${about.asset ? '' : ` (${about.department.name})`}: "${input.description.slice(0, 80)}" (raised by ${me.name})`, about.assetId, 'complaint', row.id);
     return row;
   });
-  if (created.urgent) void emailUrgent(created, asset, me.name);
+  if (created.urgent) {
+    void emailUrgent(created, { what: about.asset ? `${about.asset.assetCode} ${about.asset.name} cannot be used` : `${about.trade!.name} fault`, where: `${about.department.name}, ${about.location!.name}` }, me.name);
+  }
   res.status(201).json(await one(created.id));
 });
 
@@ -177,7 +193,7 @@ async function transition(
 }
 
 // Tells people about a step, leaving out whoever took it. The notice opens the complaint.
-async function tell(req: Request, userIds: (string | null)[], message: string, c: { id: string; assetId: string }) {
+async function tell(req: Request, userIds: (string | null)[], message: string, c: { id: string; assetId: string | null }) {
   const me = currentUser(req).id;
   const to = [...new Set(userIds.filter((id): id is string => !!id && id !== me))];
   const withBell = new Set(await usersWithPermissions('notification.view'));
@@ -199,7 +215,7 @@ complaintsRouter.post('/:id/start', requirePermission('complaint.start'), valida
     'This complaint has already been started',
     note ? { step: { kind: 'started', note } } : {},
   );
-  await tell(req, [before.raisedById], `Complaint ${before.complaintNo}: ${currentUser(req).name} has started work on ${before.asset.name}${note ? `: "${note.slice(0, 80)}"` : ''}`, after);
+  await tell(req, [before.raisedById], `Complaint ${before.complaintNo}: ${currentUser(req).name} has started work on ${subjectOf(before, true)}${note ? `: "${note.slice(0, 80)}"` : ''}`, after);
   res.json(await one(after.id));
 });
 
@@ -215,7 +231,7 @@ complaintsRouter.post('/:id/escalate', requirePermission('complaint.start'), val
     },
     also: { escalatedAt: null },
   });
-  await tell(req, await registerTeam(before.register, 'complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}"`, before);
+  await tell(req, await registerTeam(before.register, 'complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${subjectOf(before)}: "${note.slice(0, 80)}"`, before);
   res.json(await one(after.id));
 });
 
@@ -227,7 +243,7 @@ complaintsRouter.post('/:id/hold', requirePermission('complaint.hold'), validate
     step: { kind: 'held', note },
   });
   await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} put on hold by ${currentUser(req).name}: "${note.slice(0, 80)}"`, before);
-  await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is on hold: "${note.slice(0, 80)}"`, before);
+  await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${subjectOf(before, true)}) is on hold: "${note.slice(0, 80)}"`, before);
   res.json(await one(after.id));
 });
 
@@ -241,7 +257,7 @@ complaintsRouter.post('/:id/resume', requirePermission('complaint.hold'), valida
     },
   });
   await tell(req, [before.assignedToId], `Complaint ${before.complaintNo} is back with you${note ? `: "${note.slice(0, 80)}"` : ''}`, before);
-  if (before.status === 'on_hold') await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is being worked on again`, before);
+  if (before.status === 'on_hold') await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${subjectOf(before, true)}) is being worked on again`, before);
   res.json(await one(after.id));
 });
 
@@ -258,9 +274,13 @@ complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), va
     'complaint.resolve',
     'Start the complaint before resolving it (or it is already resolved)',
     {
+      // Costs are booked against a machine (service expenses); a ward fault without one has none to book them on.
+      check: (b) => {
+        if (costs.length && !b.assetId) throw new HttpError(400, 'Costs can only be booked on a complaint about a machine');
+      },
       extra: async (tx, b) => {
         for (const cost of costs) {
-          const row = await tx.serviceExpense.create({ data: { ...cost, vendor: cost.vendor ?? null, date: parseDate(todayISO()), assetId: b.assetId, complaintId: b.id, createdBy: me.id } });
+          const row = await tx.serviceExpense.create({ data: { ...cost, vendor: cost.vendor ?? null, date: parseDate(todayISO()), assetId: b.assetId!, complaintId: b.id, createdBy: me.id } });
           await audit(tx, req, { action: 'service_expense.create', entityType: 'service_expense', entityId: row.id, after: row });
         }
       },
@@ -303,7 +323,7 @@ complaintsRouter.post('/:id/reopen', requirePermission('complaint.view'), valida
     },
     step: { kind: 'reopened', note },
   });
-  await tell(req, [before.assignedToId ?? before.resolvedBy], `Complaint ${before.complaintNo} is not fixed: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}" (${me.name})`, before);
+  await tell(req, [before.assignedToId ?? before.resolvedBy], `Complaint ${before.complaintNo} is not fixed: ${subjectOf(before)}: "${note.slice(0, 80)}" (${me.name})`, before);
   res.json(await one(after.id));
 });
 
@@ -341,13 +361,13 @@ complaintsRouter.post('/:id/assign', requirePermission('complaint.view'), valida
     const after = await tx.complaint.findUniqueOrThrow({ where: { id: before.id } });
     await audit(tx, req, { action: 'complaint.assign', entityType: 'complaint', entityId: before.id, before, after });
     if (userId && userId !== me.id) {
-      await notify(tx, [userId], `Complaint ${before.complaintNo} assigned to you: ${before.asset.assetCode} ${before.asset.name} (by ${me.name})`, before.assetId, 'complaint', before.id);
+      await notify(tx, [userId], `Complaint ${before.complaintNo} assigned to you: ${subjectOf(before)} (by ${me.name})`, before.assetId, 'complaint', before.id);
     }
   });
   // Whoever raised it hears who is on it.
   if (userId) {
     const who = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
-    await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${before.asset.name}) is with ${who.name}`, before);
+    await tell(req, [before.raisedById], `Complaint ${before.complaintNo} (${subjectOf(before, true)}) is with ${who.name}`, before);
   }
   res.json(await one(before.id));
 });

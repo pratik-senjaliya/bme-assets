@@ -15,6 +15,7 @@ import {
   KeyOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
+  BuildOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -42,7 +43,8 @@ import { useIdleSignOut } from '@/lib/idle';
 import { loginHref } from '@/lib/nav';
 import { COLORS } from '@/theme';
 
-type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[]; short?: string };
+// facility: only while the facility add-on is on (the person then has the facility register).
+type Item = { href: string; label: string; icon: ReactNode; permission?: PermissionCode; anyOf?: PermissionCode[]; short?: string; facility?: true };
 type Group = { title?: string; items: Item[] };
 
 // Menu entries are filtered by the user's permission codes. The API enforces the same codes.
@@ -77,6 +79,7 @@ const GROUPS: Group[] = [
       { href: '/admin/roles', label: 'Roles & permissions', icon: <SafetyOutlined />, permission: 'role.manage' },
       { href: '/admin/departments', label: 'Departments & locations', icon: <ApartmentOutlined />, permission: 'setup.manage' },
       { href: '/admin/equipment-types', label: 'Equipment types', icon: <MedicineBoxOutlined />, permission: 'setup.manage' },
+      { href: '/admin/trades', label: 'Trades', icon: <BuildOutlined />, permission: 'setup.manage', facility: true },
       { href: '/admin/pms-templates', label: 'PMS checklists', icon: <ScheduleOutlined />, permission: 'setup.manage' },
       { href: '/admin/audit', label: 'Audit log', icon: <HistoryOutlined />, permission: 'audit.view' },
       { href: '/admin/settings', label: 'Hospital settings', icon: <SettingOutlined />, permission: 'setup.manage' },
@@ -145,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can));
+  const allowed = (i: Item) => (!i.permission || can(i.permission)) && (!i.anyOf || i.anyOf.some(can)) && (!i.facility || !!user?.registers.includes('facility'));
   const toItem = (i: Item) => ({
     key: i.href,
     icon: i.icon,

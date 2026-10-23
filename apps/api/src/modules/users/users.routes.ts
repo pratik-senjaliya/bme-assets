@@ -24,6 +24,7 @@ import { facilityOn, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { notify } from '../approvals/approvals.service';
+import { subjectOf } from '../complaints/complaints.service';
 import { readUpload, upload } from '../import/import.routes';
 
 export const usersRouter = Router();
@@ -58,12 +59,12 @@ function guardSuperAdmin(actorRole: RoleName, ...touched: Array<RoleName | undef
 // Someone leaving (deactivated): the complaints they were to fix go back to the board, unassigned, and whoever assigns
 // complaints is told about each (gap review #9). Inside the deactivating transaction.
 async function handBack(tx: Prisma.TransactionClient, req: Parameters<typeof currentUser>[0], user: { id: string; name: string }) {
-  const open = await tx.complaint.findMany({ where: { assignedToId: user.id, status: { in: UNRESOLVED_STATUSES } }, include: { asset: true } });
+  const open = await tx.complaint.findMany({ where: { assignedToId: user.id, status: { in: UNRESOLVED_STATUSES } }, include: { asset: true, trade: true, location: true } });
   if (!open.length) return;
   await tx.complaint.updateMany({ where: { id: { in: open.map((c) => c.id) } }, data: { assignedToId: null, assignedAt: null, assignedBy: null } });
   await auditMany(tx, req, open.map((c) => ({ action: 'complaint.assign', entityType: 'complaint', entityId: c.id, before: { assignedToId: user.id }, after: { assignedToId: null, reason: 'user deactivated' } })));
   const hods = (await usersWithPermissions('complaint.assign', 'notification.view')).filter((id) => id !== user.id);
-  for (const c of open) await notify(tx, hods, `${user.name} has left: complaint ${c.complaintNo} (${c.asset.assetCode} ${c.asset.name}) needs someone`, c.assetId, 'complaint', c.id);
+  for (const c of open) await notify(tx, hods, `${user.name} has left: complaint ${c.complaintNo} (${subjectOf(c)}) needs someone`, c.assetId, 'complaint', c.id);
 }
 
 // Maintenance staff work on facility equipment, so the role is only given while the add-on is on (decision K).

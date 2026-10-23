@@ -23,6 +23,7 @@ import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
+import { complaintInclude, complaintScope, subjectOf } from '../complaints/complaints.service';
 import { assetIdOfOwner, storeAttachment, upload } from '../assets/attachments.service';
 import { NOT_DELETABLE_COMPLAINT, applyApproval, approvers, notify, removeFiles, toApprovalRows } from './approvals.service';
 
@@ -88,14 +89,17 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
   const me = currentUser(req);
   const input = req.body as DeleteRequestInput;
 
-  // The target must exist and sit in an asset this person may see.
-  const assetId = await assetIdOfOwner(input.targetType, input.targetId);
-  if (!assetId) throw new HttpError(404, 'Entry not found');
-  const asset = await findScopedAsset(req, assetId);
-  if (input.targetType === 'complaint' && (await prisma.complaint.findUniqueOrThrow({ where: { id: input.targetId } })).status !== 'open') {
-    throw new HttpError(409, NOT_DELETABLE_COMPLAINT);
-  }
-  if (input.targetType === 'asset' && isGone(asset.status)) {
+  // The target must exist and sit in an asset this person may see (a complaint: in their complaint scope, since a
+  // ward fault has no machine).
+  const complaint = input.targetType === 'complaint'
+    ? await prisma.complaint.findFirst({ where: { id: input.targetId, AND: [complaintScope(me)] }, include: complaintInclude })
+    : null;
+  if (input.targetType === 'complaint' && !complaint) throw new HttpError(404, 'Entry not found');
+  const assetId = complaint ? complaint.assetId : await assetIdOfOwner(input.targetType, input.targetId);
+  if (!assetId && !complaint) throw new HttpError(404, 'Entry not found');
+  const asset = assetId ? await findScopedAsset(req, assetId) : null;
+  if (complaint && complaint.status !== 'open') throw new HttpError(409, NOT_DELETABLE_COMPLAINT);
+  if (input.targetType === 'asset' && asset && isGone(asset.status)) {
     throw new HttpError(409, `${goneMessage(asset.status)}. Its record is kept, so it cannot be deleted.`);
   }
   await assertNoPending('delete', input.targetType, input.targetId);
@@ -105,7 +109,7 @@ approvalsRouter.post('/approvals/delete', requirePermission(REQUEST), validate(d
       data: { type: 'delete', targetType: input.targetType, targetId: input.targetId, payload: { reason: input.reason }, requestedBy: me.id, createdBy: me.id },
     });
     await audit(tx, req, { action: 'approval.request', entityType: 'approval_request', entityId: row.id, after: row });
-    await notify(tx, await approvers(), `${me.name} asks to delete an entry on ${asset.assetCode} ${asset.name}`, asset.id);
+    await notify(tx, await approvers(), `${me.name} asks to delete ${complaint ? `complaint ${complaint.complaintNo}: ${subjectOf(complaint)}` : `an entry on ${asset!.assetCode} ${asset!.name}`}`, asset?.id ?? null);
     return row;
   });
   res.status(201).json((await toApprovalRows([request]))[0] satisfies ApprovalRow);

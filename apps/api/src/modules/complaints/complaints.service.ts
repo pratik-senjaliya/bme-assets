@@ -3,13 +3,22 @@ import { isCritical, UNRESOLVED_STATUSES, type ComplaintDetail, type ComplaintEv
 import { auditSystem } from '../../lib/audit';
 import { addDaysISO, todayISO, zonedDayStart } from '../../lib/dates';
 import { sendMail, smtpConfigured } from '../../lib/mail';
+import { scopeOf, type currentUser } from '../../lib/auth';
 import { registerTeam, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { toAttachmentRow } from '../assets/attachments.service';
 
 type Db = Prisma.TransactionClient;
 
-export const complaintInclude = { asset: true, department: true, raisedBy: true, assignedTo: { select: { name: true } } } satisfies Prisma.ComplaintInclude;
+// Nursing only sees its own department's complaints, and each team its own register's; a foreign id looks like a
+// missing one. Business rule 4 for complaints: nursing sees its own department's, and also the ones they raised
+// themselves (a nurse who moved department can still follow and close those; gap review #13).
+export function complaintScope(me: ReturnType<typeof currentUser>, register?: Register): Prisma.ComplaintWhereInput {
+  const { departmentId, ...scope } = scopeOf(me, register);
+  return departmentId ? { ...scope, OR: [{ departmentId }, { raisedById: me.id }] } : scope;
+}
+
+export const complaintInclude = { asset: { include: { location: true } }, trade: true, location: true, department: true, raisedBy: true, assignedTo: { select: { name: true } } } satisfies Prisma.ComplaintInclude;
 export type ComplaintWithRefs = Prisma.ComplaintGetPayload<{ include: typeof complaintInclude }>;
 
 export const secondsBetween = (from: Date, to: Date | null) => (to ? Math.max(0, Math.round((to.getTime() - from.getTime()) / 1000)) : null);
@@ -22,6 +31,12 @@ export const complaintMetrics = (c: { raisedAt: Date; startedAt: Date | null; re
 });
 
 export const complaintNo = (seq: number) => `CMP-${String(seq).padStart(4, '0')}`;
+
+// What a complaint is about, for notices and lists: the machine ("SHL-ICU-VENT-001 Ventilator"), or the trade and
+// where ("Plumbing · Toilet 2") for a ward fault without one. `short` leaves out the asset ID.
+type Subject = { asset: { assetCode: string; name: string } | null; trade: { name: string } | null; location: { name: string } | null };
+export const subjectOf = (c: Subject, short = false) =>
+  c.asset ? (short ? c.asset.name : `${c.asset.assetCode} ${c.asset.name}`) : `${c.trade?.name ?? 'Complaint'} · ${c.location?.name ?? ''}`;
 
 // started_by / resolved_by / assigned_by / closed_by are plain ids, so look the names up in one query for the whole page.
 export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<ComplaintRow[]> {
@@ -41,13 +56,19 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
     const metrics = complaintMetrics(c);
     // Still-open complaints count their running downtime, so a breakdown is flagged while it is happening.
     const downSeconds = metrics.downtimeSeconds ?? Math.round((now - c.raisedAt.getTime()) / 1000);
+    const waitSeconds = metrics.responseSeconds ?? Math.round((now - c.raisedAt.getTime()) / 1000);
+    const target = c.trade?.responseHours ?? null;
     return {
       id: c.id,
       complaintNo: c.complaintNo,
       assetId: c.assetId,
-      assetCode: c.asset.assetCode,
-      assetName: c.asset.name,
-      criticality: c.asset.criticality as Criticality,
+      assetCode: c.asset?.assetCode ?? null,
+      assetName: c.asset?.name ?? null,
+      criticality: (c.asset?.criticality as Criticality | undefined) ?? null,
+      tradeId: c.tradeId,
+      tradeName: c.trade?.name ?? null,
+      locationName: (c.asset?.location ?? c.location)?.name ?? null,
+      subject: subjectOf(c),
       departmentId: c.departmentId,
       departmentName: c.department.name,
       register: c.register,
@@ -72,7 +93,12 @@ export async function toComplaintRows(rows: ComplaintWithRefs[]): Promise<Compla
       assignedToName: c.assignedTo?.name ?? null,
       assignedAt: c.assignedAt?.toISOString() ?? null,
       ...metrics,
-      overDowntimeLimit: isCritical(c.asset.criticality) && downSeconds > criticalDowntimeHours * 3600,
+      downtimeSeconds: c.asset ? metrics.downtimeSeconds : null,
+      resolutionSeconds: metrics.downtimeSeconds,
+      overDowntimeLimit: !!c.asset && isCritical(c.asset.criticality) && downSeconds > criticalDowntimeHours * 3600,
+      responseTargetHours: target,
+      // Work started later than the trade's target, or has still not started and the target has passed.
+      overResponseTarget: target != null && waitSeconds > target * 3600,
       attachmentCount: files.find((f) => f.ownerId === c.id)?._count ?? 0,
     };
   });
@@ -112,7 +138,7 @@ export async function toComplaintDetail(c: ComplaintWithRefs, canSeeCosts: boole
     })),
     ...files.map((f): ComplaintEvent => ({ at: f.createdAt.toISOString(), kind: 'document', title: `Document added: ${f.fileName || f.kind}` })),
     ...expenses.map((e): ComplaintEvent => ({ at: e.createdAt.toISOString(), kind: 'expense', title: `Expense booked: ${e.description}`, detail: `₹ ${new Intl.NumberFormat('en-IN').format(Number(e.amount))}` })),
-    ...(row.resolvedAt ? [{ at: row.resolvedAt, kind: 'resolved', title: 'Resolved', detail: `${row.resolutionNotes ?? ''}${row.resolutionNotes ? ' · ' : ''}Downtime ${durationText(row.downtimeSeconds)}`, by: row.resolvedByName } satisfies ComplaintEvent] : []),
+    ...(row.resolvedAt ? [{ at: row.resolvedAt, kind: 'resolved', title: 'Resolved', detail: `${row.resolutionNotes ?? ''}${row.resolutionNotes ? ' · ' : ''}${c.asset ? 'Downtime' : 'Resolution time'} ${durationText(row.resolutionSeconds)}`, by: row.resolvedByName } satisfies ComplaintEvent] : []),
   ];
   events.sort((a, b) => a.at.localeCompare(b.at));
   return {
@@ -213,13 +239,13 @@ export function machineDownMs(complaints: { raisedAt: Date; resolvedAt: Date | n
 // Gap review #4: an urgent complaint (the machine cannot be used, or patient care is affected) is emailed at once to
 // everyone of its team who works on complaints, when the hospital has email; the bell alone waits until someone opens the app.
 // Sent after the complaint is saved: a mail failure is logged and never stops the complaint.
-export async function emailUrgent(c: { complaintNo: string; description: string }, asset: { register: Register; assetCode: string; name: string; department: { name: string }; location: { name: string } }, raisedBy: string) {
+export async function emailUrgent(c: { complaintNo: string; description: string; register: Register }, about: { what: string; where: string }, raisedBy: string) {
   try {
     const settings = await prisma.hospitalSettings.findFirstOrThrow();
     if (!smtpConfigured(settings)) return;
-    const people = await prisma.user.findMany({ where: { id: { in: await registerTeam(asset.register, 'complaint.start') } }, select: { email: true } });
-    const subject = `URGENT complaint ${c.complaintNo}: ${asset.assetCode} ${asset.name} cannot be used`;
-    const text = `${raisedBy} reports that ${asset.name} (${asset.assetCode}) in ${asset.department.name}, ${asset.location.name} cannot be used or patient care is affected.\n\nProblem: ${c.description}\n\nSign in to the BME Asset Management system to take it.`;
+    const people = await prisma.user.findMany({ where: { id: { in: await registerTeam(c.register, 'complaint.start') } }, select: { email: true } });
+    const subject = `URGENT complaint ${c.complaintNo}: ${about.what}`;
+    const text = `${raisedBy} reports ${about.what} in ${about.where}: patient care is affected.\n\nProblem: ${c.description}\n\nSign in to the BME Asset Management system to take it.`;
     await Promise.all(people.map((p) => sendMail(settings, p.email, subject, text)));
   } catch (e) {
     console.error(`Could not email urgent complaint ${c.complaintNo}:`, e instanceof Error ? e.message : e);

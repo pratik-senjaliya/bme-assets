@@ -50,14 +50,15 @@ const fyStart = (month: string) => {
 };
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
-// Breakdowns raised in a period, with their response time and downtime.
+// Breakdowns raised in a period, with their response time and downtime: complaints about a machine (ward faults
+// without one have no downtime).
 async function breakdownsIn(c: Ctx) {
   const rows = await prisma.complaint.findMany({
-    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, ...c.scope },
+    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, assetId: { not: null }, ...c.scope },
     include: { asset: { include: { department: true } } },
     orderBy: { raisedAt: 'asc' },
   });
-  return rows.map((x) => ({ x, m: complaintMetrics(x) }));
+  return rows.map((x) => ({ x: { ...x, assetId: x.assetId!, asset: x.asset! }, m: complaintMetrics(x) }));
 }
 const avgHours = (secs: (number | null)[]) => {
   const v = avg(secs.filter((s): s is number => s != null));
@@ -133,7 +134,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
 
   // ---- Charts ----
   const firstOfYear = monthStart(isoDate(addMonths(parseDate(from), -11)).slice(0, 7));
-  const year = await prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(firstOfYear), lt: c.toAt }, ...c.scope }, select: { raisedAt: true } });
+  const year = await prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(firstOfYear), lt: c.toAt }, assetId: { not: null }, ...c.scope }, select: { raisedAt: true } });
   out.charts.push(oneSeries('breakdowns-12', 'Breakdowns per month', 'column', 'Breakdowns', monthKeys(firstOfYear, to).map((m) => [monthLabel(m), year.filter((x) => monthInTz(x.raisedAt) === m).length] as [string, number]), 'int', 'Last 12 months'));
   const depts = new Map<string, typeof uptime.rows>();
   for (const r of uptime.rows) depts.set(r.a.department.name, [...(depts.get(r.a.department.name) ?? []), r]);

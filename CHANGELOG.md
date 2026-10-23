@@ -6,6 +6,21 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.2.0 (November 2026)
+
+- **Ward complaints without a machine (facility add-on):** "Raise complaint" now offers "Something else in the ward":
+  what kind of problem (Electrical, Plumbing and water, AC and ventilation, Civil, Carpentry and furniture, Lift, Fire
+  safety, Medical gas, Other) and where. It goes to the team that owns the trade and follows the usual steps (start,
+  hold, resolve, close by the ward). It has a resolution time instead of downtime and is not counted as a breakdown or
+  in uptime. Trades are set up in Admin > Trades, each with its team and an optional response target in hours; a
+  complaint where work starts later than that is flagged. Costs are booked only on complaints about a machine.
+- **Medical gases:** Hospital settings > "Medical gases are looked after by" Biomedical or Maintenance. Equipment types
+  can be marked as medical gas equipment; changing the setting moves those types, their equipment, the Medical gas
+  trade and their unresolved complaints (unassigned) to the other team in one step, and tells both teams and the HOD.
+  New starter types: Oxygen Plant and Medical Gas Manifold.
+- **Maintenance contact for the wards**, shown next to the biomedical one.
+- **New report:** Ward complaints by trade (by trade, by location, response and resolution times, over target).
+
 ## 1.1.0 (October 2026)
 
 - **Facility maintenance add-on (first part):** the maintenance team's equipment (DG sets, chillers, AHUs, UPS, lifts,

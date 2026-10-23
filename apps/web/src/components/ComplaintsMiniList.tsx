@@ -16,10 +16,14 @@ export function ComplaintsMiniList({ rows }: { rows: ComplaintRow[] }) {
         <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: `1px solid ${COLORS.lineSoft}` }}>
           <div style={{ minWidth: 0 }}>
             <span className="code">{c.complaintNo}</span>{' · '}
-            <Link href={`/assets/${c.assetId}`} className="code">
-              {c.assetCode}
-            </Link>
-            {isCritical(c.criticality) && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COLORS.ink }}>{CRITICALITY_LABEL[c.criticality]}</span>}
+            {c.assetId ? (
+              <Link href={`/assets/${c.assetId}`} className="code">
+                {c.assetCode}
+              </Link>
+            ) : (
+              <span style={{ color: COLORS.ink, fontWeight: 600 }}>{c.subject}</span>
+            )}
+            {c.criticality && isCritical(c.criticality) && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: COLORS.ink }}>{CRITICALITY_LABEL[c.criticality]}</span>}
             <Typography.Paragraph ellipsis={{ rows: 1, tooltip: c.description }} style={{ margin: '3px 0 0', color: COLORS.text, fontSize: 13 }}>
               {c.description}
             </Typography.Paragraph>
