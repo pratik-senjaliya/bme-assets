@@ -6,6 +6,16 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.3.0 (November 2026)
+
+- **Statutory licences and inspections (facility add-on):** Equipment > Licences keeps lift licences, fire NOC, DG
+  pollution certificates, electrical inspector's approvals, PESO licences, pressure vessel inspections, water test
+  reports and AERB licences: who issued them, the number, valid from and to, the document, and what they cover (one
+  item, or the whole site). Each team keeps its own (a licence follows the team of what it covers). Reminders come at
+  the same lead days as PMS, then once when a licence has expired. Renewing records the new licence and keeps the old
+  one as history. "Licences" on My work lists those expired or ending. New report: Compliance register; the audit pack
+  adds it and a Licences folder with the documents. New permission "Keep statutory licences".
+
 ## 1.2.0 (November 2026)
 
 - **Ward complaints without a machine (facility add-on):** "Raise complaint" now offers "Something else in the ward":

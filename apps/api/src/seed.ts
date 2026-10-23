@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import type { Criticality, RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
 import { ensureRolesAndPermissions, ensureStarterTrades, ensureStarterTypes } from './lib/baseData';
-import { addMonths } from './lib/dates';
+import { addDaysISO, addMonths, parseDate, todayISO } from './lib/dates';
 import { prisma } from './lib/prisma';
 
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Demo@1234';
@@ -145,6 +145,20 @@ async function main() {
     await prisma.hospitalSettings.update({ where: { id: settings.id }, data: { facilityEnabled: true } });
   }
   await ensureStarterTrades(); // what ward faults without a machine are about (once)
+
+  // A few statutory licences (F3), once: one ending soon, one expired, one site-wide and valid.
+  if ((await prisma.licence.count()) === 0) {
+    const day = (n: number) => parseDate(addDaysISO(todayISO(), n));
+    const lift = await prisma.asset.findFirst({ where: { equipmentType: { code: 'LIFT' } } });
+    const dg = await prisma.asset.findFirst({ where: { equipmentType: { code: 'DG' } } });
+    await prisma.licence.createMany({
+      data: [
+        ...(lift ? [{ kind: 'lift', name: `Lift licence, ${lift.name}`, authority: 'Lift Inspector, Ahmedabad', number: 'LIC/LIFT/2025/118', validFrom: day(-345), validTo: day(20), assetId: lift.id, register: lift.register }] : []),
+        ...(dg ? [{ kind: 'dg_pollution', name: `Consent to operate, ${dg.name}`, authority: 'Gujarat Pollution Control Board', number: 'GPCB/DG/4471', validFrom: day(-370), validTo: day(-5), assetId: dg.id, register: dg.register }] : []),
+        { kind: 'fire_noc', name: 'Fire NOC, main building', authority: 'Chief Fire Officer', number: 'FIRE/NOC/2026/0921', validFrom: day(-60), validTo: day(305), register: 'facility' as const },
+      ],
+    });
+  }
 
   // Give equipment that has no due dates yet its first ones, counted from installation.
   const needDates = await prisma.asset.findMany({

@@ -28,6 +28,7 @@ const CONTENTS: { key: keyof AuditPackSummary; label: string }[] = [
   { key: 'complaints', label: 'Breakdowns' },
   { key: 'condemnations', label: 'Equipment condemned' },
   { key: 'documents', label: 'Condemnation letters' },
+  { key: 'licences', label: 'Licence documents' }, // facility add-on: shown only when there are any
 ];
 
 // Everything an NABH or internal auditor asks for, for one period, in one ZIP: the inventory, the PMS and
@@ -102,7 +103,7 @@ function AuditPackPage() {
             <KpiSkeleton count={4} />
           ) : (
             <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: '12px 24px', margin: '0 0 20px' }}>
-              {CONTENTS.map((c) => (
+              {CONTENTS.filter((c) => c.key !== 'licences' || summary.data?.licences).map((c) => (
                 <div key={c.key}>
                   <dt style={{ color: COLORS.muted, fontSize: 13 }}>{c.label}</dt>
                   <dd style={{ margin: 0, fontSize: 20, fontWeight: 700, color: COLORS.ink }}>{summary.data![c.key].toLocaleString('en-IN')}</dd>

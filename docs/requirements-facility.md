@@ -106,7 +106,7 @@ run hours. The audit pack adds a facility section (licences, logbooks, facility 
    trade, trades in Setup (name, team, response target), routing, resolution time, complaints-by-trade report. Medical
    gases setting. Not in F2: costs on a complaint without a machine (service expenses need a machine), a trade filter on
    the complaints board (search finds trade and place).
-3. **F3. Statutory licences.** Register, reminders, compliance report, audit pack.
+3. **F3. Statutory licences.** Done (branch `facility-f3`). Register, reminders, compliance report, audit pack.
 4. **F4. Logs and readings.** Reading types per item, server-dated entries, out-of-range flags, missed readings, run-hour
    PMS, consumption charts.
 5. **F5. Facility reports.** Dashboard, monthly report and the audit-pack section, by register.
