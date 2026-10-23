@@ -38,6 +38,7 @@ import { getStorage } from '../../lib/storage';
 import { approvers, notify } from '../approvals/approvals.service';
 import { moveOpenComplaints } from '../complaints/complaints.service';
 import { clearReminders } from '../reminders/reminders.service';
+import { complaintScope } from '../complaints/complaints.service';
 import { assetIdOfOwner, storeAttachment, toAttachmentRow, upload } from './attachments.service';
 import { idOf, validate } from '../../lib/validate';
 import {
@@ -438,8 +439,14 @@ const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   pms_record: [], // the OEM's report is saved with the PMS record, which is read-only afterwards
 };
 
-// The owner's asset, loaded with the person's scope: a foreign record looks like a missing one.
+// The owner's asset, loaded with the person's scope: a foreign record looks like a missing one. A complaint is
+// checked with the complaint scope (it may have no machine: a ward fault), and gives its machine if it has one.
 async function scopedOwnerAsset(req: Request, ownerType: AttachmentOwnerType, ownerId: string) {
+  if (ownerType === 'complaint') {
+    const c = await prisma.complaint.findFirst({ where: { id: ownerId, AND: [complaintScope(currentUser(req))] }, include: { asset: true } });
+    if (!c) throw new HttpError(404, 'Not found');
+    return c.asset;
+  }
   const assetId = await assetIdOfOwner(ownerType, ownerId);
   const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'Not found');
@@ -482,14 +489,14 @@ attachmentsRouter.post('/', upload.single('file'), async (req, res) => {
   const me = currentUser(req);
   if (!WRITE_PERMISSIONS[ownerType].some((p) => me.permissions.includes(p))) throw new HttpError(403, 'You do not have permission to add documents here');
   const asset = await scopedOwnerAsset(req, ownerType, ownerId);
-  if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so documents can no longer be added`);
+  if (asset && isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so documents can no longer be added`);
   if (ownerType === 'complaint') {
     const c = await prisma.complaint.findUniqueOrThrow({ where: { id: ownerId } });
     // The OEM's service report or the invoice often arrives days after the fix: the biomedical team can still add it.
     // The ward's photos stop at resolve (gap review #11). Nothing is removed from a resolved complaint.
     if (c.resolvedAt && !me.permissions.includes('complaint.resolve')) throw new HttpError(409, 'This complaint is resolved, so documents can no longer be added');
   }
-  res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset.id, ownerType, ownerId, kind })));
+  res.status(201).json(toAttachmentRow(await storeAttachment(req, { assetId: asset?.id ?? null, ownerType, ownerId, kind })));
 });
 
 attachmentsRouter.get('/:id/download', requirePermission('asset.view'), async (req, res) => {
@@ -498,9 +505,9 @@ attachmentsRouter.get('/:id/download', requirePermission('asset.view'), async (r
   const need = READ_PERMISSION[file.ownerType as AttachmentOwnerType];
   if (need && !currentUser(req).permissions.includes(need)) throw new HttpError(404, 'File not found');
   // Files belong to an asset directly, or through one of its records (a certificate, a complaint photo, ...).
-  const assetId = await assetIdOfOwner(file.ownerType, file.ownerId);
-  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;
-  if (!asset) throw new HttpError(404, 'File not found');
+  await scopedOwnerAsset(req, file.ownerType as AttachmentOwnerType, file.ownerId).catch(() => {
+    throw new HttpError(404, 'File not found');
+  });
 
   const data = await getStorage().get(file.filePath);
   res.set({

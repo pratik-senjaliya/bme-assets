@@ -48,7 +48,7 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     can('calibration.manage') ? dueAssets('nextCalibrationDue', 'calibration') : [],
     can('approval.decide') ? prisma.approvalRequest.count({ where: { status: 'pending' } }) : null,
     can('complaint.view')
-      ? prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${firstMonth}-01`) }, ...scope }, select: { raisedAt: true, resolvedAt: true } })
+      ? prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${firstMonth}-01`) }, assetId: { not: null }, ...scope }, select: { raisedAt: true, resolvedAt: true } })
       : [],
     can('complaint.view')
       ? prisma.complaint.findMany({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude, orderBy: { raisedAt: 'asc' }, take: 8 })
@@ -69,14 +69,15 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   const [liveAssets, history, expenses, contracts] = await Promise.all([
     prisma.asset.findMany({ where: { status: 'active', ...scope }, select: { id: true, assetCode: true, name: true, criticality: true, installationDate: true, createdAt: true, warrantyEnd: true, nextPmsDue: true, nextCalibrationDue: true, department: { select: { name: true } } } }),
     can('complaint.view')
-      ? prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${first12}-01`) }, ...scope }, select: { raisedAt: true, startedAt: true, resolvedAt: true, assetId: true, asset: { select: { assetCode: true, name: true, status: true } } } })
+      ? // Breakdowns: complaints about a machine (a ward fault without one has no downtime).
+      prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${first12}-01`) }, assetId: { not: null }, ...scope }, select: { raisedAt: true, startedAt: true, resolvedAt: true, assetId: true, asset: { select: { assetCode: true, name: true, status: true } } } })
       : [],
     showCosts ? prisma.serviceExpense.findMany({ where: { date: { gte: parseDate(`${first12}-01`) }, asset: { ...scope } }, select: { date: true, type: true, amount: true } }) : [],
     showCover ? prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(today), lte: parseDate(isoDate(new Date(parseDate(today).getTime() + 60 * DAY))) }, asset: { status: 'active', ...scope } }, select: { type: true, vendor: true, endDate: true, asset: { select: { id: true, assetCode: true, name: true } } } }) : [],
   ]);
 
   const historyByAsset = new Map<string, { raisedAt: Date; resolvedAt: Date | null }[]>();
-  for (const c of history) historyByAsset.get(c.assetId)?.push(c) ?? historyByAsset.set(c.assetId, [c]);
+  for (const c of history) historyByAsset.get(c.assetId!)?.push(c) ?? historyByAsset.set(c.assetId!, [c]);
   // Uptime over the last 30 days: hours the equipment was working out of the hours it was there (24 a day).
   const uptime = (pool: typeof liveAssets) => {
     const ids = new Set(pool.map((a) => a.id));
@@ -156,8 +157,8 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
 
   const byAsset = new Map<string, DashboardTopAsset>();
   for (const c of history) {
-    const t = byAsset.get(c.assetId) ?? { assetId: c.assetId, assetCode: c.asset.assetCode, assetName: c.asset.name, breakdowns: 0, downtimeHours: 0 };
-    byAsset.set(c.assetId, { ...t, breakdowns: t.breakdowns + 1, downtimeHours: round1(t.downtimeHours + (c.resolvedAt ? (c.resolvedAt.getTime() - c.raisedAt.getTime()) / 3_600_000 : 0)) });
+    const t = byAsset.get(c.assetId!) ?? { assetId: c.assetId!, assetCode: c.asset!.assetCode, assetName: c.asset!.name, breakdowns: 0, downtimeHours: 0 };
+    byAsset.set(c.assetId!, { ...t, breakdowns: t.breakdowns + 1, downtimeHours: round1(t.downtimeHours + (c.resolvedAt ? (c.resolvedAt.getTime() - c.raisedAt.getTime()) / 3_600_000 : 0)) });
   }
   const topBreakdowns = can('complaint.view') ? [...byAsset.values()].sort((a, b) => b.breakdowns - a.breakdowns || b.downtimeHours - a.downtimeHours).slice(0, 5) : null;
 

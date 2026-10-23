@@ -3,7 +3,7 @@
 import { LockOutlined } from '@ant-design/icons';
 import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { useEffect, useState } from 'react';
-import { updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
+import { REGISTERS, TEAM_LABEL, updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, clearFetchCache, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -43,6 +43,8 @@ function SettingsPageScreen() {
       transfersEnabled: values.transfersEnabled,
       ...(vendor && { facilityEnabled: values.facilityEnabled }),
       biomedContact: values.biomedContact ?? null,
+      // Only while the add-on is on (the fields are hidden otherwise).
+      ...(settings.data?.facilityEnabled && { medicalGasRegister: values.medicalGasRegister, facilityContact: values.facilityContact ?? null }),
       idleLogoutMinutes: values.idleLogoutMinutes ?? 0,
       labelBaseUrl: values.labelBaseUrl ?? null,
       smtpHost: values.smtpHost ?? null,
@@ -59,7 +61,8 @@ function SettingsPageScreen() {
       await api('/settings', { method: 'PUT', body: input });
       message.success('Settings saved');
       // The add-on changes what everyone sees: start from a clean slate (menus, lists, who I am).
-      if (vendor && input.facilityEnabled !== settings.data?.facilityEnabled) {
+      // So do medical gases changing team (their equipment and complaints move).
+      if ((vendor && input.facilityEnabled !== settings.data?.facilityEnabled) || (input.medicalGasRegister && input.medicalGasRegister !== settings.data?.medicalGasRegister)) {
         clearFetchCache();
         await refresh();
       }
@@ -183,6 +186,20 @@ function SettingsPageScreen() {
             >
               <Switch aria-label="Facility maintenance add-on" disabled={!vendor} />
             </Form.Item>
+            {settings.data.facilityEnabled && (
+              <>
+                <Form.Item
+                  label="Medical gases are looked after by"
+                  name="medicalGasRegister"
+                  extra="Oxygen plant, manifolds, compressors, vacuum and outlets: equipment types marked as medical gas, and the Medical gas trade. Changing it moves that equipment and its unresolved complaints to the other team (unassigned); both teams are told."
+                >
+                  <Select style={{ maxWidth: 320 }} options={REGISTERS.map((r) => ({ value: r, label: TEAM_LABEL[r] }))} />
+                </Form.Item>
+                <Form.Item label="Maintenance contact for the wards" name="facilityContact" extra="Shown to nursing next to the biomedical contact, for lights, water, AC or lift emergencies.">
+                  <Input maxLength={200} placeholder="e.g. Maintenance on call: 98250 11111, ext. 300" />
+                </Form.Item>
+              </>
+            )}
             <Form.Item
               label="Biomedical contact for the wards"
               name="biomedContact"

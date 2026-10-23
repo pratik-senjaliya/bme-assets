@@ -223,13 +223,15 @@ async function calibration(wb: Collector, c: Ctx) {
   ], due.map((a) => ({ due: a.nextCalibrationDue, days: daysFromToday(a.nextCalibrationDue!), code: a.assetCode, name: a.name, type: a.equipmentType.name, dept: a.department.name, crit: a.criticality })));
 }
 
+// Breakdowns are complaints about a machine; ward faults without one are in the trades report.
 async function breakdowns(wb: Collector, c: Ctx) {
-  const complaints = await prisma.complaint.findMany({
-    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, ...c.scope, ...(c.q.departmentId && { departmentId: c.q.departmentId }), ...(c.q.complaintStatus && { status: c.q.complaintStatus }),
+  const found = await prisma.complaint.findMany({
+    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, assetId: { not: null }, ...c.scope, ...(c.q.departmentId && { departmentId: c.q.departmentId }), ...(c.q.complaintStatus && { status: c.q.complaintStatus }),
       ...(c.q.search && { OR: [{ complaintNo: { contains: c.q.search, mode: 'insensitive' as const } }, { description: { contains: c.q.search, mode: 'insensitive' as const } }, { asset: { assetCode: { contains: c.q.search, mode: 'insensitive' as const } } }, { asset: { name: { contains: c.q.search, mode: 'insensitive' as const } } }] }) },
     include: { asset: true, department: true, raisedBy: true },
     orderBy: { raisedAt: 'asc' },
   });
+  const complaints = found.map((x) => ({ ...x, asset: x.asset! }));
   const users = await prisma.user.findMany({ where: { id: { in: [...new Set(complaints.flatMap((x) => [x.startedBy, x.resolvedBy]).filter((x): x is string => !!x))] } }, select: { id: true, name: true } });
   const name = (id: string | null) => (id ? (users.find((u) => u.id === id)?.name ?? '') : '');
   const rows = complaints.map((x) => ({ x, m: complaintMetrics(x) }));
@@ -272,6 +274,58 @@ async function breakdowns(wb: Collector, c: Ctx) {
     const resp = g.map((r) => r.m.responseSeconds).filter((v): v is number => v != null);
     return { period: periodName(period, group, true), count: g.length, resolved: down.length, resp: avg(resp) == null ? null : avg(resp)! / 3600, down: down.reduce((a, b) => a + b, 0) / 3600, avgDown: avg(down) == null ? null : avg(down)! / 3600 };
   }), ['count', 'resolved', 'down']);
+}
+
+// Ward complaints without a machine (facility add-on, F2): by trade and by location, with response and resolution
+// times and the ones over their trade's response target. Department scope applies as for every complaint.
+async function trades(wb: Collector, c: Ctx) {
+  const found = await prisma.complaint.findMany({
+    where: { raisedAt: { gte: c.fromAt, lt: c.toAt }, tradeId: { not: null }, ...c.scope },
+    include: { trade: true, location: true, department: true, raisedBy: true },
+    orderBy: { raisedAt: 'asc' },
+  });
+  const now = Date.now();
+  const rows = found.map((x) => {
+    const m = complaintMetrics(x);
+    const target = x.trade!.responseHours;
+    const waited = m.responseSeconds ?? Math.round((now - x.raisedAt.getTime()) / 1000);
+    return { x, trade: x.trade!.name, where: `${x.department.name} · ${x.location!.name}`, m, over: target != null && waited > target * 3600 };
+  });
+  const hrs = (v: (number | null)[]) => {
+    const a = avg(v.filter((n): n is number => n != null));
+    return a == null ? null : a / 3600;
+  };
+  const over = rows.filter((r) => r.over).length;
+  const open = rows.filter((r) => !r.x.resolvedAt).length;
+  kpi(wb, 'Complaints', rows.length, 'int', span(c));
+  kpi(wb, 'Still open', open, 'int', open ? 'Waiting for a fix' : 'All resolved', open ? 'warn' : 'good');
+  kpi(wb, 'Average response', hrs(rows.map((r) => r.m.responseSeconds)), 'hours', 'Raised to started');
+  kpi(wb, 'Average resolution', hrs(rows.map((r) => r.m.downtimeSeconds)), 'hours', 'Raised to resolved');
+  kpi(wb, 'Over response target', over, 'int', over ? 'Started later than the trade’s target' : 'None', over ? 'bad' : 'good');
+  const summary = (key: (r: (typeof rows)[number]) => string) => {
+    const groups = new Map<string, typeof rows>();
+    for (const r of rows) groups.set(key(r), [...(groups.get(key(r)) ?? []), r]);
+    return [...groups].sort((a, b) => b[1].length - a[1].length).map(([name, g]) => ({
+      name, count: g.length, open: g.filter((r) => !r.x.resolvedAt).length, resp: hrs(g.map((r) => r.m.responseSeconds)), res: hrs(g.map((r) => r.m.downtimeSeconds)), over: g.filter((r) => r.over).length,
+    }));
+  };
+  const cols = (first: string) => [
+    { header: first, key: 'name', width: 30 }, { header: 'Complaints', key: 'count', fmt: 'int' as const }, { header: 'Still open', key: 'open', fmt: 'int' as const },
+    { header: 'Average response (h)', key: 'resp', fmt: 'hours' as const, width: 20 }, { header: 'Average resolution (h)', key: 'res', fmt: 'hours' as const, width: 20 }, { header: 'Over target', key: 'over', fmt: 'int' as const },
+  ];
+  const byTrade = summary((r) => r.trade);
+  wb.charts.push({ ...oneSeries('by-trade', 'Complaints by trade', 'bar', 'Complaints', byTrade.map((t) => [t.name, t.count] as [string, number]), 'int'), print: false });
+  addSheet(wb, 'By trade', cols('Trade'), byTrade, ['count', 'open', 'over']);
+  addSheet(wb, 'By location', cols('Location'), summary((r) => r.where), ['count', 'open', 'over']);
+  addSheet(wb, 'Complaints', [
+    { header: 'Complaint no.', key: 'no' }, { header: 'Raised', key: 'raised', fmt: 'datetime', width: 20 }, { header: 'Trade', key: 'trade', width: 20 }, { header: 'Department', key: 'dept', width: 22 },
+    { header: 'Location', key: 'loc', width: 18 }, { header: 'Problem', key: 'desc', width: 40 }, { header: 'Raised by', pdf: false, key: 'by', width: 20 }, { header: 'Status', key: 'status' },
+    { header: 'Response (h)', key: 'resp', fmt: 'hours' }, { header: 'Resolution (h)', key: 'res', fmt: 'hours' }, { header: 'Target (h)', key: 'target', fmt: 'int' }, { header: 'Over target', key: 'over' },
+    { header: 'Resolution notes', pdf: false, key: 'notes', width: 40 },
+  ], rows.map(({ x, trade, m, over: late }) => ({
+    no: x.complaintNo, raised: x.raisedAt, trade, dept: x.department.name, loc: x.location!.name, desc: x.description, by: x.raisedBy.name, status: COMPLAINT_STATUS_LABEL[x.status],
+    resp: hoursOf(m.responseSeconds), res: hoursOf(m.downtimeSeconds), target: x.trade!.responseHours, over: late ? 'YES' : '', notes: x.resolutionNotes,
+  })));
 }
 
 // Downtime hours of one complaint inside [from, to): from raised until resolved (or until now / the end of the period if still open).
@@ -604,6 +658,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     engineers: () => engineers(out, ctx),
     suppliers: () => suppliers(out, ctx),
     replacement: () => replacement(out, ctx),
+    trades: () => trades(out, ctx),
   };
   await builders[type]();
 
@@ -647,6 +702,8 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
             ? 'Response = work started − complaint raised; repair = resolved − work started. "Sent back" counts fixes the ward reported as still not working. PMS counts each PMS once (corrections are not another PMS).'
             : type === 'suppliers'
               ? 'A company looks after equipment it services, or that it sold when no service company is set. Downtime adds up each breakdown, so overlapping faults on one machine count twice here (the uptime report counts them once).'
+              : type === 'trades'
+                ? 'Ward complaints without a machine. Response = work started − raised; resolution = resolved − raised. Over target: work started (or has still not started) later than the trade’s response target.'
               : type === 'replacement'
                 ? `Consider replacing: ${REPLACE_AGE_YEARS}+ years old, ${REPLACE_BREAKDOWNS_12M}+ breakdowns in 12 months, or repairs costing over ${REPLACE_SPEND_SHARE * 100}% of the purchase price in 12 months. Active equipment only.`
           : 'Condemned, transferred and not-in-use assets are included and labelled in the Status column.',
@@ -788,7 +845,7 @@ async function suppliers(wb: Collector, c: Ctx) {
   const rows = vendors.flatMap((v) => {
     const supplied = assets.filter((a) => a.supplierId === v.id);
     const looked = new Set(caredFor(v.id));
-    const theirs = complaints.filter((x) => looked.has(x.assetId));
+    const theirs = complaints.filter((x) => looked.has(x.assetId!));
     const running = contracts.filter((k) => k.vendor.trim().toLowerCase() === v.name.trim().toLowerCase()).length;
     if (!supplied.length && !looked.size && !running) return [];
     const down = theirs.reduce((s, x) => s + (complaintMetrics(x).downtimeSeconds ?? 0), 0);

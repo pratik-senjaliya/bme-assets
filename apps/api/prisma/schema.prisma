@@ -126,6 +126,11 @@ model HospitalSettings {
   backupLastErrorAt DateTime?
   // The facility maintenance add-on (decision K): only the super admin turns it on. Off = nothing about it shows.
   facilityEnabled   Boolean @default(false)
+  // Who looks after medical gases (decision I): the register of gas equipment types and of the Medical gas trade.
+  // Facility only while the add-on is on.
+  medicalGasRegister Register @default(biomedical)
+  // Who the wards call for a facility fault (lights, water, AC, lifts), next to biomedContact.
+  facilityContact   String?
   // The address QR labels point at; null = the address they are printed from.
   labelBaseUrl      String?
   // Set by the daily job each time it runs, so a stopped job shows (health, Hospital settings).
@@ -165,6 +170,7 @@ model Location {
 
   department Department @relation(fields: [departmentId], references: [id])
   assets     Asset[]
+  complaints Complaint[]
 
   @@unique([departmentId, name])
   @@map("locations")
@@ -177,6 +183,8 @@ model EquipmentType {
   defaultPmsMonths         Int?
   defaultCalibrationMonths Int?
   register                 Register @default(biomedical)
+  // Oxygen plant, manifold, compressor, vacuum, outlets: its register follows hospital_settings.medicalGasRegister.
+  medicalGas               Boolean  @default(false)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
   createdBy                String?
@@ -445,7 +453,10 @@ model CalibrationRecord {
 model Complaint {
   id              String          @id @default(uuid())
   complaintNo     String          @unique
-  assetId         String
+  // A machine, or (ward faults without one, F2) a trade and a location: the database checks one of the two.
+  assetId         String?
+  tradeId         String?
+  locationId      String?
   raisedById      String
   departmentId    String
   description     String
@@ -478,7 +489,9 @@ model Complaint {
   updatedAt       DateTime        @updatedAt
   createdBy       String?
 
-  asset      Asset            @relation(fields: [assetId], references: [id])
+  asset      Asset?           @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  trade      Trade?           @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+  location   Location?        @relation(fields: [locationId], references: [id], onDelete: Restrict)
   raisedBy   User             @relation("ComplaintRaisedBy", fields: [raisedById], references: [id])
   assignedTo User?            @relation("ComplaintAssignedTo", fields: [assignedToId], references: [id])
   department Department       @relation(fields: [departmentId], references: [id])
@@ -490,7 +503,27 @@ model Complaint {
   @@index([departmentId])
   @@index([assignedToId])
   @@index([register])
+  @@index([tradeId])
   @@map("complaints")
+}
+
+// What a ward fault without a machine is about (decision J): Electrical, Plumbing and water, AC... Each goes to one
+// team; the Medical gas trade (medicalGas) follows hospital_settings.medicalGasRegister.
+model Trade {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  register      Register @default(facility)
+  medicalGas    Boolean  @default(false)
+  // Optional: work should start within this many hours of the complaint (flagged on the complaint and in reports).
+  responseHours Int?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+
+  complaints Complaint[]
+
+  @@map("trades")
 }
 
 // The steps of a complaint that carry a note and can happen more than once: started, escalated, held, resumed,

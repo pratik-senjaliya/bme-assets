@@ -28,16 +28,16 @@ export const toAttachmentRow = (a: Prisma.AttachmentGetPayload<object>): Attachm
   createdAt: a.createdAt.toISOString(),
 });
 
-// Checks the uploaded file (req.file) and puts it in private storage under the asset's folder (so removing an
-// asset's data is one prefix). Returns what the attachment row needs; whoever saves the row removes the file again
+// Checks the uploaded file (req.file) and puts it in private storage under its folder: the asset's (so removing an
+// asset's data is one prefix), or the complaint's for a ward fault without a machine. Returns what the attachment row needs; whoever saves the row removes the file again
 // (storage.remove) if that fails.
-export async function stageUpload(req: Request, assetId: string) {
+export async function stageUpload(req: Request, folder: string) {
   if (!req.file) throw new HttpError(400, 'Choose a file to upload');
   const type = sniff(req.file.buffer);
   if (!type) throw new HttpError(415, 'Only PDF, JPG and PNG files are allowed');
   // multer reads names as latin1; keep it readable and free of path characters.
   const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8').replace(/[\\/\x00-\x1f]/g, '_').slice(0, 150);
-  const key = `assets/${assetId}/${randomUUID()}.${type.ext}`;
+  const key = `${folder}/${randomUUID()}.${type.ext}`;
   await getStorage().put(key, req.file.buffer, type.mime);
   return { fileName, filePath: key, mime: type.mime, size: req.file.size };
 }
@@ -45,9 +45,9 @@ export async function stageUpload(req: Request, assetId: string) {
 // Stores the uploaded file privately and records it against an owner (an asset, a calibration record, ...).
 export async function storeAttachment(
   req: Request,
-  owner: { assetId: string; ownerType: string; ownerId: string; kind: DbAttachmentKind },
+  owner: { assetId: string | null; ownerType: string; ownerId: string; kind: DbAttachmentKind },
 ) {
-  const staged = await stageUpload(req, owner.assetId);
+  const staged = await stageUpload(req, owner.assetId ? `assets/${owner.assetId}` : `complaints/${owner.ownerId}`);
   const key = staged.filePath;
   const storage = getStorage();
   try {
@@ -77,7 +77,7 @@ export async function assetIdOfOwner(ownerType: string, ownerId: string): Promis
     case 'asset':
       return ownerId;
     case 'complaint':
-      return (await prisma.complaint.findUnique(id))?.assetId;
+      return (await prisma.complaint.findUnique(id))?.assetId ?? undefined;
     case 'service_log':
       return (await prisma.serviceLog.findUnique(id))?.assetId;
     case 'service_expense':

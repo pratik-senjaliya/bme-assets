@@ -3,15 +3,19 @@ import {
   departmentSchema,
   equipmentTypeSchema,
   locationSchema,
+  tradeSchema,
   type DepartmentInput,
   type EquipmentTypeInput,
   type HospitalInfo,
   type LocationInput,
   type Register,
+  type TradeInput,
+  type TradeRow,
 } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
+import { facilityOn } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 
@@ -26,7 +30,7 @@ const actor = (req: Request) => ({ createdBy: currentUser(req).id });
 
 // Its name and the optional parts it has turned on, for every signed-in person (the full settings are the admin's).
 setupRouter.get('/hospital', requirePermission('asset.view'), async (_req, res) => {
-  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true, facilityEnabled: true, biomedContact: true, idleLogoutMinutes: true } });
+  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true, facilityEnabled: true, biomedContact: true, facilityContact: true, idleLogoutMinutes: true } });
   res.json(s satisfies HospitalInfo);
 });
 
@@ -146,9 +150,13 @@ async function assertRegisterChoice(req: Request, register: Register | undefined
   if (await inUse()) throw new HttpError(409, 'Equipment of this type is already registered, so it stays with its team', { fieldErrors: { register: ['Locked: equipment of this type exists'] } });
 }
 
+// A medical gas type's team is the hospital's medical gas setting (decision I), whatever the form says.
+const gasRegister = async () => (await prisma.hospitalSettings.findFirstOrThrow({ select: { medicalGasRegister: true } })).medicalGasRegister;
+
 setupRouter.post('/equipment-types', requirePermission('setup.manage'), validate(equipmentTypeSchema), async (req, res) => {
   const data = req.body as EquipmentTypeInput;
-  await assertRegisterChoice(req, data.register, data.register !== undefined && data.register !== 'biomedical', async () => 0);
+  if (data.medicalGas) data.register = await gasRegister();
+  else await assertRegisterChoice(req, data.register, data.register !== undefined && data.register !== 'biomedical', async () => 0);
   const row = await audited(req, { action: 'equipment_type.create', entityType: 'equipment_type' }, (tx) =>
     tx.equipmentType.create({ data: { ...data, ...actor(req) } }),
   );
@@ -159,9 +167,17 @@ setupRouter.patch('/equipment-types/:id', requirePermission('setup.manage'), val
   const before = await prisma.equipmentType.findUniqueOrThrow({ where: { id: idOf(req) } });
   const body = req.body as Partial<EquipmentTypeInput>;
   await assertCodeFree('{TYPE}', body.code !== undefined && body.code !== before.code, () => prisma.asset.count({ where: { equipmentTypeId: before.id } }), 'equipment type');
-  await assertRegisterChoice(req, body.register, body.register !== undefined && body.register !== before.register, () => prisma.asset.count({ where: { equipmentTypeId: before.id } }));
+  const inUse = () => prisma.asset.count({ where: { equipmentTypeId: before.id } });
+  // Marking a type as medical gas (or no longer) moves it to the gas team's register or back to the form's choice:
+  // like any register change, only while no equipment of it exists.
+  const gas = body.medicalGas ?? before.medicalGas;
+  const register = gas ? await gasRegister() : (body.register ?? before.register);
+  if (register !== before.register) {
+    if (await inUse()) throw new HttpError(409, 'Equipment of this type is already registered, so it stays with its team', { fieldErrors: { [body.medicalGas !== undefined && body.medicalGas !== before.medicalGas ? 'medicalGas' : 'register']: ['Locked: equipment of this type exists'] } });
+    if (!gas) await assertRegisterChoice(req, register, true, async () => 0);
+  }
   const row = await audited(req, { action: 'equipment_type.update', entityType: 'equipment_type', before }, (tx) =>
-    tx.equipmentType.update({ where: { id: before.id }, data: req.body }),
+    tx.equipmentType.update({ where: { id: before.id }, data: { ...body, register } }),
   );
   res.json(row);
 });
@@ -170,5 +186,59 @@ setupRouter.delete('/equipment-types/:id', requirePermission('setup.manage'), as
   await audited(req, { action: 'equipment_type.delete', entityType: 'equipment_type' }, (tx) =>
     tx.equipmentType.delete({ where: { id: idOf(req) } }),
   );
+  res.status(204).end();
+});
+
+// ---------- Trades (facility add-on) ----------
+
+// What a ward fault without a machine can be about. Everyone raising complaints reads the active ones of the teams
+// they work with (only while the add-on is on); setup.manage sees and edits all.
+setupRouter.get('/trades', requirePermission('complaint.view'), async (req, res) => {
+  const me = currentUser(req);
+  const all = me.permissions.includes('setup.manage');
+  if (!(await facilityOn())) return void res.json([]);
+  const rows = await prisma.trade.findMany({
+    where: all ? {} : { active: true, register: { in: me.registers } },
+    include: { _count: { select: { complaints: true } } },
+    orderBy: [{ active: 'desc' }, { name: 'asc' }],
+  });
+  res.json(rows.map((t): TradeRow => ({ id: t.id, name: t.name, register: t.register, medicalGas: t.medicalGas, responseHours: t.responseHours, active: t.active, complaintCount: t._count.complaints })));
+});
+
+const tradeNameFree = async (name: string, exceptId?: string) => {
+  const clash = await prisma.trade.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, ...(exceptId && { id: { not: exceptId } }) } });
+  if (clash) throw new HttpError(409, `${clash.name} already exists`, { fieldErrors: { name: ['Already exists'] } });
+};
+const assertFacility = async () => {
+  if (!(await facilityOn())) throw new HttpError(400, 'Trades are part of the facility maintenance add-on, which is off');
+};
+
+setupRouter.post('/trades', requirePermission('setup.manage'), validate(tradeSchema), async (req, res) => {
+  const data = req.body as TradeInput;
+  await assertFacility();
+  await tradeNameFree(data.name);
+  const row = await audited(req, { action: 'trade.create', entityType: 'trade' }, (tx) => tx.trade.create({ data: { ...data, ...actor(req) } }));
+  res.status(201).json(row);
+});
+
+// The Medical gas trade keeps the hospital's medical gas team. A trade's team can change: its unresolved complaints
+// stay with the team they went to.
+setupRouter.patch('/trades/:id', requirePermission('setup.manage'), validate(tradeSchema.partial()), async (req, res) => {
+  const before = await prisma.trade.findUniqueOrThrow({ where: { id: idOf(req) } });
+  const body = req.body as Partial<TradeInput>;
+  await assertFacility();
+  if (body.name) await tradeNameFree(body.name, before.id);
+  const row = await audited(req, { action: 'trade.update', entityType: 'trade', before }, (tx) =>
+    tx.trade.update({ where: { id: before.id }, data: { ...body, ...(before.medicalGas && { register: before.register }) } }),
+  );
+  res.json(row);
+});
+
+// Only a trade nobody has used yet; a used one is switched off (active: false) so its complaints keep their trade.
+setupRouter.delete('/trades/:id', requirePermission('setup.manage'), async (req, res) => {
+  const t = await prisma.trade.findUniqueOrThrow({ where: { id: idOf(req) }, include: { _count: { select: { complaints: true } } } });
+  if (t.medicalGas) throw new HttpError(409, 'The Medical gas trade follows the medical gas setting, so it stays. It can be switched off.');
+  if (t._count.complaints) throw new HttpError(409, 'Complaints were raised for this trade, so it stays in their history. Switch it off instead.');
+  await audited(req, { action: 'trade.delete', entityType: 'trade' }, (tx) => tx.trade.delete({ where: { id: t.id } }));
   res.status(204).end();
 });

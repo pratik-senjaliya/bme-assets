@@ -162,11 +162,15 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
                   className: 'm-title',
                   render: (_: unknown, c: ComplaintRow) => (
                     <div style={{ lineHeight: 1.35 }}>
-                      <div style={{ color: COLORS.ink, fontWeight: 600 }}>{c.assetName}</div>
+                      <div style={{ color: COLORS.ink, fontWeight: 600 }}>{c.assetName ?? c.tradeName}</div>
                       <div style={{ color: COLORS.muted, fontSize: 12.5 }}>
-                        <Link href={`/assets/${c.assetId}`} className="code">
-                          {c.assetCode}
-                        </Link>{' '}
+                        {c.assetId ? (
+                          <Link href={`/assets/${c.assetId}`} className="code">
+                            {c.assetCode}
+                          </Link>
+                        ) : (
+                          c.locationName
+                        )}{' '}
                         · {c.departmentName}
                       </div>
                     </div>
@@ -215,12 +219,14 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
                 <StatusTag status={s} />
                 {c.urgent && <Pill tone="bad">Urgent</Pill>}
                 {c.overDowntimeLimit && <Pill tone="bad">Over downtime limit</Pill>}
+                {c.overResponseTarget && <Pill tone="warn">Over response target</Pill>}
               </div>
             ),
           },
           { title: 'Assigned to', dataIndex: 'assignedToName', className: 'm-hide', render: (v: string | null) => v ?? <span style={{ color: COLORS.muted }}>—</span> },
           { title: 'Response', dataIndex: 'responseSeconds', align: 'right', className: 'm-hide', render: formatDuration },
-          { title: 'Downtime', dataIndex: 'downtimeSeconds', align: 'right', className: 'm-hide', render: formatDuration },
+          // A ward fault without a machine has no downtime: its resolution time shows instead.
+          { title: 'Downtime', dataIndex: 'downtimeSeconds', align: 'right', className: 'm-hide', render: (v: number | null, c: ComplaintRow) => (c.assetId ? formatDuration(v) : c.resolutionSeconds == null ? '—' : `${formatDuration(c.resolutionSeconds)} to fix`) },
         ]}
       />
       <ComplaintDrawer id={openId} onClose={() => setOpenId(null)} onChanged={() => (complaints.reload(), onChanged?.())} />

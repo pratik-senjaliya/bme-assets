@@ -195,7 +195,8 @@ consumablesRouter.post('/:id/in', MANAGE, validate(stockInSchema), async (req, r
 });
 
 // Given out to a department, perhaps for one machine or one complaint. The machine must be that department's and
-// still in the hospital; the complaint must be that machine's (or names the machine when none is given).
+// still in the hospital; the complaint must be that machine's (or names the machine when none is given), or a ward
+// fault of that department and team.
 consumablesRouter.post('/:id/issue', MANAGE, validate(issueSchema), async (req, res) => {
   const item = await findItem(req);
   const input = req.body as IssueInput;
@@ -209,7 +210,12 @@ consumablesRouter.post('/:id/issue', MANAGE, validate(issueSchema), async (req, 
   if (input.complaintId) {
     const complaint = await prisma.complaint.findUnique({ where: { id: input.complaintId } });
     if (!complaint) throw new HttpError(400, 'Complaint not found', { fieldErrors: { complaintId: ['Complaint not found'] } });
-    if (assetId && assetId !== complaint.assetId) throw new HttpError(400, `${complaint.complaintNo} is about another machine`, { fieldErrors: { complaintId: [`${complaint.complaintNo} is about another machine`] } });
+    if (assetId && assetId !== complaint.assetId) throw new HttpError(400, `${complaint.complaintNo} is about ${complaint.assetId ? 'another machine' : 'no machine'}`, { fieldErrors: { complaintId: [`${complaint.complaintNo} is about ${complaint.assetId ? 'another machine' : 'no machine'}`] } });
+    // A ward fault without a machine (a tube light for an Electrical complaint): the same team and department.
+    if (!complaint.assetId) {
+      if (complaint.register !== item.register) throw new HttpError(400, `${item.name} is from the other team's store`, { fieldErrors: { complaintId: [`${complaint.complaintNo} is the other team's`] } });
+      if (complaint.departmentId !== input.departmentId) throw new HttpError(400, `${complaint.complaintNo} is another department's`, { fieldErrors: { complaintId: [`${complaint.complaintNo} is another department's`] } });
+    }
     assetId = complaint.assetId;
   }
   if (assetId) {

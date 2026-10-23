@@ -53,7 +53,7 @@ async function gather(q: AuditPackQuery, scope: Ctx['scope']) {
       orderBy: [{ performedOn: 'asc' }, { submittedAt: 'asc' }],
     }),
     prisma.calibrationRecord.findMany({ where: { doneOn: { gte: from, lte: to }, asset: { ...scope } }, include: { asset: true }, orderBy: { doneOn: 'asc' } }),
-    prisma.complaint.count({ where: { raisedAt: { gte: fromAt, lt: toAt }, ...scope } }),
+    prisma.complaint.count({ where: { raisedAt: { gte: fromAt, lt: toAt }, assetId: { not: null }, ...scope } }), // breakdowns: about a machine
     // Equipment condemned in the period: the approved request is the record of it.
     prisma.approvalRequest.findMany({ where: { type: 'condemn', status: 'approved', decidedAt: { gte: fromAt, lt: toAt } }, orderBy: { decidedAt: 'asc' } }),
   ]);

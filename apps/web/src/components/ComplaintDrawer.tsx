@@ -78,26 +78,42 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
             <Alert type="error" showIcon message="Critical equipment down beyond the hospital's limit" description={c.resolvedAt ? 'This breakdown ran longer than the limit set in Hospital settings.' : 'This breakdown is still open and has passed the limit set in Hospital settings.'} />
           )}
           <div>
-            <Link href={`/assets/${c.assetId}`} className="code">
-              {c.assetCode}
-            </Link>
-            <span style={{ color: COLORS.muted }}> · {c.assetName}</span>
-            <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 2 }}>{c.departmentName}</div>
+            {c.assetId ? (
+              <>
+                <Link href={`/assets/${c.assetId}`} className="code">
+                  {c.assetCode}
+                </Link>
+                <span style={{ color: COLORS.muted }}> · {c.assetName}</span>
+              </>
+            ) : (
+              <span style={{ color: COLORS.ink, fontWeight: 600 }}>{c.tradeName}</span>
+            )}
+            <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 2 }}>
+              {c.departmentName}
+              {c.locationName && ` · ${c.locationName}`}
+            </div>
           </div>
+          {c.overResponseTarget && (
+            <Alert type="warning" showIcon message={`Over the ${c.responseTargetHours} h response target`} description={c.startedAt ? 'Work started later than the target set for this trade.' : 'Work has not started and the target set for this trade has passed.'} />
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-            <Fact label="Criticality">
-              <CriticalityTag value={c.criticality} />
-            </Fact>
+            {c.criticality ? (
+              <Fact label="Criticality">
+                <CriticalityTag value={c.criticality} />
+              </Fact>
+            ) : (
+              <Fact label="Response target">{c.responseTargetHours ? `${c.responseTargetHours} h` : <span style={{ color: COLORS.muted, fontWeight: 400 }}>None</span>}</Fact>
+            )}
             <Fact label="Assigned to">{c.assignedToName ?? <span style={{ color: COLORS.muted, fontWeight: 400 }}>Nobody yet</span>}</Fact>
             <Fact label="Response time">{c.startedAt ? formatDuration(c.responseSeconds) : <span style={{ color: COLORS.muted, fontWeight: 400 }}>Not started</span>}</Fact>
-            <Fact label={c.resolvedAt ? 'Downtime' : 'Open for'}>{c.resolvedAt ? formatDuration(c.downtimeSeconds) : openFor}</Fact>
+            <Fact label={c.resolvedAt ? (c.assetId ? 'Downtime' : 'Resolution time') : 'Open for'}>{c.resolvedAt ? formatDuration(c.resolutionSeconds) : openFor}</Fact>
           </div>
           {c.status === 'resolved' && (
             <Alert
               type="success"
               showIcon
               message={`Resolved · waiting for ${c.departmentName} to close it`}
-              description={`${c.raisedByName}, or anyone from ${c.departmentName}, closes it once the equipment works again. Downtime ended when it was resolved.`}
+              description={`${c.raisedByName}, or anyone from ${c.departmentName}, closes it once ${c.assetId ? 'the equipment works' : 'it is fixed'} again. ${c.assetId ? 'Downtime' : 'The resolution time'} ended when it was resolved.`}
             />
           )}
           <StepNote c={c} />

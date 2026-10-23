@@ -26,13 +26,15 @@ const GROUPS: { title: string; entries: Entry[] }[] = [
   },
   { title: 'Equipment', entries: (['asset-master', 'equipment-age', 'warranty-contracts', 'condemnation'] as ReportType[]).map(entry) },
   { title: 'Maintenance', entries: (['pms', 'calibration'] as ReportType[]).map(entry) },
-  { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime'] as ReportType[]).map(entry) },
+  { title: 'Breakdowns and uptime', entries: (['breakdowns', 'uptime', 'critical-downtime', 'trades'] as ReportType[]).map(entry) },
   { title: 'Cost', entries: (['expenses', 'consumables'] as ReportType[]).map(entry) },
   { title: 'Team and suppliers', entries: (['engineers', 'suppliers'] as ReportType[]).map(entry) },
 ];
 
 export default function ReportsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  // Ward complaints by trade are the facility add-on's, for people who work with the facility register.
+  const shown = (e: Entry) => e.href !== '/reports/trades' || !!user?.registers.includes('facility');
   if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
   return (
     <>
@@ -42,7 +44,7 @@ export default function ReportsPage() {
           <section key={g.title}>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: COLORS.ink, margin: '0 0 12px' }}>{g.title}</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 16 }}>
-              {g.entries.map((r) => {
+              {g.entries.filter(shown).map((r) => {
                 return (
                   <Link key={r.href} href={r.href} style={{ display: 'block' }}>
                     <Card hoverable styles={{ body: { padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%' } }} style={{ height: '100%' }}>

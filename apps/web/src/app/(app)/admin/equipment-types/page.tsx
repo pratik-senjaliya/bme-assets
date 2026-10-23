@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space } from 'antd';
+import { Alert, App, Button, Checkbox, Form, Input, InputNumber, Modal, Popconfirm, Select, Space } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
 import { equipmentTypeSchema, REGISTERS, TEAM_LABEL, type Register } from '@bme/shared';
@@ -20,6 +20,7 @@ type EquipmentType = {
   defaultCalibrationMonths: number | null;
   checklistVersion: number | null; // latest PMS checklist; null = none yet
   register: Register;
+  medicalGas: boolean;
 };
 
 function EquipmentTypesPageScreen() {
@@ -30,6 +31,7 @@ function EquipmentTypesPageScreen() {
   const [form] = Form.useForm();
   const [editing, setEditing] = useState<EquipmentType | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
+  const gas = Form.useWatch('medicalGas', form);
 
   function open(row: EquipmentType | 'new') {
     form.resetFields();
@@ -103,7 +105,9 @@ function EquipmentTypesPageScreen() {
         columns={[
           { title: 'Name', dataIndex: 'name', className: 'm-title' },
           { title: 'Code', dataIndex: 'code' },
-          ...(twoTeams ? [{ title: 'Looked after by', dataIndex: 'register', render: (r: Register) => TEAM_LABEL[r] }] : []),
+          ...(twoTeams
+            ? [{ title: 'Looked after by', dataIndex: 'register', render: (r: Register, t: EquipmentType) => <Space size={6} wrap>{TEAM_LABEL[r]}{t.medicalGas && <Pill tone="info">Medical gas</Pill>}</Space> }]
+            : []),
           { title: 'Default PMS', dataIndex: 'defaultPmsMonths', align: 'right', render: months },
           { title: 'Default calibration', dataIndex: 'defaultCalibrationMonths', align: 'right', render: months },
           { title: 'PMS checklist', dataIndex: 'checklistVersion', render: (v: number | null) => (v == null ? <Pill tone="warn">None yet</Pill> : `Version ${v}`) },
@@ -144,9 +148,16 @@ function EquipmentTypesPageScreen() {
             <Input style={{ textTransform: 'uppercase' }} />
           </Form.Item>
           {twoTeams && (
-            <Form.Item label="Looked after by" name="register" extra="Fixed once equipment of this type is registered.">
-              <Select options={REGISTERS.map((r) => ({ value: r, label: TEAM_LABEL[r] }))} />
-            </Form.Item>
+            <>
+              <Form.Item name="medicalGas" valuePropName="checked" extra="Oxygen plant, manifold, compressor, vacuum, outlets: the team is set once for all of them in Hospital settings." style={{ marginBottom: 12 }}>
+                <Checkbox>Medical gas equipment</Checkbox>
+              </Form.Item>
+              {!gas && (
+                <Form.Item label="Looked after by" name="register" extra="Fixed once equipment of this type is registered.">
+                  <Select options={REGISTERS.map((r) => ({ value: r, label: TEAM_LABEL[r] }))} />
+                </Form.Item>
+              )}
+            </>
           )}
           <Form.Item label="Default PMS interval (months)" name="defaultPmsMonths">
             <InputNumber min={1} max={120} style={{ width: '100%' }} />
