@@ -2,7 +2,7 @@
 
 import { Alert, Button, Space } from 'antd';
 import Link from 'next/link';
-import { COMPLAINT_STATUS_LABEL, type AssetRow } from '@bme/shared';
+import { COMPLAINT_STATUS_LABEL, TEAM_LABEL, type AssetRow } from '@bme/shared';
 import { COLORS } from '@/theme';
 import { Pill } from '@/components/StatusTag';
 import { daysFromToday, formatDate, formatDateTime } from '@/lib/format';
@@ -29,7 +29,7 @@ export function SafetyAlerts({
   canPerformPms,
   onRaise,
 }: {
-  asset: Condition & Pick<AssetRow, 'id' | 'nextPmsDue'>;
+  asset: Condition & Pick<AssetRow, 'id' | 'nextPmsDue' | 'register'>;
   canRaise: boolean;
   canPerformPms: boolean;
   onRaise: (description: string) => void;
@@ -54,7 +54,7 @@ export function SafetyAlerts({
                   {c.complaintNo} · {COMPLAINT_STATUS_LABEL[c.status]}{c.urgent ? ' · urgent' : ''} · raised {formatDateTime(c.raisedAt)}
                 </div>
               ))}
-              <div style={{ marginTop: 4 }}>Check with the biomedical team before using it.</div>
+              <div style={{ marginTop: 4 }}>Check with the {TEAM_LABEL[asset.register].toLowerCase()} before using it.</div>
             </>
           }
           action={<Link href={`/assets/${asset.id}?tab=complaints`}><Button>See complaints</Button></Link>}
@@ -88,7 +88,7 @@ export function SafetyAlerts({
           type="warning"
           showIcon
           message={`PMS overdue since ${formatDate(asset.nextPmsDue!)}`}
-          description="Ask the biomedical team before using it on a patient."
+          description={`Ask the ${TEAM_LABEL[asset.register].toLowerCase()} before using it on a patient.`}
         />
       )}
     </Space>

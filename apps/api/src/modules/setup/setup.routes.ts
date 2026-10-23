@@ -7,6 +7,7 @@ import {
   type EquipmentTypeInput,
   type HospitalInfo,
   type LocationInput,
+  type Register,
 } from '@bme/shared';
 import { audited } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
@@ -25,7 +26,7 @@ const actor = (req: Request) => ({ createdBy: currentUser(req).id });
 
 // Its name and the optional parts it has turned on, for every signed-in person (the full settings are the admin's).
 setupRouter.get('/hospital', requirePermission('asset.view'), async (_req, res) => {
-  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true, biomedContact: true, idleLogoutMinutes: true } });
+  const s = await prisma.hospitalSettings.findFirstOrThrow({ select: { name: true, transfersEnabled: true, facilityEnabled: true, biomedContact: true, idleLogoutMinutes: true } });
   res.json(s satisfies HospitalInfo);
 });
 
@@ -127,17 +128,27 @@ setupRouter.delete('/locations/:id', requirePermission('setup.manage'), async (r
 // ---------- Equipment types ----------
 
 // Each type with its latest PMS checklist version (null: none yet, so PMS cannot be recorded for it; gap review #21).
-setupRouter.get('/equipment-types', requirePermission('asset.view'), async (_req, res) => {
+// Only the registers the person works on (the facility types stay out of sight while the add-on is off).
+setupRouter.get('/equipment-types', requirePermission('asset.view'), async (req, res) => {
   const [types, versions] = await Promise.all([
-    prisma.equipmentType.findMany({ orderBy: { name: 'asc' } }),
+    prisma.equipmentType.findMany({ where: { register: { in: currentUser(req).registers } }, orderBy: { name: 'asc' } }),
     prisma.pmsTemplate.groupBy({ by: ['equipmentTypeId'], _max: { version: true } }),
   ]);
   const latest = new Map(versions.map((v) => [v.equipmentTypeId, v._max.version]));
   res.json(types.map((t) => ({ ...t, checklistVersion: latest.get(t.id) ?? null })));
 });
 
+// A type's register can be set while the add-on is on, and changed only while no equipment is of that type (a machine
+// never changes team; decision G).
+async function assertRegisterChoice(req: Request, register: Register | undefined, changing: boolean, inUse: () => Promise<number>) {
+  if (!register || !changing) return;
+  if (!currentUser(req).registers.includes(register)) throw new HttpError(400, 'Facility equipment is not switched on for this hospital', { fieldErrors: { register: ['Not available'] } });
+  if (await inUse()) throw new HttpError(409, 'Equipment of this type is already registered, so it stays with its team', { fieldErrors: { register: ['Locked: equipment of this type exists'] } });
+}
+
 setupRouter.post('/equipment-types', requirePermission('setup.manage'), validate(equipmentTypeSchema), async (req, res) => {
   const data = req.body as EquipmentTypeInput;
+  await assertRegisterChoice(req, data.register, data.register !== undefined && data.register !== 'biomedical', async () => 0);
   const row = await audited(req, { action: 'equipment_type.create', entityType: 'equipment_type' }, (tx) =>
     tx.equipmentType.create({ data: { ...data, ...actor(req) } }),
   );
@@ -148,6 +159,7 @@ setupRouter.patch('/equipment-types/:id', requirePermission('setup.manage'), val
   const before = await prisma.equipmentType.findUniqueOrThrow({ where: { id: idOf(req) } });
   const body = req.body as Partial<EquipmentTypeInput>;
   await assertCodeFree('{TYPE}', body.code !== undefined && body.code !== before.code, () => prisma.asset.count({ where: { equipmentTypeId: before.id } }), 'equipment type');
+  await assertRegisterChoice(req, body.register, body.register !== undefined && body.register !== before.register, () => prisma.asset.count({ where: { equipmentTypeId: before.id } }));
   const row = await audited(req, { action: 'equipment_type.update', entityType: 'equipment_type', before }, (tx) =>
     tx.equipmentType.update({ where: { id: before.id }, data: req.body }),
   );

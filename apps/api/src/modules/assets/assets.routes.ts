@@ -30,7 +30,7 @@ import {
   type UpdateAssetResponse,
 } from '@bme/shared';
 import { audit, audited } from '../../lib/audit';
-import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
+import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
 import { isoDate, parseDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -70,6 +70,15 @@ function assetOrder(by: AssetListQuery['sortBy'], order: 'asc' | 'desc'): Prisma
   return by === 'assetCode' ? [first] : [first, { assetCode: 'asc' }];
 }
 
+// A machine stays with its team: a new type must be of the same register (a ventilator does not become a DG set).
+async function assertSameRegister(asset: { register: string }, equipmentTypeId: string) {
+  const type = await prisma.equipmentType.findUnique({ where: { id: equipmentTypeId } });
+  if (!type) throw new HttpError(400, 'Choose an equipment type from the list', { fieldErrors: { equipmentTypeId: ['Choose an equipment type from the list'] } });
+  if (type.register !== asset.register) {
+    throw new HttpError(400, `${type.name} belongs to the other team's equipment`, { fieldErrors: { equipmentTypeId: [`${type.name} belongs to the other team's equipment`] } });
+  }
+}
+
 const detail = async (id: string) =>
   toAssetDetail(await prisma.asset.findUniqueOrThrow({ where: { id }, include: assetInclude }));
 
@@ -86,7 +95,7 @@ const registerWhere = (req: Request, q: Omit<AssetListQuery, 'sortBy' | 'order' 
     OR: ['assetCode', 'name', 'serialNo', 'tagNo', 'make', 'model'].map((f) => ({ [f]: { contains: q.search, mode: 'insensitive' as const } })),
   }),
   ...(q.condition && { AND: [CONDITION[q.condition]] }),
-  ...departmentScope(currentUser(req)), // last, so a nursing user cannot widen it with ?departmentId=
+  ...scopeOf(currentUser(req), q.register), // last, so it cannot be widened with ?departmentId=
 });
 const FAILED: Prisma.AssetWhereInput[] = [{ pmsFailedOn: { not: null } }, { calibrationFailedOn: { not: null } }];
 const CONDITION: Record<NonNullable<AssetListQuery['condition']>, Prisma.AssetWhereInput> = {
@@ -134,7 +143,7 @@ assetsRouter.post('/', requirePermission('asset.create'), validate(createAssetSc
 // who look after the equipment (asset.edit), not for departments that only see it.
 assetsRouter.get('/labels', requirePermission('asset.edit'), async (req, res) => {
   const { ids, ...q } = assetLabelsQuerySchema.parse(req.query);
-  const where: Prisma.AssetWhereInput = ids ? { id: { in: ids }, ...departmentScope(currentUser(req)) } : registerWhere(req, q);
+  const where: Prisma.AssetWhereInput = ids ? { id: { in: ids }, ...scopeOf(currentUser(req)) } : registerWhere(req, q);
   const [total, rows, settings] = await Promise.all([
     prisma.asset.count({ where }),
     prisma.asset.findMany({ where, include: { department: true, location: true }, orderBy: { assetCode: 'asc' }, take: MAX_LABELS }),
@@ -159,7 +168,7 @@ assetsRouter.get('/labels', requirePermission('asset.edit'), async (req, res) =>
 // A scanned label: the asset ID printed on it, to the record. Department scope applies as everywhere, so a label
 // on another department's equipment reads as not found for nursing staff.
 assetsRouter.get('/by-code/:code', requirePermission('asset.view'), async (req, res) => {
-  const asset = await prisma.asset.findFirst({ where: { assetCode: String(req.params.code), ...departmentScope(currentUser(req)) }, select: { id: true } });
+  const asset = await prisma.asset.findFirst({ where: { assetCode: String(req.params.code), ...scopeOf(currentUser(req)) }, select: { id: true } });
   if (!asset) throw new HttpError(404, 'No equipment with this label');
   res.json(asset);
 });
@@ -196,6 +205,7 @@ assetsRouter.patch('/:id', requirePermission('asset.edit'), validate(updateAsset
   if (hasKeyChanges) {
     const next = { departmentId: before.departmentId, locationId: before.locationId, ...keyChanges } as { departmentId: string; locationId: string };
     await assertLocationInDepartment(next.departmentId, next.locationId);
+    if ('equipmentTypeId' in keyChanges) await assertSameRegister(before, keyChanges.equipmentTypeId as string);
     if ('serialNo' in keyChanges) await assertSerialFree(keyChanges.serialNo as string | null, before.id);
   }
 
@@ -428,10 +438,10 @@ const WRITE_PERMISSIONS: Record<AttachmentOwnerType, PermissionCode[]> = {
   pms_record: [], // the OEM's report is saved with the PMS record, which is read-only afterwards
 };
 
-// The owner's asset, loaded with the department scope: a foreign record looks like a missing one.
+// The owner's asset, loaded with the person's scope: a foreign record looks like a missing one.
 async function scopedOwnerAsset(req: Request, ownerType: AttachmentOwnerType, ownerId: string) {
   const assetId = await assetIdOfOwner(ownerType, ownerId);
-  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...departmentScope(currentUser(req)) } }) : null;
+  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'Not found');
   return asset;
 }
@@ -489,7 +499,7 @@ attachmentsRouter.get('/:id/download', requirePermission('asset.view'), async (r
   if (need && !currentUser(req).permissions.includes(need)) throw new HttpError(404, 'File not found');
   // Files belong to an asset directly, or through one of its records (a certificate, a complaint photo, ...).
   const assetId = await assetIdOfOwner(file.ownerType, file.ownerId);
-  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...departmentScope(currentUser(req)) } }) : null;
+  const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'File not found');
 
   const data = await getStorage().get(file.filePath);

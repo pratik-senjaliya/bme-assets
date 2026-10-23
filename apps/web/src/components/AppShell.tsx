@@ -191,7 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {!collapsed && (
             <div style={{ lineHeight: 1.25, whiteSpace: 'nowrap' }}>
               <div style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 15 }}>BME Assets</div>
-              <div style={{ color: '#94B7B3', fontSize: 12, fontWeight: 500 }}>Biomedical engineering</div>
+              <div style={{ color: '#94B7B3', fontSize: 12, fontWeight: 500 }}>{hospital.data?.facilityEnabled ? 'Biomedical & facility' : 'Biomedical engineering'}</div>
             </div>
           )}
         </div>

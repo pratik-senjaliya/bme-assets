@@ -3,6 +3,7 @@ import { ADMIN_KEEPS, rolePermissionsSchema, type PermissionCode, type RoleName,
 import { audited } from '../../lib/audit';
 import { requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
+import { facilityOn } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 
@@ -14,8 +15,9 @@ const permissionCodes = async (roleId: string) =>
     .map((rp) => rp.permission.code as PermissionCode)
     .sort();
 
+// The maintenance role only shows while the facility add-on is on.
 rolesRouter.get('/', async (_req, res) => {
-  const roles = await prisma.role.findMany({ orderBy: { name: 'asc' } });
+  const roles = await prisma.role.findMany({ where: (await facilityOn()) ? {} : { name: { not: 'maintenance' } }, orderBy: { name: 'asc' } });
   res.json(
     await Promise.all(
       roles.map(async (r) => ({ id: r.id, name: r.name as RoleName, label: r.label, permissions: await permissionCodes(r.id) })),

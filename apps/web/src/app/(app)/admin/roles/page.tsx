@@ -2,7 +2,7 @@
 
 import { App, Alert, Button, Card, Checkbox, Select, Space } from 'antd';
 import { useEffect, useState } from 'react';
-import { ADMIN_KEEPS, PERMISSIONS, type PermissionCode, type RoleRow } from '@bme/shared';
+import { ADMIN_KEEPS, PERMISSIONS, type HospitalInfo, type PermissionCode, type RoleRow } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { api, useFetch } from '@/lib/api';
 import { PERMISSION_TEXT } from '@/lib/permissions';
@@ -12,6 +12,7 @@ import { TableSkeleton } from '@/components/Skeletons';
 
 // Grouped by area so the list is scannable.
 const GROUPS: Record<string, string> = {
+  register: 'Equipment they work on',
   asset: 'Assets',
   complaint: 'Complaints',
   expense: 'Expenses',
@@ -31,6 +32,7 @@ const GROUPS: Record<string, string> = {
 function RolesPageScreen() {
   const { message } = App.useApp();
   const roles = useFetch<RoleRow[]>('/roles', { fresh: true });
+  const hospital = useFetch<HospitalInfo>('/hospital');
   const [roleId, setRoleId] = useState<string>();
   const [selected, setSelected] = useState<PermissionCode[]>([]);
   const [saving, setSaving] = useState(false);
@@ -89,7 +91,8 @@ function RolesPageScreen() {
               {Object.entries(GROUPS).map(([prefix, label]) => (
                 <Card key={prefix} size="small" title={label}>
                   <Space direction="vertical" size={12}>
-                    {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`)).map((p) => (
+                    {/* Facility equipment only where the facility maintenance add-on is on. */}
+                    {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`) && (p !== 'register.facility' || hospital.data?.facilityEnabled)).map((p) => (
                       <Checkbox key={p} value={p} disabled={role.name === 'admin' && ADMIN_KEEPS.includes(p)}>
                         <span style={{ fontWeight: 500 }}>{PERMISSION_TEXT[p].label}</span>
                         <span style={{ display: 'block', color: COLORS.muted, fontSize: 12.5 }}>{PERMISSION_TEXT[p].hint}</span>

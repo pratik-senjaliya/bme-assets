@@ -86,7 +86,7 @@ describe('Audit log is readable', () => {
     const types = (await (await call(base, admin, 'GET', '/equipment-types')).json()) as { id: string; code: string }[];
     const depts = (await (await call(base, admin, 'GET', '/departments')).json()) as { id: string; code: string }[];
     const locs = (await (await call(base, admin, 'GET', '/locations')).json()) as { id: string; code: string }[];
-    const a = await (await call(base, biomed, 'POST', '/assets', { equipmentTypeId: types[0].id, name: `${PREFIX}audit`, departmentId: depts.find((d) => d.code === 'ICU')!.id, locationId: locs.find((l) => l.code === 'ICU1')!.id })).json();
+    const a = await (await call(base, biomed, 'POST', '/assets', { equipmentTypeId: types.find((t) => t.code === 'VENT')!.id, name: `${PREFIX}audit`, departmentId: depts.find((d) => d.code === 'ICU')!.id, locationId: locs.find((l) => l.code === 'ICU1')!.id })).json();
     await call(base, admin, 'GET', '/reports/asset-master');
     const log = (await (await call(base, admin, 'GET', `/audit-logs?entityId=${a.id}`)).json()) as Paged<AuditRow>;
     assert.ok(log.items.length > 0 && log.items.every((r) => r.entityLabel?.startsWith(a.assetCode)), `labels: ${log.items.map((r) => r.entityLabel)}`);

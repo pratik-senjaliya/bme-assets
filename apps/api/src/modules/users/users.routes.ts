@@ -6,6 +6,7 @@ import {
   ROLE_LABELS,
   UNRESOLVED_STATUSES,
   createUserSchema,
+  DEPUTY_ROLES,
   ROLE_NAMES,
   type ImportError,
   type ImportResult,
@@ -19,7 +20,7 @@ import { auditMany, audited } from '../../lib/audit';
 import { currentUser, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { recordSuccess } from '../../lib/loginThrottle';
-import { usersWithPermissions } from '../../lib/people';
+import { facilityOn, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 import { notify } from '../approvals/approvals.service';
@@ -65,7 +66,9 @@ async function handBack(tx: Prisma.TransactionClient, req: Parameters<typeof cur
   for (const c of open) await notify(tx, hods, `${user.name} has left: complaint ${c.complaintNo} (${c.asset.assetCode} ${c.asset.name}) needs someone`, c.assetId, 'complaint', c.id);
 }
 
+// Maintenance staff work on facility equipment, so the role is only given while the add-on is on (decision K).
 async function roleId(name: RoleName) {
+  if (name === 'maintenance' && !(await facilityOn())) throw new HttpError(400, 'The facility maintenance add-on is not switched on', { fieldErrors: { role: ['Not available'] } });
   return (await prisma.role.findUniqueOrThrow({ where: { name } })).id;
 }
 
@@ -79,7 +82,7 @@ usersRouter.post('/', validate(createUserSchema), async (req, res) => {
   guardSuperAdmin(currentUser(req).role, role);
   const data = {
     ...rest,
-    deputy: role === 'biomed' && !!deputy, // deputy HOD is for biomedical staff only
+    deputy: DEPUTY_ROLES.includes(role) && !!deputy, // deputy HOD is for biomedical or maintenance staff only
     roleId: await roleId(role),
     departmentId: role === 'nursing' ? departmentId : null,
     passwordHash: await bcrypt.hash(password, 10),
@@ -103,7 +106,7 @@ usersRouter.patch('/:id', validate(updateUserSchema), async (req, res) => {
     ...rest,
     roleId: await roleId(role),
     departmentId: role === 'nursing' ? departmentId : null,
-    deputy: role === 'biomed' && (deputy ?? before.deputy),
+    deputy: DEPUTY_ROLES.includes(role) && (deputy ?? before.deputy),
     // A reset ends the person's sessions everywhere (the audit entry shows the version going up).
     // and a password set by someone else is changed at the next sign-in.
     ...(password ? { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 }, mustChangePassword: before.id !== me.id } : {}),
@@ -131,10 +134,14 @@ const USER_COLUMNS = [
 ] as const;
 type UserColumn = (typeof USER_COLUMNS)[number]['key'];
 const MAX_USER_ROWS = 300; // each password is hashed, which takes a moment
-// The super admin is the vendor's and is never imported.
-const IMPORT_ROLES = ROLE_NAMES.filter((r) => r !== 'super_admin');
+// The super admin is the vendor's and is never imported; maintenance staff only while the add-on is on.
+const importRoles = async () => {
+  const on = await facilityOn();
+  return ROLE_NAMES.filter((r) => r !== 'super_admin' && (on || r !== 'maintenance'));
+};
 
 usersRouter.get('/import/template', async (_req, res) => {
+  const IMPORT_ROLES = await importRoles();
   const departments = await prisma.department.findMany({ orderBy: { code: 'asc' } });
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet('Users', { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -162,6 +169,7 @@ usersRouter.get('/import/template', async (_req, res) => {
 
 usersRouter.post('/import', upload.single('file'), async (req, res) => {
   const dryRun = req.query.dryRun === 'true';
+  const IMPORT_ROLES = await importRoles();
   const rawRows = await readUpload(req, [...USER_COLUMNS], 'Users', MAX_USER_ROWS);
   const headerOf = Object.fromEntries(USER_COLUMNS.map((c) => [c.key, c.header])) as Record<UserColumn, string>;
   const [departments, existing] = await Promise.all([

@@ -15,7 +15,7 @@ import { RaiseComplaintModal } from '@/components/RaiseComplaintModal';
 import { ConditionPills } from '@/components/AssetSafety';
 import { EmptyState } from '@/components/Skeletons';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { daysFromToday } from '@/lib/format';
 import { COLORS } from '@/theme';
 
@@ -32,6 +32,7 @@ const STATUS_OPTIONS = [
 // Filters live in the URL so a filtered list can be shared as a link.
 function AssetList() {
   const { can, user } = useAuth();
+  const twoTeams = useTwoTeams();
   const hospital = useFetch<HospitalInfo>('/hospital'); // the Transferred filter only where transfers are on
   const phone = Grid.useBreakpoint().md === false;
   const router = useRouter();
@@ -42,7 +43,7 @@ function AssetList() {
   const [complaintFor, setComplaintFor] = useState<AssetRow | null>(null);
 
   const departments = useFetch<Option[]>('/departments');
-  const types = useFetch<Option[]>('/equipment-types');
+  const types = useFetch<(Option & { register: string })[]>('/equipment-types');
 
   const query = new URLSearchParams({ status: 'active', ...q, pageSize: '20' }).toString();
   const assets = useFetch<Paged<AssetRow>>(`/assets?${query}`);
@@ -66,11 +67,11 @@ function AssetList() {
   const sortOf = (key: string) => (q.sortBy === key ? (q.order === 'desc' ? ('descend' as const) : ('ascend' as const)) : null);
   // Export gives what is on screen: the same search and filters, every page of it.
   const exportQuery = new URLSearchParams(
-    Object.entries({ search: q.search, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, assetStatus: q.status ?? 'active' }).filter(([, v]) => v) as [string, string][],
+    Object.entries({ search: q.search, register: q.register, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, assetStatus: q.status ?? 'active' }).filter(([, v]) => v) as [string, string][],
   );
   // QR labels for what is on screen: the same search and filters (see /assets/labels).
   const labelsQuery = new URLSearchParams(
-    Object.entries({ search: q.search, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, status: q.status }).filter(([, v]) => v) as [string, string][],
+    Object.entries({ search: q.search, register: q.register, departmentId: q.departmentId, equipmentTypeId: q.equipmentTypeId, criticality: q.criticality, status: q.status }).filter(([, v]) => v) as [string, string][],
   );
   const select = (key: string, placeholder: string, options: { value: string; label: string }[]) => (
     <Select
@@ -131,9 +132,10 @@ function AssetList() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <PhoneFilters active={[q.departmentId, q.equipmentTypeId, q.criticality, q.condition].filter(Boolean).length}>
+        <PhoneFilters active={[q.register, q.departmentId, q.equipmentTypeId, q.criticality, q.condition].filter(Boolean).length}>
+          {twoTeams && select('register', 'Equipment', REGISTER_OPTIONS)}
           {user?.role !== 'nursing' && select('departmentId', 'Department', (departments.data ?? []).map((d) => ({ value: d.id, label: d.name })))}
-          {select('equipmentTypeId', 'Equipment type', (types.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
+          {select('equipmentTypeId', 'Equipment type', (types.data ?? []).filter((t) => !q.register || t.register === q.register).map((t) => ({ value: t.id, label: t.name })))}
           {select('criticality', 'Criticality', [...CRITICALITIES].reverse().map((c) => ({ value: c, label: CRITICALITY_LABEL[c] })))}
           {select('condition', 'Condition', [
             { value: 'unsafe', label: 'Not safe to use' },

@@ -1,9 +1,9 @@
 import type { Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { ROLE_LABELS, type PermissionCode, type RoleName, type SessionUser } from '@bme/shared';
+import { ROLE_LABELS, type PermissionCode, type Register, type RoleName, type SessionUser } from '@bme/shared';
 import { config } from './config';
 import { HttpError } from './errors';
-import { effectivePermissions } from './people';
+import { effectivePermissions, facilityOn, registersOf } from './people';
 import { prisma } from './prisma';
 
 declare global {
@@ -45,6 +45,7 @@ export async function loadSessionUser(id: string, sessionVersion?: number): Prom
   if (!user || !user.active) return null;
   if (sessionVersion !== undefined && sessionVersion !== user.sessionVersion) return null;
   const role = user.role.name as RoleName;
+  const permissions = effectivePermissions(user);
   return {
     id: user.id,
     name: user.name,
@@ -52,8 +53,9 @@ export async function loadSessionUser(id: string, sessionVersion?: number): Prom
     role,
     roleLabel: ROLE_LABELS[role] ?? user.role.label,
     departmentId: user.departmentId,
-    permissions: effectivePermissions(user),
+    permissions,
     mustChangePassword: user.mustChangePassword,
+    registers: registersOf(permissions, await facilityOn()),
   };
 }
 
@@ -110,10 +112,17 @@ export const currentUser = (req: Request): SessionUser => {
   return req.user;
 };
 
-// Nursing users only ever see their own department. Spread the result into every Prisma `where`
-// on a model that has `departmentId`.
+// Nursing users only ever see their own department.
 export function departmentScope(user: SessionUser): { departmentId?: string } {
   if (user.role !== 'nursing') return {};
   if (!user.departmentId) throw new HttpError(403, 'No department assigned to your login');
   return { departmentId: user.departmentId };
+}
+
+// What a person may see: their department (nursing) and the registers they work on (decision H). Spread it into every
+// Prisma `where` on assets and complaints (both carry `departmentId` and `register`), or under `asset:` for records
+// of an asset. `register` narrows it to one team's equipment for people who see both (never widens it).
+export type Scope = { departmentId?: string; register?: { in: Register[] } };
+export function scopeOf(user: SessionUser, register?: Register): Scope {
+  return { ...departmentScope(user), register: { in: register ? user.registers.filter((r) => r === register) : user.registers } };
 }

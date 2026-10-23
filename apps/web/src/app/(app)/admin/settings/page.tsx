@@ -5,7 +5,7 @@ import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Selec
 import { useEffect, useState } from 'react';
 import { updateSettingsSchema, type RunRemindersResult, type SettingsResponse } from '@bme/shared';
 import { PageHeader } from '@/components/PageHeader';
-import { api, useFetch } from '@/lib/api';
+import { api, clearFetchCache, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
@@ -14,7 +14,8 @@ import { formatDateTime, formatSize } from '@/lib/format';
 
 function SettingsPageScreen() {
   const { message } = App.useApp();
-  const { can } = useAuth();
+  const { can, user, refresh } = useAuth();
+  const vendor = user?.role === 'super_admin'; // only the vendor switches add-ons on (decision K)
   const settings = useFetch<SettingsResponse>('/settings', { fresh: true });
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -40,6 +41,7 @@ function SettingsPageScreen() {
       criticalDowntimeHours: values.criticalDowntimeHours,
       complaintCloseDays: values.complaintCloseDays,
       transfersEnabled: values.transfersEnabled,
+      ...(vendor && { facilityEnabled: values.facilityEnabled }),
       biomedContact: values.biomedContact ?? null,
       idleLogoutMinutes: values.idleLogoutMinutes ?? 0,
       labelBaseUrl: values.labelBaseUrl ?? null,
@@ -56,6 +58,11 @@ function SettingsPageScreen() {
     try {
       await api('/settings', { method: 'PUT', body: input });
       message.success('Settings saved');
+      // The add-on changes what everyone sees: start from a clean slate (menus, lists, who I am).
+      if (vendor && input.facilityEnabled !== settings.data?.facilityEnabled) {
+        clearFetchCache();
+        await refresh();
+      }
       form.setFieldValue('smtpPassword', undefined);
       settings.reload();
     } catch (e) {
@@ -163,6 +170,18 @@ function SettingsPageScreen() {
               extra="For hospitals with other units. Equipment can then be transferred to another unit with the HOD's approval; it keeps its history here, marked transferred."
             >
               <Switch aria-label="Allow transfers to other units" />
+            </Form.Item>
+            <Form.Item
+              label="Facility maintenance"
+              name="facilityEnabled"
+              valuePropName="checked"
+              extra={
+                vendor
+                  ? 'The add-on for the maintenance team: DG sets, chillers, lifts, UPS and other facility equipment, with their own staff, complaints, PMS and stock. Off: none of it shows.'
+                  : 'An add-on for the maintenance team (DG sets, chillers, lifts, UPS…). Switched on by your vendor.'
+              }
+            >
+              <Switch aria-label="Facility maintenance add-on" disabled={!vendor} />
             </Form.Item>
             <Form.Item
               label="Biomedical contact for the wards"

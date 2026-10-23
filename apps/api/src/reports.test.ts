@@ -187,8 +187,9 @@ describe('dashboard', () => {
     await call(base, biomed, 'POST', '/complaints', { assetId: a.id, description: `${PREFIX}dashboard test complaint` });
     const dash = await (await call(base, biomed, 'GET', '/dashboard')).json();
     assert.equal(dash.scope, 'hospital');
-    assert.equal(dash.activeAssets, await prisma.asset.count({ where: { status: 'active' } }));
-    assert.equal(dash.openComplaints, await prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES } } })); // on hold counts as open
+    // Biomedical staff count the biomedical register only (the facility one is the maintenance team's).
+    assert.equal(dash.activeAssets, await prisma.asset.count({ where: { status: 'active', register: 'biomedical' } }));
+    assert.equal(dash.openComplaints, await prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES }, register: 'biomedical' } })); // on hold counts as open
     assert.equal(dash.months.length, 6);
     assert.equal(dash.months[5].month, today.slice(0, 7));
     assert.ok(dash.months[5].breakdowns >= 1);

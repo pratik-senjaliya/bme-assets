@@ -17,27 +17,28 @@ import {
   type CreateComplaintInput,
   type OptionalNoteInput,
   type Paged,
+  type Register,
   type ResolveComplaintInput,
 } from '@bme/shared';
 import { audit } from '../../lib/audit';
-import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
+import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { addDaysISO, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
-import { usersWithPermissions } from '../../lib/people';
+import { effectivePermissions, facilityOn, registersOf, registerTeam, usersWithPermissions } from '../../lib/people';
 import { notify } from '../approvals/approvals.service';
 import { findScopedAsset } from '../assets/assets.service';
 import { complaintInclude, complaintNo, emailUrgent, toComplaintDetail, toComplaintRows } from './complaints.service';
 
 export const complaintsRouter = Router();
 
-// Nursing only sees its own department's complaints; a foreign id looks like a missing one.
-// Business rule 4 for complaints: nursing sees its own department's, and also the ones they raised themselves (a nurse
-// who moved department can still follow and close those; gap review #13).
-function complaintScope(me: ReturnType<typeof currentUser>): Prisma.ComplaintWhereInput {
-  const scope = departmentScope(me);
-  return scope.departmentId ? { OR: [{ departmentId: scope.departmentId }, { raisedById: me.id }] } : {};
+// Nursing only sees its own department's complaints, and each team its own register's; a foreign id looks like a
+// missing one. Business rule 4 for complaints: nursing sees its own department's, and also the ones they raised
+// themselves (a nurse who moved department can still follow and close those; gap review #13).
+function complaintScope(me: ReturnType<typeof currentUser>, register?: Register): Prisma.ComplaintWhereInput {
+  const { departmentId, ...scope } = scopeOf(me, register);
+  return departmentId ? { ...scope, OR: [{ departmentId }, { raisedById: me.id }] } : scope;
 }
 
 async function findScoped(req: Request) {
@@ -73,7 +74,7 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
       ],
     }),
     // Last, so they cannot be widened from the query. closable: resolved complaints the asker may close.
-    AND: [complaintScope(me), ...(q.closable ? [{ status: 'resolved' as const, OR: [{ raisedById: me.id }, ...(me.departmentId ? [{ departmentId: me.departmentId }] : [])] }] : [])],
+    AND: [complaintScope(me, q.register), ...(q.closable ? [{ status: 'resolved' as const, OR: [{ raisedById: me.id }, ...(me.departmentId ? [{ departmentId: me.departmentId }] : [])] }] : [])],
   };
   // Waiting complaints: urgent ones first, then longest-waiting first. Resolved: most recent first. Mixed: newest first.
   const orderBy: Prisma.ComplaintOrderByWithRelationInput | Prisma.ComplaintOrderByWithRelationInput[] = q.sortBy
@@ -87,14 +88,21 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
   res.json(body);
 });
 
-// The people a complaint can go to: active users who can start work on complaints, with their current load.
+// The people a complaint can go to: active users who can start work on complaints, with their current load and the
+// registers they work on (the screen offers a complaint to its own register's team).
 complaintsRouter.get('/assignees', requirePermission('complaint.assign'), async (_req, res) => {
   const ids = await usersWithPermissions('complaint.start');
-  const [users, load] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: ids }, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+  const [users, load, on] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: ids }, active: true }, include: { role: { include: { rolePermissions: { include: { permission: true } } } } }, orderBy: { name: 'asc' } }),
     prisma.complaint.groupBy({ by: ['assignedToId'], where: { status: { in: UNRESOLVED_STATUSES }, assignedToId: { in: ids } }, _count: true }),
+    facilityOn(),
   ]);
-  const body: Assignee[] = users.map((u) => ({ ...u, openCount: load.find((l) => l.assignedToId === u.id)?._count ?? 0 }));
+  const body: Assignee[] = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    openCount: load.find((l) => l.assignedToId === u.id)?._count ?? 0,
+    registers: registersOf(effectivePermissions(u), on),
+  }));
   res.json(body);
 });
 
@@ -108,8 +116,8 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
   const input = req.body as CreateComplaintInput;
   const asset = await findScopedAsset(req, input.assetId);
   if (isGone(asset.status)) throw new HttpError(409, `This equipment has been ${asset.status}, so complaints can no longer be raised for it`);
-  // The people who can start work on it hear about it at once, not only when the board happens to be open.
-  const staff = (await usersWithPermissions('complaint.start', 'notification.view')).filter((id) => id !== me.id);
+  // The team that looks after it hears about it at once, not only when the board happens to be open.
+  const staff = (await registerTeam(asset.register, 'complaint.start', 'notification.view')).filter((id) => id !== me.id);
 
   const created = await prisma.$transaction(async (tx) => {
     // Atomic counter on the settings row: concurrent complaints get distinct numbers.
@@ -121,6 +129,7 @@ complaintsRouter.post('/', requirePermission('complaint.create'), validate(creat
         assetId: asset.id,
         raisedById: me.id,
         departmentId: asset.departmentId,
+        register: asset.register,
         description: input.description,
         urgent: input.urgent,
         createdBy: me.id,
@@ -206,7 +215,7 @@ complaintsRouter.post('/:id/escalate', requirePermission('complaint.start'), val
     },
     also: { escalatedAt: null },
   });
-  await tell(req, await usersWithPermissions('complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}"`, before);
+  await tell(req, await registerTeam(before.register, 'complaint.hold'), `Complaint ${before.complaintNo} escalated by ${me.name}: ${before.asset.assetCode} ${before.asset.name}: "${note.slice(0, 80)}"`, before);
   res.json(await one(after.id));
 });
 
@@ -311,7 +320,8 @@ complaintsRouter.post('/:id/assign', requirePermission('complaint.view'), valida
     if (before.assignedToId && before.assignedToId !== me.id) throw new HttpError(409, 'This complaint is already assigned to someone else');
   }
   if (userId && userId !== before.assignedToId) {
-    const canWork = (await usersWithPermissions('complaint.start')).includes(userId);
+    // Only someone of the complaint's own team (an engineer of the other register would not even see it).
+    const canWork = (await registerTeam(before.register, 'complaint.start')).includes(userId);
     const active = await prisma.user.findFirst({ where: { id: userId, active: true }, select: { id: true } });
     if (!canWork || !active) throw new HttpError(400, 'This person cannot work on complaints', { fieldErrors: { userId: ['Choose someone who can work on complaints'] } });
   }

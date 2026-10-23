@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ExportMenu } from '@/components/ExportMenu';
 import { ReportView } from '@/components/ReportView';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { hospitalToday, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { DashboardSkeleton } from '@/components/Skeletons';
@@ -23,6 +23,7 @@ const fyStart = (d: dayjs.Dayjs) => (d.month() >= 3 ? d.month(3).date(1) : d.sub
 function ReportPage() {
   const { type } = useParams<{ type: string }>();
   const { can } = useAuth();
+  const twoTeams = useTwoTeams(); // one team's equipment, for someone who sees both
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -32,21 +33,26 @@ function ReportPage() {
   const from = params.get('from') ?? fmt(today.subtract(12, 'month'));
   const to = params.get('to') ?? fmt(today);
   const group = params.get('group') === 'year' ? 'year' : params.get('group') === 'fy' ? 'fy' : 'month';
+  const register = params.get('register') ?? '';
   const range = meta?.range ?? false;
-  const query = new URLSearchParams({ ...(range ? { from, to } : {}), ...(meta && 'group' in meta ? { group } : {}) });
+  const query = new URLSearchParams({ ...(range ? { from, to } : {}), ...(meta && 'group' in meta ? { group } : {}), ...(register && { register }) });
   const path = `/reports/${type}${query.size ? `?${query}` : ''}`;
   const report = useFetch<ReportData>(can('report.view') && meta ? `${path}${query.size ? '&' : '?'}format=json` : null);
 
   if (!can('report.view')) return <StatusResult status="403" title="You cannot see reports" />;
   if (!meta) return <StatusResult status="404" title="Report not found" extra={<Link href="/reports"><Button>All reports</Button></Link>} />;
 
-  const set = (next: Record<string, string>) => router.replace(`${pathname}?${new URLSearchParams({ from, to, group, ...next })}`);
+  const set = (next: Record<string, string>) => {
+    const all = Object.entries({ from, to, group, register, ...next }).filter(([, v]) => v);
+    router.replace(`${pathname}?${new URLSearchParams(all)}`);
+  };
 
   return (
     <>
       <PageHeader title={meta.title} subtitle={meta.description} crumbs={['Reports', meta.title]} action={<ExportMenu path={path} name={`bme-${type}`} />} />
-      {(range || 'group' in meta) && (
+      {(range || 'group' in meta || twoTeams) && (
         <Space wrap size={16} style={{ marginBottom: 20 }}>
+          {twoTeams && <Segmented aria-label="Equipment" value={register} options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]} onChange={(v) => set({ register: String(v) })} />}
           {range && (
             <DatePicker.RangePicker
               allowClear={false}

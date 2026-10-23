@@ -3,7 +3,7 @@ import { CRITICALITY_LABEL, isCritical, type Kpi, type ReportData } from '@bme/s
 import { addDaysISO, addMonths, daysBetween, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { sendMail, smtpConfigured } from '../../lib/mail';
-import { usersWithPermissions } from '../../lib/people';
+import { hospitalScope, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { assetInclude, toAssetRow } from '../assets/assets.service';
 import { complaintMetrics } from '../complaints/complaints.service';
@@ -204,7 +204,7 @@ export async function saveMonthlyReport(month: string, now = new Date()): Promis
   // A brand-new install that has not been set up has nothing to report yet.
   if (!(await prisma.hospitalSettings.findFirst())) return none;
   if (await prisma.monthlyReport.findUnique({ where: { month } })) return none;
-  const data = await buildMonthlyReport(month, { name: AUTHOR, scope: {} }, now);
+  const data = await buildMonthlyReport(month, { name: AUTHOR, scope: await hospitalScope() }, now);
   try {
     await prisma.monthlyReport.create({ data: { month, data: data as unknown as Prisma.InputJsonValue } });
   } catch (e) {

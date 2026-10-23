@@ -1,13 +1,14 @@
 'use client';
 
-import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Space } from 'antd';
+import { Alert, App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
-import { equipmentTypeSchema } from '@bme/shared';
+import { equipmentTypeSchema, REGISTERS, TEAM_LABEL, type Register } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
+import { useTwoTeams } from '@/lib/auth';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { RequirePermission } from '@/components/RequirePermission';
 
@@ -18,18 +19,21 @@ type EquipmentType = {
   defaultPmsMonths: number | null;
   defaultCalibrationMonths: number | null;
   checklistVersion: number | null; // latest PMS checklist; null = none yet
+  register: Register;
 };
 
 function EquipmentTypesPageScreen() {
   const { message } = App.useApp();
   const types = useFetch<EquipmentType[]>('/equipment-types');
+  // With the facility maintenance add-on, each type says which team looks after it.
+  const twoTeams = useTwoTeams();
   const [form] = Form.useForm();
   const [editing, setEditing] = useState<EquipmentType | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
 
   function open(row: EquipmentType | 'new') {
     form.resetFields();
-    form.setFieldsValue(row === 'new' ? {} : row);
+    form.setFieldsValue(row === 'new' ? { register: 'biomedical' } : row);
     setEditing(row);
   }
 
@@ -99,6 +103,7 @@ function EquipmentTypesPageScreen() {
         columns={[
           { title: 'Name', dataIndex: 'name', className: 'm-title' },
           { title: 'Code', dataIndex: 'code' },
+          ...(twoTeams ? [{ title: 'Looked after by', dataIndex: 'register', render: (r: Register) => TEAM_LABEL[r] }] : []),
           { title: 'Default PMS', dataIndex: 'defaultPmsMonths', align: 'right', render: months },
           { title: 'Default calibration', dataIndex: 'defaultCalibrationMonths', align: 'right', render: months },
           { title: 'PMS checklist', dataIndex: 'checklistVersion', render: (v: number | null) => (v == null ? <Pill tone="warn">None yet</Pill> : `Version ${v}`) },
@@ -138,6 +143,11 @@ function EquipmentTypesPageScreen() {
           <Form.Item label="Code" name="code" extra="2–10 letters or digits, used in asset IDs (e.g. VENT)." rules={[{ required: true, message: 'Enter a code' }]}>
             <Input style={{ textTransform: 'uppercase' }} />
           </Form.Item>
+          {twoTeams && (
+            <Form.Item label="Looked after by" name="register" extra="Fixed once equipment of this type is registered.">
+              <Select options={REGISTERS.map((r) => ({ value: r, label: TEAM_LABEL[r] }))} />
+            </Form.Item>
+          )}
           <Form.Item label="Default PMS interval (months)" name="defaultPmsMonths">
             <InputNumber min={1} max={120} style={{ width: '100%' }} />
           </Form.Item>

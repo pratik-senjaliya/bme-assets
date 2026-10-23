@@ -1,10 +1,11 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
-import { currentUser, departmentScope } from '../../lib/auth';
+import { ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REGISTER_LABEL, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
+import { currentUser, scopeOf, type Scope } from '../../lib/auth';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
+import { facilityOn } from '../../lib/people';
 import { assetInclude, toAssetRow, type AssetWithRefs } from '../assets/assets.service';
 import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
 
@@ -71,8 +72,8 @@ export const tally = <T,>(items: T[], label: (t: T) => string): [string, number]
 };
 export const avg = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 
-export type Ctx = { q: ReportQuery; from: string; to: string; fromAt: Date; toAt: Date; scope: { departmentId?: string } };
-// A period in hospital days, for one department or (empty scope) the whole hospital.
+export type Ctx = { q: ReportQuery; from: string; to: string; fromAt: Date; toAt: Date; scope: Scope };
+// A period in hospital days, for one department and / or register, or (empty scope) the whole hospital.
 export const periodCtx = (from: string, to: string, scope: Ctx['scope'], q: Partial<ReportQuery> = {}): Ctx => ({
   q: { group: 'month', format: 'json', ...q } as ReportQuery,
   from,
@@ -470,10 +471,11 @@ async function consumables(wb: Collector, c: Ctx) {
   const include = { item: true, department: true, asset: true, complaint: true, supplier: true, by: { select: { name: true } } } as const;
   const inPeriod = { date: { gte: parseDate(c.from), lte: parseDate(c.to) } };
   const scoped = !!c.scope.departmentId;
+  const store = c.scope.register && { register: c.scope.register }; // each team's own store
   const [given, received, items] = await Promise.all([
-    prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'out', ...(scoped && { departmentId: c.scope.departmentId }) }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
-    scoped ? [] : prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'in' }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
-    scoped ? [] : prisma.consumableItem.findMany({ orderBy: { name: 'asc' } }),
+    prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'out', item: { ...store }, ...(scoped && { departmentId: c.scope.departmentId }) }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
+    scoped ? [] : prisma.consumableMovement.findMany({ where: { ...inPeriod, kind: 'in', item: { ...store } }, include, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] }),
+    scoped ? [] : prisma.consumableItem.findMany({ where: { ...store }, orderBy: { name: 'asc' } }),
   ]);
   const value = (m: { quantity: number; unitCost: Prisma.Decimal | null }) => (m.unitCost == null ? null : Math.abs(m.quantity) * Number(m.unitCost));
   const total = (ms: typeof given) => ms.reduce((t, m) => t + (value(m) ?? 0), 0);
@@ -573,7 +575,7 @@ const SNAPSHOT: ReportType[] = ['asset-master', 'equipment-age', 'warranty-contr
 
 export async function buildReport(type: ReportType, req: Request, q: ReportQuery): Promise<{ data: ReportData; filename: string }> {
   const me = currentUser(req);
-  return buildReportAs(type, q, me.name, departmentScope(me));
+  return buildReportAs(type, q, me.name, scopeOf(me, q.register));
 }
 
 // The same report for someone named `by`, limited to `scope` (empty: the whole hospital). Used by the audit pack.
@@ -614,7 +616,10 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     deptId ? prisma.department.findUnique({ where: { id: deptId }, select: { name: true } }) : null,
     filtered && q.equipmentTypeId ? prisma.equipmentType.findUnique({ where: { id: q.equipmentTypeId }, select: { name: true } }) : null,
   ]);
+  // One team's equipment, in a hospital that has both.
+  const team = scope.register?.in.length === 1 && (await facilityOn()) ? scope.register.in[0] : null;
   const filters = [
+    ...(team ? [`Equipment: ${REGISTER_LABEL[team]}`] : []),
     ...(dept ? [`Department: ${dept.name}`] : []),
     ...(eqType ? [`Equipment type: ${eqType.name}`] : []),
     ...(filtered && q.criticality ? [`Criticality: ${CRITICALITY_LABEL[q.criticality]}`] : []),
@@ -822,7 +827,7 @@ const DOC_KIND: Record<string, string> = {
 // breakdown, service and (for those allowed to see costs) expense, and the documents on file. One sheet each.
 export async function buildAssetHistory(req: Request, assetId: string) {
   const me = currentUser(req);
-  const asset = await prisma.asset.findFirstOrThrow({ where: { id: assetId, ...departmentScope(me) }, include: assetInclude });
+  const asset = await prisma.asset.findFirstOrThrow({ where: { id: assetId, ...scopeOf(me) }, include: assetInclude });
   const canSeeCosts = me.permissions.includes('expense.manage');
   const [orders, contracts, pmsRecords, calibrations, complaints, logs, expenses, settings] = await Promise.all([
     prisma.purchaseOrder.findMany({ where: { assetId }, orderBy: { poDate: 'asc' } }),

@@ -29,7 +29,11 @@ await step('Users: Import from Excel leads to the import page with its template'
 
 await step('Add asset takes the hospital tag no and its own calibration interval', async () => {
   await ap.goto(BASE + '/assets/new'); await settle(ap);
-  await pick(ap, 'Equipment type', 'Ventilator'); await fillField(ap, 'Name', 'E2E-Register vent');
+  // The HOD sees both teams' types: search the list rather than scroll it.
+  await ap.locator('.ant-form-item', { hasText: 'Equipment type' }).locator('.ant-select').first().click();
+  await ap.keyboard.type('Ventil');
+  await ap.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: 'Ventilator' }).first().click();
+  await fillField(ap, 'Name', 'E2E-Register vent');
   await pick(ap, 'Department', 'Intensive Care Unit'); await pick(ap, 'Location', 'ICU 1');
   await fillField(ap, 'Hospital tag no', 'E2E/TAG/1');
   await fillField(ap, 'Calibration every', '6');

@@ -1,12 +1,12 @@
-import type { PermissionCode } from '@bme/shared';
+import { REGISTERS, type PermissionCode, type Register } from '@bme/shared';
 import type { NotificationType, RunRemindersResult } from '@bme/shared';
 import { addMonths, daysBetween, parseDate, prettyDate } from '../../lib/dates';
 import { sendMail, smtpConfigured } from '../../lib/mail';
-import { usersWithPermissions } from '../../lib/people';
+import { registerTeam, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { diskSpace } from '../../lib/storage';
 
-// Who gets which reminder: people whose role can act on it (and can read notifications).
+// Who gets which reminder: people of the equipment's team whose role can act on it (and can read notifications).
 const RECIPIENT_PERMISSION: Record<'pms' | 'calibration' | 'warranty' | 'contract', PermissionCode> = {
   pms: 'pms.perform',
   calibration: 'calibration.manage',
@@ -14,9 +14,9 @@ const RECIPIENT_PERMISSION: Record<'pms' | 'calibration' | 'warranty' | 'contrac
   contract: 'asset.edit',
 };
 
-const recipients = (type: NotificationType) => usersWithPermissions(RECIPIENT_PERMISSION[type as keyof typeof RECIPIENT_PERMISSION], 'notification.view');
+const recipients = (type: NotificationType, register: Register) => registerTeam(register, RECIPIENT_PERMISSION[type as keyof typeof RECIPIENT_PERMISSION], 'notification.view');
 
-type Candidate = { type: NotificationType; assetId: string; dueDate: Date; message: (daysLeft: number) => string };
+type Candidate = { type: NotificationType; register: Register; assetId: string; dueDate: Date; message: (daysLeft: number) => string };
 
 // thresholdDays of the one reminder sent once an item is overdue (after "due in 5 days", nothing else would come).
 export const OVERDUE_THRESHOLD = -1;
@@ -53,20 +53,22 @@ export async function generateReminders(today: string): Promise<RunRemindersResu
 
   const label = (a: { assetCode: string; name: string }) => `${a.assetCode} ${a.name}`;
   const candidates: Candidate[] = [
-    ...pms.map((a): Candidate => ({ type: 'pms', assetId: a.id, dueDate: a.nextPmsDue!, message: (d) => `PMS ${when(d)}: ${label(a)} (${prettyDate(a.nextPmsDue!)})` })),
-    ...calibration.map((a): Candidate => ({ type: 'calibration', assetId: a.id, dueDate: a.nextCalibrationDue!, message: (d) => `Calibration ${when(d)}: ${label(a)} (${prettyDate(a.nextCalibrationDue!)})` })),
-    ...warranty.map((a): Candidate => ({ type: 'warranty', assetId: a.id, dueDate: a.warrantyEnd!, message: (d) => `Warranty ${ends(d)}: ${label(a)} (${prettyDate(a.warrantyEnd!)})` })),
-    ...contracts.map((c): Candidate => ({ type: 'contract', assetId: c.assetId, dueDate: c.endDate, message: (d) => `${c.type.toUpperCase().replace('_', '-')} contract with ${c.vendor} ${ends(d)}: ${label(c.asset)} (${prettyDate(c.endDate)})` })),
+    ...pms.map((a): Candidate => ({ type: 'pms', register: a.register, assetId: a.id, dueDate: a.nextPmsDue!, message: (d) => `PMS ${when(d)}: ${label(a)} (${prettyDate(a.nextPmsDue!)})` })),
+    ...calibration.map((a): Candidate => ({ type: 'calibration', register: a.register, assetId: a.id, dueDate: a.nextCalibrationDue!, message: (d) => `Calibration ${when(d)}: ${label(a)} (${prettyDate(a.nextCalibrationDue!)})` })),
+    ...warranty.map((a): Candidate => ({ type: 'warranty', register: a.register, assetId: a.id, dueDate: a.warrantyEnd!, message: (d) => `Warranty ${ends(d)}: ${label(a)} (${prettyDate(a.warrantyEnd!)})` })),
+    ...contracts.map((c): Candidate => ({ type: 'contract', register: c.asset.register, assetId: c.assetId, dueDate: c.endDate, message: (d) => `${c.type.toUpperCase().replace('_', '-')} contract with ${c.vendor} ${ends(d)}: ${label(c.asset)} (${prettyDate(c.endDate)})` })),
   ];
 
-  const people = new Map<NotificationType, string[]>();
-  for (const type of Object.keys(RECIPIENT_PERMISSION) as NotificationType[]) people.set(type, await recipients(type));
+  const people = new Map<string, string[]>();
+  for (const type of Object.keys(RECIPIENT_PERMISSION) as NotificationType[]) {
+    for (const register of REGISTERS) people.set(`${type}:${register}`, await recipients(type, register));
+  }
 
   const data = candidates.flatMap((c) => {
     const daysLeft = daysBetween(todayDate, c.dueDate);
     const threshold = daysLeft < 0 && (c.type === 'pms' || c.type === 'calibration') ? OVERDUE_THRESHOLD : thresholds.find((t) => daysLeft <= t);
     if (threshold === undefined) return [];
-    return (people.get(c.type) ?? []).map((userId) => ({
+    return (people.get(`${c.type}:${c.register}`) ?? []).map((userId) => ({
       userId,
       type: c.type,
       assetId: c.assetId,

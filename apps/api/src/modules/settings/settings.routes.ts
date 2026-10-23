@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { APP_VERSION, updateSettingsSchema, type SettingsResponse, type UpdateSettingsInput } from '@bme/shared';
 import { audited } from '../../lib/audit';
+import { ensureStarterTypes } from '../../lib/baseData';
 import { currentUser, requirePermission } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -23,6 +24,7 @@ const toResponse = async (s: Row): Promise<SettingsResponse> => {
   criticalDowntimeHours: s.criticalDowntimeHours,
   complaintCloseDays: s.complaintCloseDays,
   transfersEnabled: s.transfersEnabled,
+  facilityEnabled: s.facilityEnabled,
   biomedContact: s.biomedContact,
   idleLogoutMinutes: s.idleLogoutMinutes,
   smtpHost: s.smtpHost,
@@ -63,6 +65,11 @@ settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
     }
   }
 
+  // The facility add-on is the vendor's to switch on (decision K), like the asset ID pattern.
+  if (input.facilityEnabled !== undefined && input.facilityEnabled !== before.facilityEnabled && currentUser(req).role !== 'super_admin') {
+    throw new HttpError(403, 'Only the super admin can switch the facility maintenance add-on on or off');
+  }
+
   // The hospital code is part of every asset ID (rule 2): once IDs carry it, a new code would make new IDs disagree.
   if (input.shortCode !== undefined && input.shortCode !== before.shortCode && before.assetIdPattern.includes('{HOSP}') && (await prisma.asset.count()) > 0) {
     throw new HttpError(409, 'The hospital code is part of the asset IDs already given out, so it can no longer be changed', { fieldErrors: { shortCode: ['Locked: asset IDs already use it'] } });
@@ -71,5 +78,7 @@ settingsRouter.put('/', validate(updateSettingsSchema), async (req, res) => {
   const row = await audited(req, { action: 'settings.update', entityType: 'hospital_settings', before }, (tx) =>
     tx.hospitalSettings.update({ where: { id: before.id }, data: { ...rest, ...(smtpPassword ? { smtpPassword } : {}) } }),
   );
+  // Switched on for the first time: the starter facility types and checklists, so the team can start registering.
+  if (row.facilityEnabled && !before.facilityEnabled && !(await prisma.equipmentType.count({ where: { register: 'facility' } }))) await ensureStarterTypes('facility');
   res.json(await toResponse(row));
 });

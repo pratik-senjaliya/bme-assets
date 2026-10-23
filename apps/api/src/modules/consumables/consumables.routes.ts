@@ -6,6 +6,7 @@ import {
   isGone,
   isLowStock,
   issueSchema,
+  registerQuerySchema,
   newConsumableSchema,
   stockAdjustSchema,
   stockInSchema,
@@ -21,7 +22,7 @@ import { audit } from '../../lib/audit';
 import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
 import { addDaysISO, isoDate, parseDate, todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
-import { usersWithPermissions } from '../../lib/people';
+import { registerTeam } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf, validate } from '../../lib/validate';
 
@@ -53,6 +54,7 @@ const toRow = (i: Item, lastIssuedOn: Date | null = null): ConsumableRow => ({
   unitCost: num(i.unitCost),
   notes: i.notes,
   active: i.active,
+  register: i.register,
   lastIssuedOn: lastIssuedOn && isoDate(lastIssuedOn),
 });
 const toMovement = (m: Movement): ConsumableMovementRow => ({
@@ -72,8 +74,9 @@ const toMovement = (m: Movement): ConsumableMovementRow => ({
   createdAt: m.createdAt.toISOString(),
 });
 
+// Each team keeps its own store: an item of the other register looks like a missing one.
 async function findItem(req: Request) {
-  const item = await prisma.consumableItem.findUnique({ where: { id: idOf(req) } });
+  const item = await prisma.consumableItem.findFirst({ where: { id: idOf(req), register: { in: currentUser(req).registers } } });
   if (!item) throw new HttpError(404, 'Item not found');
   return item;
 }
@@ -105,7 +108,7 @@ async function move(tx: Db, req: Request, item: Item, change: number, data: Omit
   await audit(tx, req, { action: `consumable.${data.kind}`, entityType: 'consumable', entityId: item.id, before: { stock: item.stock }, after: { ...m, item: after.name } });
   // The moment an item reaches its reorder level, the people who keep the stock hear about it, once per crossing.
   if (!isLowStock(item) && isLowStock(after)) {
-    const people = await usersWithPermissions('consumable.manage', 'notification.view');
+    const people = await registerTeam(item.register, 'consumable.manage', 'notification.view');
     const message = after.stock === 0 ? `${after.name} is out of stock` : `${after.name} is low: ${after.stock} ${after.unit} left (reorder at ${after.reorderLevel})`;
     if (people.length) await tx.notification.createMany({ data: people.map((userId) => ({ userId, type: 'stock', message })) });
   }
@@ -114,7 +117,9 @@ async function move(tx: Db, req: Request, item: Item, change: number, data: Omit
 
 consumablesRouter.get('/', MANAGE, async (req, res) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 100) : '';
-  const items = await prisma.consumableItem.findMany({ where: search ? { name: { contains: search, mode: 'insensitive' } } : {}, orderBy: { name: 'asc' }, take: 1000 });
+  const { register } = registerQuerySchema.parse(req.query);
+  const mine = currentUser(req).registers.filter((r) => !register || r === register);
+  const items = await prisma.consumableItem.findMany({ where: { register: { in: mine }, ...(search && { name: { contains: search, mode: 'insensitive' } }) }, orderBy: { name: 'asc' }, take: 1000 });
   const last = await prisma.consumableMovement.groupBy({ by: ['itemId'], where: { kind: 'out', itemId: { in: items.map((i) => i.id) } }, _max: { date: true } });
   const lastOf = new Map(last.map((l) => [l.itemId, l._max.date]));
   let rows = items.map((i) => toRow(i, lastOf.get(i.id) ?? null));
@@ -134,8 +139,12 @@ const itemFields = (v: ConsumableItemInput) => ({ name: v.name, unit: v.unit, re
 consumablesRouter.post('/', MANAGE, validate(newConsumableSchema), async (req, res) => {
   const input = req.body as ConsumableItemInput & { openingStock: number };
   await assertNameFree(input.name);
+  // Whose store: as chosen, else the person's own (biomedical for someone who keeps both).
+  const mine = currentUser(req).registers;
+  const register = input.register ?? mine[0];
+  if (!register || !mine.includes(register)) throw new HttpError(403, 'You do not keep this store', { fieldErrors: { register: ['Choose your own team’s store'] } });
   const item = await prisma.$transaction(async (tx) => {
-    const created = await tx.consumableItem.create({ data: { ...itemFields(input), createdBy: currentUser(req).id } });
+    const created = await tx.consumableItem.create({ data: { ...itemFields(input), register, createdBy: currentUser(req).id } });
     await audit(tx, req, { action: 'consumable.create', entityType: 'consumable', entityId: created.id, after: created });
     // What is on the shelf today is the first movement, so the register adds up from the start.
     if (input.openingStock > 0) await move(tx, req, created, input.openingStock, { kind: 'adjust', date: parseDate(todayISO()), unitCost: created.unitCost, reason: 'Opening stock' });
@@ -206,6 +215,7 @@ consumablesRouter.post('/:id/issue', MANAGE, validate(issueSchema), async (req, 
   if (assetId) {
     const asset = await prisma.asset.findUnique({ where: { id: assetId } });
     if (!asset) throw new HttpError(400, 'Machine not found', { fieldErrors: { assetId: ['Machine not found'] } });
+    if (asset.register !== item.register) throw new HttpError(400, `${item.name} is from the other team's store`, { fieldErrors: { assetId: [`${asset.assetCode} is looked after by the other team`] } });
     if (asset.departmentId !== input.departmentId) throw new HttpError(400, `${asset.assetCode} belongs to another department`, { fieldErrors: { assetId: [`${asset.assetCode} belongs to another department`] } });
     if (isGone(asset.status)) throw new HttpError(409, `${asset.assetCode} has been ${asset.status}`, { fieldErrors: { assetId: [`${asset.assetCode} has been ${asset.status}`] } });
   }

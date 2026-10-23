@@ -93,6 +93,6 @@ calibrationRouter.post('/calibration/records/:id/certificate', requirePermission
 });
 
 calibrationRouter.get('/calibration/due', requirePermission('calibration.manage'), async (req, res) => {
-  const { until } = dueQuerySchema.parse(req.query);
-  res.json(await dueList(req, 'nextCalibrationDue', until));
+  const { until, register } = dueQuerySchema.parse(req.query);
+  res.json(await dueList(req, 'nextCalibrationDue', until, register));
 });

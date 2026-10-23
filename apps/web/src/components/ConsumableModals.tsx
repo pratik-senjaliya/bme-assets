@@ -12,7 +12,10 @@ import {
   newConsumableSchema,
   stockAdjustSchema,
   stockInSchema,
+  TEAM_LABEL,
+  REGISTERS,
   type AssetRow,
+  type Register,
   type ComplaintRow,
   type ConsumableRow,
   type Paged,
@@ -20,6 +23,7 @@ import {
 } from '@bme/shared';
 import { Pill } from '@/components/StatusTag';
 import { api, useFetch } from '@/lib/api';
+import { useTwoTeams } from '@/lib/auth';
 import { hospitalToday, moneyInputProps, todayIST } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
@@ -50,12 +54,13 @@ export function ItemModal({ item, open, onClose, onSaved }: { item: ConsumableRo
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const single = useSingleFlight();
+  const twoTeams = useTwoTeams();
 
   useEffect(() => {
     if (!open) return;
     form.resetFields();
-    form.setFieldsValue(item ? { ...item, unitCost: item.unitCost ?? undefined } : { unit: 'pcs', reorderLevel: 0, openingStock: 0, active: true });
-  }, [open, item, form]);
+    form.setFieldsValue(item ? { ...item, unitCost: item.unitCost ?? undefined } : { unit: 'pcs', reorderLevel: 0, openingStock: 0, active: true, ...(twoTeams && { register: 'biomedical' }) });
+  }, [open, item, form, twoTeams]);
 
   async function save() {
     const v = form.getFieldsValue();
@@ -104,6 +109,12 @@ export function ItemModal({ item, open, onClose, onSaved }: { item: ConsumableRo
             </Col>
           )}
         </Row>
+        {/* Each team keeps its own store; someone who keeps both chooses, once. */}
+        {!item && twoTeams && (
+          <Form.Item label="Store" name="register">
+            <Select options={REGISTERS.map((r) => ({ value: r, label: TEAM_LABEL[r] }))} />
+          </Form.Item>
+        )}
         <Form.Item label="Notes" name="notes">
           <Input.TextArea rows={2} maxLength={500} placeholder="e.g. Fits Philips MX450 monitors" />
         </Form.Item>
@@ -130,7 +141,7 @@ export function MoveModal({
 }: {
   kind: MoveKind | null;
   item: ConsumableRow | null;
-  asset?: { id: string; assetCode: string; name: string; departmentId: string } | null;
+  asset?: { id: string; assetCode: string; name: string; departmentId: string; register: Register } | null;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -147,9 +158,9 @@ export function MoveModal({
   const departmentId = Form.useWatch('departmentId', form) as string | undefined;
   const assetId = Form.useWatch('assetId', form) as string | undefined;
   const [assetSearch, setAssetSearch] = useState('');
-  const machines = useFetch<Paged<AssetRow>>(issuing && departmentId ? `/assets?departmentId=${departmentId}&pageSize=50${assetSearch ? `&search=${encodeURIComponent(assetSearch)}` : ''}` : null);
-  const complaints = useFetch<Paged<ComplaintRow>>(issuing && assetId ? `/complaints?assetId=${assetId}&pageSize=20` : null);
   const chosen = item ?? items.data?.find((i) => i.id === itemId) ?? null;
+  const machines = useFetch<Paged<AssetRow>>(issuing && departmentId ? `/assets?departmentId=${departmentId}${chosen ? `&register=${chosen.register}` : ''}&pageSize=50${assetSearch ? `&search=${encodeURIComponent(assetSearch)}` : ''}` : null);
+  const complaints = useFetch<Paged<ComplaintRow>>(issuing && assetId ? `/complaints?assetId=${assetId}&pageSize=20` : null);
 
   useEffect(() => {
     if (!open) return;
@@ -207,7 +218,7 @@ export function MoveModal({
               optionFilterProp="label"
               placeholder="Choose the item"
               loading={items.loading}
-              options={items.data?.filter((i) => i.active && (kind !== 'issue' || i.stock > 0)).map((i) => ({ value: i.id, label: `${i.name} (${i.stock} ${i.unit})` }))}
+              options={items.data?.filter((i) => i.active && (kind !== 'issue' || i.stock > 0) && (!asset || i.register === asset.register)).map((i) => ({ value: i.id, label: `${i.name} (${i.stock} ${i.unit})` }))}
               notFoundContent="Nothing in stock. Add items under Consumables."
             />
           </Form.Item>
