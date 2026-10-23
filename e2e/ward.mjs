@@ -49,7 +49,7 @@ await step('Maintenance starts and resolves it; the card shows how long it took,
   expect(!(await dlg.getByRole('button', { name: /Add a part or cost/ }).count()), 'costs offered without a machine');
   await dlg.locator('textarea').fill('Washer replaced');
   await dlg.getByRole('button', { name: 'Mark resolved' }).click();
-  await p.locator('.ant-message-success').first().waitFor();
+  await dlg.waitFor({ state: 'hidden' }); // closes once saved (the start's toast may still be showing)
   const done = (await maint.api('GET', `/complaints/${cmp.id}`)).body;
   expect(done.status === 'resolved' && done.downtimeSeconds === null && done.resolutionSeconds != null, `status ${done.status}, downtime ${done.downtimeSeconds}`);
 }, maint.page);

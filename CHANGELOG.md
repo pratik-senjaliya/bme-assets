@@ -6,6 +6,19 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.4.0 (November 2026)
+
+- **Logbook (facility add-on):** the plant-room logbook on screen. On a machine's Logbook tab the team sets what is
+  read (run hours, diesel level, temperatures, TDS, pressures, energy and water meters), its unit, normal range and how
+  often (daily, weekly, monthly). A reading is dated by the system and cannot be changed; a wrong one is corrected with
+  a reason and the original stays. A reading outside its range tells the team at once; readings still to take, readings
+  out of range and PMS due by run hours show on My work. Equipment > Logbook lists what is owed now for the round.
+  Meters never go back.
+- **PMS by run hours:** a machine with a run-hours meter can have PMS every N hours (DG set every 250 h), counted from
+  the meter at its last PMS.
+- **New report:** Consumption and readings (meter use per month, readings out of range, PMS by run hours).
+- New permission "Take logbook readings".
+
 ## 1.3.0 (November 2026)
 
 - **Statutory licences and inspections (facility add-on):** Equipment > Licences keeps lift licences, fire NOC, DG

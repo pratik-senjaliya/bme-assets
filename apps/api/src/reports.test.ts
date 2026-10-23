@@ -69,12 +69,12 @@ const table = (wb: ExcelJS.Workbook, sheet: string) => {
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
 describe('every report downloads as a valid Excel file', () => {
-  it('has all sixteen, each with an overview first, then its data sheets', async () => {
+  it('has all seventeen, each with an overview first, then its data sheets', async () => {
     const expected: Record<string, string[]> = {
       'asset-master': ['Asset master'], pms: ['PMS records', 'Summary'], calibration: ['Calibrations done', 'Next due (active assets)'], breakdowns: ['Breakdowns', 'By month'],
       uptime: ['Uptime', 'Summary'], 'critical-downtime': ['Uptime', 'Downtime events'], 'equipment-age': ['Assets by age', 'Age bands', 'By equipment type'], expenses: ['Expenses', 'By asset', 'By month'], 'warranty-contracts': ['Warranty', 'Contracts', 'No cover (active)'],
       condemnation: ['Condemnation register'], consumables: ['Given out', 'By item', 'Received', 'Stock today'],
-      engineers: ['Engineers'], suppliers: ['Suppliers'], replacement: ['Equipment to consider replacing', 'Cover ending in 90 days'], trades: ['By trade', 'By location', 'Complaints'], compliance: ['Licences', 'Expired or ending', 'Renewal history'],
+      engineers: ['Engineers'], suppliers: ['Suppliers'], replacement: ['Equipment to consider replacing', 'Cover ending in 90 days'], trades: ['By trade', 'By location', 'Complaints'], compliance: ['Licences', 'Expired or ending', 'Renewal history'], consumption: ['Used per month', 'Out of range', 'PMS by run hours'],
     };
     assert.deepEqual(REPORTS.map((r) => r.type).sort(), Object.keys(expected).sort());
     for (const [type, sheets] of Object.entries(expected)) {

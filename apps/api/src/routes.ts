@@ -22,6 +22,7 @@ import { usersRouter } from './modules/users/users.routes';
 import { vendorsRouter } from './modules/vendors/vendors.routes';
 import { consumablesRouter } from './modules/consumables/consumables.routes';
 import { licencesRouter } from './modules/licences/licences.routes';
+import { readingsRouter } from './modules/readings/readings.routes';
 
 export const v1 = Router();
 
@@ -57,6 +58,7 @@ v1.use('/users', usersRouter);
 v1.use('/vendors', vendorsRouter);
 v1.use('/consumables', consumablesRouter);
 v1.use('/licences', licencesRouter);
+v1.use('/readings', readingsRouter);
 v1.use(notificationsRouter); // /notifications, /reminders/run, /settings/smtp-test
 v1.use('/roles', rolesRouter);
 v1.use('/settings', settingsRouter);

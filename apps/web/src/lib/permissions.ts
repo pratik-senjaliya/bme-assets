@@ -25,6 +25,7 @@ export const PERMISSION_TEXT: Record<PermissionCode, { label: string; hint: stri
   'audit.view': { label: 'See the audit log', hint: 'Who did what, and when' },
   'report.view': { label: 'See and export reports', hint: 'On screen, to Excel and to PDF' },
   'notification.view': { label: 'See reminders', hint: 'The bell: PMS, calibration, warranty and contracts' },
+  'reading.record': { label: 'Take logbook readings', hint: 'Run hours, diesel, temperatures and meters on the round; told when a reading is out of range (facility add-on)' },
   'licence.manage': { label: 'Keep statutory licences', hint: 'Lift licence, fire NOC, PESO and other licences of their team: add, renew, documents. Reminded before they end (facility add-on)' },
   'consumable.manage': { label: 'Keep the consumables stock', hint: 'Add items, stock in, give out to departments, correct counts. Told when an item runs low' },
   'register.biomedical': { label: 'Biomedical equipment', hint: 'Sees and works on medical equipment, its complaints, reminders and stock' },

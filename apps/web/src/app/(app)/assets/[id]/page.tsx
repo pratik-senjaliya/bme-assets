@@ -51,6 +51,7 @@ import { MoveModal } from '@/components/ConsumableModals';
 const AssetCalibrationTab = dynamic(() => import('@/components/AssetCalibrationTab').then((m) => m.AssetCalibrationTab));
 const AssetServiceLogTab = dynamic(() => import('@/components/AssetServiceLogTab').then((m) => m.AssetServiceLogTab));
 const AssetPmsTab = dynamic(() => import('@/components/AssetPmsTab').then((m) => m.AssetPmsTab));
+const AssetLogbookTab = dynamic(() => import('@/components/AssetLogbookTab').then((m) => m.AssetLogbookTab));
 const ComplaintsHistory = dynamic(() => import('@/components/ComplaintsHistory').then((m) => m.ComplaintsHistory));
 const RaiseComplaintModal = dynamic(() => import('@/components/RaiseComplaintModal').then((m) => m.RaiseComplaintModal));
 const RequestCondemnModal = dynamic(() => import('@/components/RequestApprovalModals').then((m) => m.RequestCondemnModal));
@@ -76,7 +77,7 @@ export default function AssetDetailPage() {
   const [condemning, setCondemning] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [givingOut, setGivingOut] = useState(false);
-  const hospital = useFetch<HospitalInfo>(can('asset.request_change') ? '/hospital' : null);
+  const hospital = useFetch<HospitalInfo>(can('asset.request_change') || can('reading.record') ? '/hospital' : null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const [requests, setRequests] = useState(0); // bumps to refresh the "waiting for HOD" banners
 
@@ -186,6 +187,8 @@ export default function AssetDetailPage() {
         </div>
       </Card>
       <Tabs
+        // The Logbook tab appears once the hospital's add-ons are known: start again then, so ?tab=logbook opens it.
+        key={hospital.data ? 'ready' : 'loading'}
         defaultActiveKey={initialTab}
         // Keep the open tab in the address, so a reload or a shared link comes back to it.
         onChange={(k) => {
@@ -197,6 +200,8 @@ export default function AssetDetailPage() {
           { key: 'overview', label: 'Overview', children: <Overview a={a} /> },
           { key: 'timeline', label: 'Timeline', children: <TimelineTab id={a.id} /> },
           ...(can('pms.perform') ? [{ key: 'pms', label: 'PMS', children: <AssetPmsTab asset={a} /> }] : []),
+          // The logbook (facility add-on, F4): readings and run hours.
+          ...(can('reading.record') && hospital.data?.facilityEnabled ? [{ key: 'logbook', label: 'Logbook', children: <AssetLogbookTab assetId={a.id} gone={gone} /> }] : []),
           ...(can('calibration.manage') ? [{ key: 'calibration', label: 'Calibration', children: <AssetCalibrationTab asset={a} onChanged={asset.reload} /> }] : []),
           ...(can('asset.edit') ? [{ key: 'service', label: 'Service log', children: <AssetServiceLogTab assetId={a.id} canEdit={!gone} canRequest={can('asset.request_change')} requestDelete={setDeleting} /> }] : []),
           ...(can('complaint.view') ? [{ key: 'complaints', label: 'Complaints', children: <ComplaintsHistory assetId={a.id} reloadKey={complaintsVersion} /> }] : []),

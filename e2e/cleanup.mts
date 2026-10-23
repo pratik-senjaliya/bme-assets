@@ -18,7 +18,14 @@ await prisma.serviceLog.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.purchaseOrder.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.serviceContract.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.calibrationRecord.deleteMany({ where: { assetId: { in: ids } } });
-await prisma.$transaction([prisma.$queryRaw`select set_config('bme.allow_pms_cleanup', 'on', true)`, prisma.pmsRecord.deleteMany({ where: { assetId: { in: ids } } })]);
+// PMS records and logbook readings (F4) are read-only to the application; the cleanup uses the database's escape hatch.
+await prisma.$transaction([
+  prisma.$queryRaw`select set_config('bme.allow_pms_cleanup', 'on', true)`,
+  prisma.pmsRecord.deleteMany({ where: { assetId: { in: ids } } }),
+  prisma.reading.deleteMany({ where: { assetId: { in: ids }, correctsId: { not: null } } }),
+  prisma.reading.deleteMany({ where: { assetId: { in: ids } } }),
+]);
+await prisma.readingType.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.approvalRequest.deleteMany({ where: { targetId: { in: owners } } });
 await prisma.notification.deleteMany({ where: { assetId: { in: ids } } });
 const e2eItems = await prisma.consumableItem.findMany({ where: { name: { startsWith: 'E2E-' } }, select: { id: true } });

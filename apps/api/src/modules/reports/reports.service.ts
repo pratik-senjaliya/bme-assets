@@ -9,6 +9,7 @@ import { facilityOn } from '../../lib/people';
 import { assetInclude, toAssetRow, type AssetWithRefs } from '../assets/assets.service';
 import { complaintMetrics, machineDownMs } from '../complaints/complaints.service';
 import { licenceInclude, toLicenceRows } from '../licences/licences.routes';
+import { effective, runHoursInfo } from '../readings/readings.service';
 
 // ---------- What a builder produces ----------
 
@@ -275,6 +276,46 @@ async function breakdowns(wb: Collector, c: Ctx) {
     const resp = g.map((r) => r.m.responseSeconds).filter((v): v is number => v != null);
     return { period: periodName(period, group, true), count: g.length, resolved: down.length, resp: avg(resp) == null ? null : avg(resp)! / 3600, down: down.reduce((a, b) => a + b, 0) / 3600, avgDown: avg(down) == null ? null : avg(down)! / 3600 };
   }), ['count', 'resolved', 'down']);
+}
+
+// The logbook in a period (facility add-on, F4): what the meters say was used per month (diesel, kWh, water), the
+// readings outside their range, and each run-hours machine's PMS by hours.
+async function consumption(wb: Collector, c: Ctx) {
+  const assetWhere = { ...c.scope } satisfies Prisma.AssetWhereInput;
+  const [meters, outOfRange, taken, runAssets] = await Promise.all([
+    prisma.readingType.findMany({ where: { kind: 'meter', asset: assetWhere }, include: { asset: { select: { assetCode: true, name: true } } }, orderBy: [{ asset: { assetCode: 'asc' } }, { name: 'asc' }] }),
+    prisma.reading.findMany({ where: { outOfRange: true, takenAt: { gte: c.fromAt, lt: c.toAt }, asset: assetWhere, ...effective }, include: { type: true, asset: { select: { assetCode: true, name: true } } }, orderBy: { takenAt: 'asc' } }),
+    prisma.reading.count({ where: { takenAt: { gte: c.fromAt, lt: c.toAt }, asset: assetWhere } }),
+    prisma.asset.findMany({ where: { ...assetWhere, pmsEveryHours: { not: null } }, select: { id: true, assetCode: true, name: true, pmsEveryHours: true, lastPmsHours: true } }),
+  ]);
+  const months = periodKeys(c.from, c.to, 'month');
+  const used: Record<string, string | number | null>[] = [];
+  for (const m of meters) {
+    // The last reading before the period too, so the first month's use is counted.
+    const readings = await prisma.reading.findMany({ where: { readingTypeId: m.id, takenAt: { lt: c.toAt }, ...effective }, orderBy: { takenAt: 'asc' }, select: { value: true, takenAt: true } });
+    const byMonth = new Map<string, number>();
+    for (let i = 1; i < readings.length; i++) {
+      if (readings[i].takenAt < c.fromAt) continue;
+      const month = monthInTz(readings[i].takenAt);
+      byMonth.set(month, (byMonth.get(month) ?? 0) + Math.max(0, readings[i].value - readings[i - 1].value));
+    }
+    for (const month of months) used.push({ item: `${m.asset.assetCode} ${m.asset.name}`, reading: m.name, unit: m.unit, month: periodName(month, 'month', true), used: Math.round((byMonth.get(month) ?? 0) * 100) / 100 });
+  }
+  kpi(wb, 'Readings taken', taken, 'int', span(c));
+  kpi(wb, 'Out of range', outOfRange.length, 'int', outOfRange.length ? 'Listed below' : 'None', outOfRange.length ? 'warn' : 'good');
+  kpi(wb, 'Meters', meters.length, 'int', 'Diesel, energy, water, run hours');
+  addSheet(wb, 'Used per month', [
+    { header: 'Item', key: 'item', width: 30 }, { header: 'Meter', key: 'reading', width: 22 }, { header: 'Unit', key: 'unit' }, { header: 'Month', key: 'month' }, { header: 'Used', key: 'used', fmt: 'hours' },
+  ], used);
+  addSheet(wb, 'Out of range', [
+    { header: 'Taken', key: 'at', fmt: 'datetime', width: 20 }, { header: 'Item', key: 'item', width: 30 }, { header: 'Reading', key: 'reading', width: 22 }, { header: 'Value', key: 'value', fmt: 'hours' },
+    { header: 'Unit', key: 'unit' }, { header: 'Normal', key: 'normal', width: 16 }, { header: 'Note', key: 'note', width: 30 },
+  ], outOfRange.map((r) => ({ at: r.takenAt, item: `${r.asset.assetCode} ${r.asset.name}`, reading: r.type.name, value: r.value, unit: r.type.unit, normal: `${r.type.min ?? ''} – ${r.type.max ?? ''}`, note: r.note })));
+  const hours = await Promise.all(runAssets.map(async (a) => ({ a, info: await runHoursInfo(a) })));
+  addSheet(wb, 'PMS by run hours', [
+    { header: 'Item', key: 'item', width: 30 }, { header: 'Hours now', key: 'now', fmt: 'hours' }, { header: 'PMS every (h)', key: 'every', fmt: 'int' },
+    { header: 'Last PMS at (h)', key: 'last', fmt: 'hours' }, { header: 'Next PMS at (h)', key: 'due', fmt: 'hours' }, { header: 'Hours left', key: 'left', fmt: 'hours' },
+  ], hours.map(({ a, info }) => ({ item: `${a.assetCode} ${a.name}`, now: info.hoursNow, every: info.pmsEveryHours, last: info.lastPmsHours, due: info.pmsDueAtHours, left: info.hoursLeft })));
 }
 
 // Statutory licences and inspections as at today (facility add-on, F3): the compliance register an inspector asks
@@ -687,6 +728,7 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
     replacement: () => replacement(out, ctx),
     trades: () => trades(out, ctx),
     compliance: () => compliance(out, ctx),
+    consumption: () => consumption(out, ctx),
   };
   await builders[type]();
 
@@ -730,6 +772,8 @@ export async function buildReportAs(type: ReportType, q: ReportQuery, by: string
             ? 'Response = work started − complaint raised; repair = resolved − work started. "Sent back" counts fixes the ward reported as still not working. PMS counts each PMS once (corrections are not another PMS).'
             : type === 'suppliers'
               ? 'A company looks after equipment it services, or that it sold when no service company is set. Downtime adds up each breakdown, so overlapping faults on one machine count twice here (the uptime report counts them once).'
+              : type === 'consumption'
+                ? 'Used = the rise of a meter between two readings, counted in the month of the later one. Corrected readings count as corrected. Run hours are as at the day this report was made.'
               : type === 'compliance'
                 ? 'As at the day this report was made. A renewed licence is listed once, as its latest renewal; earlier ones are in the renewal history.'
               : type === 'trades'

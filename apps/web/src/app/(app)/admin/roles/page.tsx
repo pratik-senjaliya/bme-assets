@@ -28,6 +28,7 @@ const GROUPS: Record<string, string> = {
   notification: 'Reminders',
   consumable: 'Consumables',
   licence: 'Licences (facility add-on)',
+  reading: 'Logbook (facility add-on)',
 };
 
 function RolesPageScreen() {
@@ -89,11 +90,11 @@ function RolesPageScreen() {
           {role.name === 'admin' && <Alert type="info" showIcon message="The Admin (HOD) role always keeps users, roles, setup and approvals, so the hospital can never lock itself out." />}
           <Checkbox.Group value={selected} onChange={(v) => setSelected(v as PermissionCode[])} disabled={locked} style={{ display: 'block', width: '100%' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: 16 }}>
-              {Object.entries(GROUPS).filter(([prefix]) => prefix !== 'licence' || hospital.data?.facilityEnabled).map(([prefix, label]) => (
+              {Object.entries(GROUPS).filter(([prefix]) => (prefix !== 'licence' && prefix !== 'reading') || hospital.data?.facilityEnabled).map(([prefix, label]) => (
                 <Card key={prefix} size="small" title={label}>
                   <Space direction="vertical" size={12}>
                     {/* Facility equipment only where the facility maintenance add-on is on. */}
-                    {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`) && ((p !== 'register.facility' && p !== 'licence.manage') || hospital.data?.facilityEnabled)).map((p) => (
+                    {PERMISSIONS.filter((p) => p.startsWith(`${prefix}.`) && ((p !== 'register.facility' && p !== 'licence.manage' && p !== 'reading.record') || hospital.data?.facilityEnabled)).map((p) => (
                       <Checkbox key={p} value={p} disabled={role.name === 'admin' && ADMIN_KEEPS.includes(p)}>
                         <span style={{ fontWeight: 500 }}>{PERMISSION_TEXT[p].label}</span>
                         <span style={{ display: 'block', color: COLORS.muted, fontSize: 12.5 }}>{PERMISSION_TEXT[p].hint}</span>

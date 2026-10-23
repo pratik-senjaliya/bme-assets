@@ -13,12 +13,13 @@ import {
 } from '@bme/shared';
 import { audit } from '../../lib/audit';
 import { currentUser, requireAnyPermission, requirePermission } from '../../lib/auth';
-import { addDaysISO, addMonths, isoDate, parseDate, prettyDate, todayISO } from '../../lib/dates';
+import { addDaysISO, addMonths, isoDate, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { getStorage } from '../../lib/storage';
 import { idOf, validate } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
+import { stampPmsHours } from '../readings/readings.service';
 import { stageUpload, upload } from '../assets/attachments.service';
 import { clearReminders } from '../reminders/reminders.service';
 import { dueList, evaluateAnswers, latestTemplate, pmsRecordInclude, refreshPmsFlag, tellFailed, templateItems, toPmsRows } from './pms.service';
@@ -118,6 +119,7 @@ pmsRouter.post('/assets/:id/pms', requirePermission('pms.perform'), validate(sub
     if (!input.correctsRecordId) {
       await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
       await clearReminders(tx, asset.id, ['pms']);
+      await stampPmsHours(tx, asset.id); // PMS by run hours counts again from the meter now (F4)
     }
     if ((await refreshPmsFlag(tx, asset.id)) && record.result === 'fail') await tellFailed(tx, asset, 'PMS');
     await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit', entityType: 'pms_record', entityId: record.id, after: record });
@@ -190,6 +192,8 @@ pmsRouter.post('/assets/:id/pms/oem', requirePermission('pms.perform'), upload.s
       if (!input.correctsRecordId) {
         await tx.asset.update({ where: { id: asset.id }, data: { nextPmsDue: asset.pmsFrequencyMonths ? addMonths(performedOn, asset.pmsFrequencyMonths) : null } });
         await clearReminders(tx, asset.id, ['pms']);
+        // Run hours count again from the meter at the end of the visit day.
+        await stampPmsHours(tx, asset.id, zonedDayStart(addDaysISO(isoDate(performedOn), 1)));
       }
       if ((await refreshPmsFlag(tx, asset.id)) && record.result === 'fail') await tellFailed(tx, asset, 'PMS');
       await audit(tx, req, { action: input.correctsRecordId ? 'pms.correct' : 'pms.submit_oem', entityType: 'pms_record', entityId: record.id, after: { ...record, report: file } });

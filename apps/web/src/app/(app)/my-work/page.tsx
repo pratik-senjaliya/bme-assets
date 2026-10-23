@@ -5,7 +5,7 @@ import { Card, Col, Row, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import { LICENCE_KIND_LABEL, type AssetRow, type Assignee, type ComplaintRow, type ConsumableRow, type DueRow, type HospitalInfo, type LicenceRow, type Paged } from '@bme/shared';
+import { LICENCE_KIND_LABEL, type AssetRow, type Assignee, type ComplaintRow, type ConsumableRow, type DueRow, type HospitalInfo, type LicenceRow, type ReadingAttention, type Paged } from '@bme/shared';
 import { UnsafeList } from '@/components/AssetSafety';
 import { CardSkeleton, ComplaintCard, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
@@ -58,8 +58,9 @@ function MyWork() {
   const calibration = useFetch<DueRow[]>(can('calibration.manage') ? `/calibration/due?until=${until}` : null);
   const failed = useFetch<Paged<AssetRow>>(can('pms.perform') || can('calibration.manage') ? '/assets?condition=failed&pageSize=100' : null);
   const low = useFetch<ConsumableRow[]>(can('consumable.manage') ? '/consumables?low=true' : null);
-  const hospital = useFetch<HospitalInfo>(can('licence.manage') ? '/hospital' : null);
-  const licences = useFetch<LicenceRow[]>(hospital.data?.facilityEnabled ? '/licences?status=attention' : null);
+  const hospital = useFetch<HospitalInfo>(can('licence.manage') || can('reading.record') ? '/hospital' : null);
+  const readings = useFetch<ReadingAttention>(hospital.data?.facilityEnabled && can('reading.record') ? '/readings/attention' : null, { fresh: true });
+  const licences = useFetch<LicenceRow[]>(hospital.data?.facilityEnabled && can('licence.manage') ? '/licences?status=attention' : null);
   const team = useFetch<Assignee[]>(can('complaint.assign') ? `/complaints/assignees?k=${version}` : null, { fresh: true });
 
   const cards = (list: typeof mine, empty: string) =>
@@ -138,6 +139,32 @@ function MyWork() {
                 </span>
               </div>
             ))}
+          </Card>
+        </Section>
+      )}
+      {readings.data && (readings.data.missed.length > 0 || readings.data.outOfRange.length > 0 || readings.data.hoursDue.length > 0) && (
+        <Section title="Logbook" hint="Readings still to take, out of range, and PMS due by run hours">
+          <Card styles={{ body: { padding: '4px 20px' } }}>
+            {readings.data.hoursDue.map((h) => (
+              <div key={`h-${h.assetId}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>
+                <Link href={`/assets/${h.assetId}?tab=logbook`} style={{ fontWeight: 600 }}>PMS by run hours · {h.assetCode} {h.assetName}</Link>
+                <span className="num" style={{ color: h.hoursLeft <= 0 ? COLORS.bad.fg : COLORS.warn.fg, fontWeight: 600 }}>
+                  {h.hoursLeft <= 0 ? `Due, ${-h.hoursLeft} h over` : `${h.hoursLeft} h left`} ({h.hoursNow} / {h.pmsDueAtHours} h)
+                </span>
+              </div>
+            ))}
+            {readings.data.outOfRange.map((t) => (
+              <div key={`o-${t.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${COLORS.lineSoft}`, flexWrap: 'wrap' }}>
+                <Link href={`/assets/${t.assetId}?tab=logbook`} style={{ fontWeight: 600 }}>{t.name} · {t.assetCode} {t.assetName}</Link>
+                <span className="num" style={{ color: COLORS.bad.fg, fontWeight: 600 }}>Last {t.last?.value} {t.unit}: out of range</span>
+              </div>
+            ))}
+            {readings.data.missed.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', flexWrap: 'wrap' }}>
+                <Link href="/logbook" style={{ fontWeight: 600 }}>Readings still to take</Link>
+                <span className="num" style={{ color: COLORS.warn.fg, fontWeight: 600 }}>{readings.data.missed.length}</span>
+              </div>
+            )}
           </Card>
         </Section>
       )}
