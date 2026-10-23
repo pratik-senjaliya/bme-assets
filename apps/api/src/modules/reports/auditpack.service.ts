@@ -37,6 +37,7 @@ const REPORT_FILES: { file: string; type: ReportType; what: string; extra?: Part
   { file: '10 Consumables register.xlsx', type: 'consumables', what: 'Consumables given out in the period (department, machine, complaint, reason), received, and stock today' },
 ];
 // With the facility add-on: the statutory licences as at today, and their documents.
+const LOGBOOK_FILE = { file: '12 Logbook.xlsx', type: 'consumption' as ReportType, what: 'The logbook in the period: meter use per month, readings out of range, and PMS by run hours' };
 const COMPLIANCE_FILE = { file: '11 Compliance register.xlsx', type: 'compliance' as ReportType, what: 'Statutory licences and inspections as at today: valid, ending soon or expired, with their renewal history' };
 
 const DOC_KIND: Record<string, string> = { eol_letter: 'End-of-life letter', condemnation_form: 'Condemnation form' };
@@ -152,7 +153,7 @@ export async function sendAuditPack(res: Response, q: AuditPackQuery, viewer: Pa
 
   const reportQ = (extra?: Partial<ReportQuery>) => ({ from: q.from, to: q.to, group: 'month', format: 'xlsx', ...(q.departmentId && { departmentId: q.departmentId }), ...extra }) as ReportQuery;
   const reports = await Promise.all(
-    [...REPORT_FILES, ...(g.licences ? [COMPLIANCE_FILE] : [])].map(async (f: (typeof REPORT_FILES)[number]) => {
+    [...REPORT_FILES, ...(g.licences ? [COMPLIANCE_FILE, ...(scope.register?.in.includes('facility') ? [LOGBOOK_FILE] : [])] : [])].map(async (f: (typeof REPORT_FILES)[number]) => {
       const { data } = await buildReportAs(f.type, reportQ(f.extra), viewer.name, scope);
       return { ...f, data, buffer: Buffer.from(await toWorkbook(data).xlsx.writeBuffer()) };
     }),

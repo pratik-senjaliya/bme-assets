@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRightOutlined, CheckCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Grid, Row, Segmented } from 'antd';
+import { Alert, Button, Card, Col, Grid, Row, Segmented, Space } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import type { AssetRow, DashboardResponse, HospitalInfo, Paged } from '@bme/shared';
@@ -88,6 +88,20 @@ export default function Home() {
         <div style={{ marginBottom: 16 }}>
           <KpiGrid kpis={d.kpis} />
         </div>
+      )}
+      {/* The maintenance side at a glance (facility add-on): ward faults, licences, the logbook. */}
+      {d.facility && (
+        <Card title="Facility" style={{ marginBottom: 16 }} extra={<Space size={12} wrap><ViewAll href="/logbook">Logbook</ViewAll><ViewAll href="/licences">Licences</ViewAll></Space>} styles={{ body: { padding: 16 } }}>
+          <KpiGrid
+            kpis={[
+              { label: 'Ward complaints open', value: d.facility.wardOpen, fmt: 'int', hint: d.facility.wardOverTarget ? `${d.facility.wardOverTarget} over the response target` : 'Without a machine', tone: d.facility.wardOverTarget ? 'warn' : 'neutral' },
+              { label: 'Licences expired', value: d.facility.licencesExpired, fmt: 'int', hint: d.facility.licencesEnding ? `${d.facility.licencesEnding} ending soon` : 'None ending soon', tone: d.facility.licencesExpired ? 'bad' : d.facility.licencesEnding ? 'warn' : 'good' },
+              { label: 'Readings to take', value: d.facility.readingsMissed, fmt: 'int', hint: 'Logbook, this period', tone: d.facility.readingsMissed ? 'warn' : 'good' },
+              { label: 'Out of range', value: d.facility.readingsOutOfRange, fmt: 'int', hint: 'Last reading outside normal', tone: d.facility.readingsOutOfRange ? 'bad' : 'good' },
+              { label: 'PMS by run hours', value: d.facility.pmsHoursDue, fmt: 'int', hint: 'Due within 25 h or past', tone: d.facility.pmsHoursDue ? 'warn' : 'good' },
+            ]}
+          />
+        </Card>
       )}
       {d.charts.length > 0 && (!phone || showCharts) && (
         <div style={{ marginBottom: 16 }}>

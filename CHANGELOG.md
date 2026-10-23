@@ -6,6 +6,14 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.5.0 (November 2026)
+
+- **Facility reports (facility add-on):** the dashboard has a Facility card for the maintenance team and the HOD (ward
+  complaints open and over target, licences expired or ending, readings still to take or out of range, PMS due by run
+  hours). The monthly report adds a facility section (ward complaints by trade, readings out of range, licences expired
+  or ending) and, like the audit pack, now has an "All equipment / Biomedical / Facility" switch. The audit pack adds
+  "12 Logbook.xlsx" when it covers facility equipment.
+
 ## 1.4.0 (November 2026)
 
 - **Logbook (facility add-on):** the plant-room logbook on screen. On a machine's Logbook tab the team sets what is

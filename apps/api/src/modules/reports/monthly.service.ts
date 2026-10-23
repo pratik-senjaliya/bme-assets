@@ -3,10 +3,11 @@ import { CRITICALITY_LABEL, isCritical, type Kpi, type ReportData } from '@bme/s
 import { addDaysISO, addMonths, daysBetween, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { sendMail, smtpConfigured } from '../../lib/mail';
-import { hospitalScope, usersWithPermissions } from '../../lib/people';
+import { facilityOn, hospitalScope, usersWithPermissions } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { assetInclude, toAssetRow } from '../assets/assets.service';
-import { complaintMetrics } from '../complaints/complaints.service';
+import { complaintInclude, complaintMetrics, toComplaintRows } from '../complaints/complaints.service';
+import { licenceInclude, toLicenceRows } from '../licences/licences.routes';
 import { toPdf } from './reports.export';
 import {
   STATUS_LABEL,
@@ -174,6 +175,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
   // Replacement: as things stand at the end of the month, over the 12 months up to it.
   replacementSheet(out, 'Equipment to consider replacing', await replacementCandidates(active, to));
   coverSheet(out, 'Warranty and contracts ending in 60 days', await coverEnding(active, c.scope, asAt, 60));
+  await facilitySection(out, c, asAt);
 
   return {
     type: 'monthly',
@@ -187,6 +189,31 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
     note: `Uptime counts 24 hours a day. PMS and calibration on schedule, overdue items, replacement and cover ending are as at ${stampDay(asAt)}. Condemned and not-in-use equipment is left out of these; the other reports list it.`,
     ...out,
   };
+}
+
+// The facility add-on's month (F5), when the report covers facility equipment: ward faults without a machine, the
+// logbook and licences. Machine breakdowns, uptime and PMS above already include facility equipment by register.
+async function facilitySection(out: Collector, c: Ctx, asAt: string) {
+  if (!c.scope.register?.in.includes('facility') || !(await facilityOn())) return;
+  const assetScope = { ...c.scope, register: { in: ['facility' as const] } };
+  const [ward, outOfRange, licences] = await Promise.all([
+    toComplaintRows(await prisma.complaint.findMany({ where: { tradeId: { not: null }, raisedAt: { gte: c.fromAt, lt: c.toAt }, ...c.scope }, include: complaintInclude })),
+    prisma.reading.count({ where: { outOfRange: true, correctedBy: null, takenAt: { gte: c.fromAt, lt: c.toAt }, asset: assetScope } }),
+    toLicenceRows(await prisma.licence.findMany({ where: { register: c.scope.register, renewal: null }, include: licenceInclude })),
+  ]);
+  const over = ward.filter((w) => w.overResponseTarget).length;
+  const expired = licences.filter((l) => l.status === 'expired');
+  kpi(out, 'Ward complaints', ward.length, 'int', over ? `${over} over the response target` : 'Raised without a machine', over ? 'warn' : 'good');
+  kpi(out, 'Readings out of range', outOfRange, 'int', 'Logbook, in the month', outOfRange ? 'warn' : 'good');
+  kpi(out, 'Licences expired', expired.length, 'int', `As at ${stampDay(asAt)}`, expired.length ? 'bad' : 'good');
+  const byTrade = new Map<string, typeof ward>();
+  for (const w of ward) byTrade.set(w.tradeName!, [...(byTrade.get(w.tradeName!) ?? []), w]);
+  addSheet(out, 'Ward complaints by trade', [
+    { header: 'Trade', key: 'trade', width: 28 }, { header: 'Complaints', key: 'count', fmt: 'int' }, { header: 'Still open', key: 'open', fmt: 'int' }, { header: 'Over target', key: 'over', fmt: 'int' },
+  ], [...byTrade].sort((a, b) => b[1].length - a[1].length).map(([trade, g]) => ({ trade, count: g.length, open: g.filter((w) => !w.resolvedAt).length, over: g.filter((w) => w.overResponseTarget).length })), ['count', 'open', 'over']);
+  addSheet(out, `Licences expired or ending (as at ${stampDay(asAt)})`, [
+    { header: 'Licence', key: 'name', width: 30 }, { header: 'Covers', key: 'covers', width: 26 }, { header: 'Valid to', key: 'to', fmt: 'date' }, { header: 'Status', key: 'status' },
+  ], licences.filter((l) => l.status === 'expired' || l.status === 'ending').map((l) => ({ name: l.name, covers: l.assetCode ? `${l.assetCode} ${l.assetName}` : 'Whole site', to: parseDate(l.validTo), status: l.status === 'expired' ? 'EXPIRED' : 'Ending soon' })));
 }
 
 const stampDay = (iso: string) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parseDate(iso));
