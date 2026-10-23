@@ -83,7 +83,7 @@ export function RaiseComplaintModal({
       if (failed.length) message.warning(`Complaint ${c.complaintNo} raised, but ${failed.join(', ')} could not be uploaded. Open the complaint to add ${failed.length === 1 ? 'it' : 'them'} again.`, 8);
       else message.success(`Complaint ${c.complaintNo} raised`);
       // Urgent: the team has been told, and the ward also gets the number to call.
-      if (c.urgent && hospital.data?.biomedContact) modal.info({ title: `${c.complaintNo} raised as urgent`, content: `The biomedical team has been told. If a patient is waiting, also call: ${hospital.data.biomedContact}` });
+      if (c.urgent && hospital.data?.biomedContact) modal.info({ title: `${c.complaintNo} raised as urgent`, content: `The team that looks after it has been told. If a patient is waiting, also call: ${hospital.data.biomedContact}` });
       onClose();
       onRaised?.(c);
     } catch (e) {
@@ -133,7 +133,7 @@ export function RaiseComplaintModal({
         {hospital.data?.biomedContact && (
           <Alert type="info" showIcon style={{ marginBottom: 16 }} message={`For an emergency, also call the biomedical team: ${hospital.data.biomedContact}`} />
         )}
-        <Form.Item label="Photos or files" extra="Optional. A photo of the display, alarm or damage helps the biomedical team. PDF, JPG or PNG, up to 10 MB each.">
+        <Form.Item label="Photos or files" extra="Optional. A photo of the display, alarm or damage helps the engineer. PDF, JPG or PNG, up to 10 MB each.">
           <FilePicker files={files} onChange={setFiles} label="Add photos" />
         </Form.Item>
       </Form>

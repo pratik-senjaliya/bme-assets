@@ -1,10 +1,10 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { Criticality, DueRow, PmsAnswer, PmsItem, PmsRecordRow, PmsResult } from '@bme/shared';
-import { departmentScope, currentUser } from '../../lib/auth';
+import type { Criticality, DueRow, PmsAnswer, PmsItem, PmsRecordRow, PmsResult, Register } from '@bme/shared';
+import { currentUser, scopeOf } from '../../lib/auth';
 import { addMonths, daysFromToday, isoDate, parseDate, todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
-import { usersWithPermissions } from '../../lib/people';
+import { registerTeam } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 
 export const latestTemplate = (equipmentTypeId: string) =>
@@ -89,10 +89,10 @@ export async function toPmsRows(records: RecordWithRefs[]): Promise<PmsRecordRow
 
 // Active equipment whose next PMS / calibration is due on or before `until` (overdue included, soonest first).
 // Condemned and not-in-use equipment never appear (business rule 7).
-export async function dueList(req: Request, field: 'nextPmsDue' | 'nextCalibrationDue', until?: string): Promise<DueRow[]> {
+export async function dueList(req: Request, field: 'nextPmsDue' | 'nextCalibrationDue', until?: string, register?: Register): Promise<DueRow[]> {
   const limit = until ?? isoDate(addMonths(parseDate(todayISO()), 1));
   const assets = await prisma.asset.findMany({
-    where: { status: 'active', [field]: { not: null, lte: parseDate(limit) }, ...departmentScope(currentUser(req)) },
+    where: { status: 'active', [field]: { not: null, lte: parseDate(limit) }, ...scopeOf(currentUser(req), register) },
     include: { equipmentType: true, department: true, location: true },
     orderBy: [{ [field]: 'asc' }, { assetCode: 'asc' }],
     take: 1000,
@@ -125,8 +125,8 @@ export async function refreshPmsFlag(tx: Prisma.TransactionClient, assetId: stri
 }
 
 // The HOD hears of a failed PMS or calibration at once (the bell; the machine page offers to raise a complaint).
-export async function tellFailed(tx: Prisma.TransactionClient, asset: { id: string; assetCode: string; name: string }, what: 'PMS' | 'Calibration') {
-  const hods = await usersWithPermissions('complaint.assign', 'notification.view');
+export async function tellFailed(tx: Prisma.TransactionClient, asset: { id: string; register: Register; assetCode: string; name: string }, what: 'PMS' | 'Calibration') {
+  const hods = await registerTeam(asset.register, 'complaint.assign', 'notification.view');
   const message = `${what} FAILED on ${asset.assetCode} ${asset.name}. The machine is flagged until a ${what === 'PMS' ? 'PMS' : 'calibration'} passes.`;
   if (hods.length) await tx.notification.createMany({ data: hods.map((userId) => ({ userId, type: what === 'PMS' ? 'pms' : 'calibration', assetId: asset.id, message })) });
 }

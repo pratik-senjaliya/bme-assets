@@ -4,12 +4,13 @@ import { Button, Input, Segmented, Space, Typography } from 'antd';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import type { ConsumableRow } from '@bme/shared';
+import { TEAM_LABEL, type ConsumableRow, type Register } from '@bme/shared';
 import { ItemModal, MoveModal, StockPill, type MoveKind } from '@/components/ConsumableModals';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { RequirePermission } from '@/components/RequirePermission';
 import { useFetch } from '@/lib/api';
+import { useTwoTeams } from '@/lib/auth';
 import { formatDate, formatMoney } from '@/lib/format';
 
 // Consumables (decision F): what is in stock, what is low, and the three things people do with an item.
@@ -17,6 +18,7 @@ function ConsumablesScreen() {
   const router = useRouter();
   const lowFirst = useSearchParams().get('low') === 'true';
   const items = useFetch<ConsumableRow[]>('/consumables');
+  const twoTeams = useTwoTeams();
   const [view, setView] = useState<'all' | 'low'>(lowFirst ? 'low' : 'all');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ConsumableRow | 'new' | null>(null);
@@ -96,6 +98,7 @@ function ConsumablesScreen() {
               </Space>
             ),
           },
+          ...(twoTeams ? [{ title: 'Store', dataIndex: 'register', className: 'm-hide', render: (r: Register) => TEAM_LABEL[r] }] : []),
           { title: 'Reorder at', dataIndex: 'reorderLevel', align: 'right', className: 'm-hide', render: (n: number) => (n ? n : '—') },
           { title: 'Unit cost', dataIndex: 'unitCost', align: 'right', className: 'm-hide', render: (v: number | null) => (v == null ? '—' : formatMoney(v)) },
           { title: 'Last given', dataIndex: 'lastIssuedOn', className: 'm-hide', render: (d: string | null) => (d ? formatDate(d) : <Typography.Text type="secondary">Never</Typography.Text>) },

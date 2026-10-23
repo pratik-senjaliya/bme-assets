@@ -9,7 +9,7 @@ import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { CriticalityTag, DueText } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { addDaysISO, endOfMonthISO, formatDate, todayIST } from '@/lib/format';
 import { StatusResult } from '@/components/StatusResult';
 import { COLORS } from '@/theme';
@@ -34,7 +34,9 @@ function DueList() {
   const asked = useSearchParams().get('range');
   const [range, setRange] = useState<Range>(RANGES.some((r) => r.value === asked) ? (asked as Range) : 'month');
   const [tab, setTab] = useState<'pms' | 'calibration'>('pms');
-  const until = untilFor(range);
+  const twoTeams = useTwoTeams();
+  const [register, setRegister] = useState<string>();
+  const until = `${untilFor(range)}${register ? `&register=${register}` : ''}`;
   const pms = useFetch<DueRow[]>(can('pms.perform') ? `/pms/due?until=${until}` : null);
   const calibration = useFetch<DueRow[]>(can('calibration.manage') ? `/calibration/due?until=${until}` : null);
 
@@ -97,6 +99,7 @@ function DueList() {
       <Space style={{ marginBottom: 20 }} wrap>
         <span style={{ color: COLORS.muted, fontWeight: 600, fontSize: 13 }}>Period</span>
         <Select aria-label="Period" style={{ minWidth: 280 }} value={range} options={RANGES} onChange={setRange} />
+        {twoTeams && <Select allowClear aria-label="Equipment" placeholder="All equipment" style={{ minWidth: 180 }} value={register} options={REGISTER_OPTIONS} onChange={setRegister} />}
       </Space>
       <Tabs activeKey={tab} onChange={(k) => setTab(k as 'pms' | 'calibration')} items={items} />
     </>

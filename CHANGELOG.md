@@ -6,6 +6,17 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.1.0 (October 2026)
+
+- **Facility maintenance add-on (first part):** the maintenance team's equipment (DG sets, chillers, AHUs, UPS, lifts,
+  RO plant) in the same register, PMS, contracts, complaints, reminders and reports, kept apart from the biomedical
+  team's. Switched on per hospital by the super admin (Hospital settings > Facility maintenance); off, nothing about it
+  shows. New role Maintenance staff; which equipment a role works on is a permission (Roles & permissions > Equipment
+  they work on). Wards see and report on both in their department; the HOD sees both, with a Biomedical / Facility
+  switch on the dashboard, lists, complaints board, due lists and reports. Each team keeps its own consumables store.
+  Starter facility types with PMS checklists are added when the add-on is first switched on. A maintenance engineer
+  can be deputy HOD.
+
 ## 1.0.0 (October 2026)
 
 The first numbered release: everything built so far, as installed for the first hospitals.

@@ -212,8 +212,10 @@ describe('Saving the monthly report on the 1st', () => {
     assert.match(saved.note ?? '', /^Saved on .*as it was sent/);
     const stored = (await prisma.monthlyReport.findUniqueOrThrow({ where: { month: SAVE_MONTHS[0] } })).data as unknown as ReportData;
     assert.deepEqual(saved.kpis, stored.kpis);
-    const list = (await (await call(base, biomed, 'GET', '/reports/monthly/saved')).json()) as SavedMonthlyReport[];
+    const list = (await (await call(base, admin, 'GET', '/reports/monthly/saved')).json()) as SavedMonthlyReport[];
     assert.ok(list.some((s) => s.month === SAVE_MONTHS[0]));
+    // The saved copy covers both registers, so a biomedical engineer gets their own register made from the records.
+    assert.deepEqual(await (await call(base, biomed, 'GET', '/reports/monthly/saved')).json(), []);
     const live = (await (await call(base, admin, 'GET', `/reports/monthly?month=${SAVE_MONTHS[3]}`)).json()) as ReportData;
     assert.match(live.note ?? '', /^Made from the records now/);
     const running = (await (await call(base, admin, 'GET', `/reports/monthly?month=${todayISO().slice(0, 7)}`)).json()) as ReportData;

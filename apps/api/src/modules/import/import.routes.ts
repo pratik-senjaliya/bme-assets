@@ -4,7 +4,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { CONTRACT_TYPES, CRITICALITIES, CRITICALITY_LABEL, isoDateSchema, type ImportError, type ImportResult } from '@bme/shared';
 import { audit } from '../../lib/audit';
-import { requirePermission } from '../../lib/auth';
+import { currentUser, requirePermission } from '../../lib/auth';
 import { isoDate, parseDate } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -57,9 +57,10 @@ const headerOf = Object.fromEntries(COLUMNS.map((c) => [c.key, c.header])) as Re
 
 // ---------- Template ----------
 
-importRouter.get('/template', async (_req, res) => {
+// Only the types of the registers the person works on: a maintenance engineer imports facility equipment.
+importRouter.get('/template', async (req, res) => {
   const [types, departments, locations, vendors] = await Promise.all([
-    prisma.equipmentType.findMany({ orderBy: { code: 'asc' } }),
+    prisma.equipmentType.findMany({ where: { register: { in: currentUser(req).registers } }, orderBy: { code: 'asc' } }),
     prisma.department.findMany({ orderBy: { code: 'asc' } }),
     prisma.location.findMany({ include: { department: true }, orderBy: [{ departmentId: 'asc' }, { code: 'asc' }] }),
     prisma.vendor.findMany({ orderBy: { name: 'asc' }, select: { name: true } }),
@@ -228,7 +229,7 @@ importRouter.post('/assets', upload.single('file'), async (req, res) => {
   const rawRows = await readUpload(req, COLUMNS, 'Assets', MAX_ROWS);
 
   const [types, departments, locations, vendors] = await Promise.all([
-    prisma.equipmentType.findMany(),
+    prisma.equipmentType.findMany({ where: { register: { in: currentUser(req).registers } } }),
     prisma.department.findMany(),
     prisma.location.findMany(),
     prisma.vendor.findMany({ select: { id: true, name: true } }),

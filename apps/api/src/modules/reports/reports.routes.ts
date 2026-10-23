@@ -1,10 +1,11 @@
 import { Router, type Response } from 'express';
-import { REPORTS, auditPackQuerySchema, monthlyReportQuerySchema, reportQuerySchema, type ReportData, type ReportType, type SavedMonthlyReport } from '@bme/shared';
+import { REPORTS, auditPackQuerySchema, monthlyReportQuerySchema, registerQuerySchema, reportQuerySchema, type ReportData, type Register, type ReportType, type SavedMonthlyReport } from '@bme/shared';
 import { audit } from '../../lib/audit';
-import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
+import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
 import { config } from '../../lib/config';
 import { todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
+import { hospitalScope } from '../../lib/people';
 import { prisma } from '../../lib/prisma';
 import { idOf } from '../../lib/validate';
 import { findScopedAsset } from '../assets/assets.service';
@@ -39,26 +40,31 @@ async function respond(res: Response, data: ReportData, filename: string, format
 // ---------- Monthly management report ----------
 // (These come before /reports/:type, which would take "monthly" for an unknown report.)
 
-// The saved copies are the whole hospital's, so they are only for people who see the whole hospital.
-const seesWholeHospital = (req: Parameters<typeof currentUser>[0]) => Object.keys(departmentScope(currentUser(req))).length === 0;
+// The saved copies are the whole hospital's (every department, every register in use), so they are only for people
+// who see all of it and did not ask for one team's equipment.
+async function seesWholeHospital(req: Parameters<typeof currentUser>[0]) {
+  const me = currentUser(req);
+  const { register } = registerQuerySchema.parse(req.query);
+  return !register && !scopeOf(me).departmentId && (await hospitalScope()).register.in.every((r) => me.registers.includes(r));
+}
 
 reportsRouter.get('/reports/monthly/saved', requirePermission('report.view'), async (req, res) => {
-  const rows = seesWholeHospital(req) ? await prisma.monthlyReport.findMany({ select: { month: true, createdAt: true }, orderBy: { month: 'desc' } }) : [];
+  const rows = (await seesWholeHospital(req)) ? await prisma.monthlyReport.findMany({ select: { month: true, createdAt: true }, orderBy: { month: 'desc' } }) : [];
   res.json(rows.map((r) => ({ month: r.month, savedAt: r.createdAt.toISOString() })) satisfies SavedMonthlyReport[]);
 });
 
 // A month that was saved on the 1st reads as saved (what management was sent); any other month, including the one
 // still running, is made from the records now and says so.
 reportsRouter.get('/reports/monthly', requirePermission('report.view'), async (req, res) => {
-  const { month, format } = monthlyReportQuerySchema.parse(req.query);
+  const { month, format, register } = monthlyReportQuerySchema.parse(req.query);
   const me = currentUser(req);
-  const saved = seesWholeHospital(req) ? await prisma.monthlyReport.findUnique({ where: { month } }) : null;
+  const saved = (await seesWholeHospital(req)) ? await prisma.monthlyReport.findUnique({ where: { month } }) : null;
   let data: ReportData;
   if (saved) {
     const kept = saved.data as unknown as ReportData;
     data = { ...kept, note: `Saved on ${new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: config.timezone }).format(saved.createdAt)}: this is the report as it was sent. ${kept.note ?? ''}`.trim() };
   } else {
-    data = await buildMonthlyReport(month, { name: me.name, scope: departmentScope(me) });
+    data = await buildMonthlyReport(month, { name: me.name, scope: scopeOf(me, register) });
     const running = month === todayISO().slice(0, 7);
     data = { ...data, note: `${running ? `${monthName(month)} so far, made from the records now.` : 'Made from the records now (this month was not saved on the 1st).'} ${data.note ?? ''}`.trim() };
   }
@@ -68,10 +74,10 @@ reportsRouter.get('/reports/monthly', requirePermission('report.view'), async (r
 // ---------- Audit pack ----------
 
 // Whose equipment the pack covers: someone tied to a department only ever gets that department; others get the
-// department they chose, or the whole hospital.
-async function packScope(req: Parameters<typeof currentUser>[0], departmentId: string | undefined) {
-  const own = departmentScope(currentUser(req));
-  const scope = Object.keys(own).length ? own : departmentId ? { departmentId } : {};
+// department they chose, or the whole hospital. Always only the registers the person sees (or the one they chose).
+async function packScope(req: Parameters<typeof currentUser>[0], departmentId: string | undefined, register?: Register) {
+  const own = scopeOf(currentUser(req), register);
+  const scope = own.departmentId || !departmentId ? own : { ...own, departmentId };
   const dept = scope.departmentId ? await prisma.department.findUnique({ where: { id: scope.departmentId }, select: { name: true } }) : null;
   if (scope.departmentId && !dept) throw new HttpError(400, 'That department does not exist', { fieldErrors: { departmentId: ['Choose a department from the list'] } });
   return { scope, departmentName: dept?.name ?? null };
@@ -79,13 +85,13 @@ async function packScope(req: Parameters<typeof currentUser>[0], departmentId: s
 
 reportsRouter.get('/reports/audit-pack/summary', requirePermission('report.view'), async (req, res) => {
   const q = auditPackQuerySchema.parse(req.query);
-  const { scope } = await packScope(req, q.departmentId);
+  const { scope } = await packScope(req, q.departmentId, q.register);
   res.json(await auditPackSummary(q, scope));
 });
 
 reportsRouter.get('/reports/audit-pack', requirePermission('report.view'), async (req, res) => {
   const q = auditPackQuerySchema.parse(req.query);
-  const { scope, departmentName } = await packScope(req, q.departmentId);
+  const { scope, departmentName } = await packScope(req, q.departmentId, q.register);
   await audit(prisma, req, { action: 'report.export', entityType: 'report', after: { type: 'audit-pack', from: q.from, to: q.to, departmentId: scope.departmentId ?? null } });
   await sendAuditPack(res, q, { name: currentUser(req).name, scope }, departmentName);
 });

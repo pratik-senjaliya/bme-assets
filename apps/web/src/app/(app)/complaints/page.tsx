@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircleOutlined } from '@ant-design/icons';
-import { Button, Card, Col, Row, Space, Tabs, Typography } from 'antd';
+import { Button, Card, Col, Row, Segmented, Space, Tabs, Typography } from 'antd';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -11,7 +11,7 @@ import { CardSkeleton, ComplaintCard, ToClose, useComplaintWork } from '@/compon
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/Skeletons';
 import { api, useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { COLORS } from '@/theme';
 
 // The history tab, the details drawer and the raise dialog load when first opened, so the board shows sooner.
@@ -75,6 +75,9 @@ export default function ComplaintsPage() {
 
 function Board({ version, onChanged, onOpen }: { version: number; onChanged: () => void; onOpen: (id: string) => void }) {
   const { actions, dialogs } = useComplaintWork(onChanged);
+  // Someone who sees both teams' complaints (the HOD) can look at one team's board.
+  const twoTeams = useTwoTeams();
+  const [register, setRegister] = useState('');
   // The board is watched for a while: refresh it every minute (new complaints, waiting times), but not while the
   // tab is hidden.
   const [tick, setTick] = useState(0);
@@ -87,10 +90,19 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
 
   return (
     <>
+      {twoTeams && (
+        <Segmented
+          aria-label="Equipment"
+          style={{ marginBottom: 14 }}
+          value={register}
+          options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]}
+          onChange={(v) => setRegister(String(v))}
+        />
+      )}
       <Row gutter={16}>
         {COLUMNS.map((col) => (
           <Col key={col.status} xs={24} md={12} xl={6}>
-            <BoardColumn {...col} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
+            <BoardColumn {...col} register={register} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
           </Col>
         ))}
       </Row>
@@ -105,6 +117,7 @@ function BoardColumn({
   status,
   title,
   empty,
+  register,
   version,
   onOpen,
   actions,
@@ -112,11 +125,13 @@ function BoardColumn({
   status: Column;
   title: string;
   empty: string;
+  register: string;
   version: number;
   onOpen: (id: string) => void;
   actions: (c: ComplaintRow) => ReactNode;
 }) {
-  const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=${status === 'done' ? 10 : 50}&k=${version}`);
+  const team = register ? `&register=${register}` : '';
+  const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}${team}&pageSize=${status === 'done' ? 10 : 50}&k=${version}`);
   // Open and in-progress columns show 50 at a time; "Show more" loads the next 50, so every complaint can be worked on.
   const [more, setMore] = useState<ComplaintRow[]>([]);
   const [page, setPage] = useState(1);
@@ -131,7 +146,7 @@ function BoardColumn({
   async function showMore() {
     setLoadingMore(true);
     try {
-      const next = await api<Paged<ComplaintRow>>(`/complaints?status=${status}&pageSize=50&page=${page + 1}&k=${version}`);
+      const next = await api<Paged<ComplaintRow>>(`/complaints?status=${status}${team}&pageSize=50&page=${page + 1}&k=${version}`);
       setMore((m) => [...m, ...next.items]);
       setPage((p) => p + 1);
     } finally {

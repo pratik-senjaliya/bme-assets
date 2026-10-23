@@ -315,7 +315,7 @@ export function useComplaintWork(onChanged: () => void) {
               optionFilterProp="label"
               placeholder="Nobody yet"
               loading={assignees.loading}
-              options={(assignees.data ?? []).map((a) => ({ value: a.id, label: `${a.name} · ${a.openCount}` }))}
+              options={(assignees.data ?? []).filter((a) => !assigning || a.registers.includes(assigning.register)).map((a) => ({ value: a.id, label: `${a.name} · ${a.openCount}` }))}
             />
           </Form.Item>
         </Form>

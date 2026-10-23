@@ -3,10 +3,16 @@ import { prisma } from './prisma';
 
 // Roles and permission codes. Used by the demo seed and by the first-install bootstrap.
 export async function ensureRolesAndPermissions() {
+  const existing = new Set((await prisma.role.findMany({ select: { name: true } })).map((r) => r.name));
   for (const name of ROLE_NAMES) {
     await prisma.role.upsert({ where: { name }, update: {}, create: { name, label: ROLE_LABELS[name] } });
   }
   const roleIds = new Map((await prisma.role.findMany()).map((r) => [r.name as RoleName, r.id]));
+  // A role added by an upgrade (e.g. maintenance) starts with its defaults, on codes that already exist too.
+  for (const name of ROLE_NAMES.filter((n) => !existing.has(n))) {
+    const codes = await prisma.permission.findMany({ where: { code: { in: [...DEFAULT_ROLE_PERMISSIONS[name]] } }, select: { id: true } });
+    await prisma.rolePermission.createMany({ data: codes.map((p) => ({ roleId: roleIds.get(name)!, permissionId: p.id })), skipDuplicates: true });
+  }
 
   // A permission code seen for the first time is created and granted to the roles that have it by
   // default. Codes that already exist are left alone, so a hospital's later changes survive a re-seed
@@ -25,7 +31,14 @@ export const STARTER_TYPES = [
   { name: 'Patient Monitor', code: 'MON', defaultPmsMonths: 6, defaultCalibrationMonths: 12 },
   { name: 'Defibrillator', code: 'DEFIB', defaultPmsMonths: 3, defaultCalibrationMonths: 12 },
   { name: 'Infusion Pump', code: 'INFP', defaultPmsMonths: 6, defaultCalibrationMonths: 12 },
-];
+  // Facility equipment (the maintenance add-on). Created with the rest so they are ready when it is switched on.
+  { name: 'DG Set', code: 'DG', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'Chiller', code: 'CHLR', defaultPmsMonths: 3, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'Air Handling Unit', code: 'AHU', defaultPmsMonths: 3, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'UPS', code: 'UPS', defaultPmsMonths: 3, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'Lift', code: 'LIFT', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'RO Plant', code: 'RO', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
+] as const;
 
 
 type Item = { id: string; label: string; type: 'check' | 'reading' | 'text'; unit?: string; min?: number; max?: number; required: boolean };
@@ -70,11 +83,60 @@ const PMS_TEMPLATES: Record<string, Item[]> = {
     check('battery', 'Battery backup works'),
     remarks,
   ],
+  DG: [
+    check('visual', 'Visual inspection: no oil, fuel or coolant leaks'),
+    check('levels', 'Engine oil, coolant and fuel levels correct'),
+    check('battery', 'Battery terminals clean, charger working'),
+    check('belts', 'Fan belt tension and air filter condition'),
+    check('loadtest', 'Test run on load; changeover (AMF) works'),
+    reading('voltage', 'Output voltage on load', 'V', 400, 440),
+    reading('frequency', 'Output frequency on load', 'Hz', 49.5, 50.5),
+    remarks,
+  ],
+  CHLR: [
+    check('visual', 'Visual inspection: no leaks, insulation intact'),
+    check('controls', 'Controls, alarms and safety cut-outs work'),
+    check('condenser', 'Condenser and cooling tower clean'),
+    reading('supply', 'Chilled water supply temperature', '°C', 5, 9),
+    reading('return', 'Chilled water return temperature', '°C', 10, 15),
+    remarks,
+  ],
+  AHU: [
+    check('filters', 'Pre-filters and fine filters clean or replaced'),
+    check('belts', 'Belt tension, bearings and motor condition'),
+    check('coil', 'Cooling coil and drain tray clean, drain clear'),
+    check('dampers', 'Dampers and controls work'),
+    reading('supply', 'Supply air temperature', '°C', 12, 18),
+    remarks,
+  ],
+  UPS: [
+    check('visual', 'Visual inspection: no alarms, ventilation clear'),
+    check('battery', 'Battery terminals tight, no swelling or leaks'),
+    check('bypass', 'Bypass and transfer test'),
+    reading('voltage', 'Output voltage', 'V', 220, 240),
+    reading('backup', 'Backup time on load', 'min', 15, 600),
+    remarks,
+  ],
+  LIFT: [
+    check('doors', 'Doors, door sensors and interlocks work'),
+    check('levelling', 'Levelling at every floor'),
+    check('emergency', 'Alarm, intercom, emergency light and rescue device work'),
+    check('machine', 'Machine room: brakes, ropes and oil level'),
+    remarks,
+  ],
+  RO: [
+    check('visual', 'Visual inspection: no leaks, pumps running'),
+    check('filters', 'Pre-filters and cartridges changed as due'),
+    reading('tds', 'Product water TDS', 'ppm', 0, 50),
+    reading('pressure', 'Feed pressure', 'bar', 1, 4),
+    remarks,
+  ],
 };
 
 
-export async function ensureStarterTypes() {
-  for (const t of STARTER_TYPES) {
+// `register`: only that register's (the facility types, when the add-on is first switched on in an older install).
+export async function ensureStarterTypes(register?: 'facility') {
+  for (const t of STARTER_TYPES.filter((s) => !register || ('register' in s && s.register === register))) {
     const type = await prisma.equipmentType.upsert({ where: { code: t.code }, update: {}, create: t });
     if ((await prisma.pmsTemplate.count({ where: { equipmentTypeId: type.id } })) === 0) {
       await prisma.pmsTemplate.create({ data: { equipmentTypeId: type.id, version: 1, schema: { items: PMS_TEMPLATES[t.code] } } });

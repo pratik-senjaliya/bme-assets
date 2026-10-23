@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Typography, type SelectProps } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,22 +10,25 @@ import {
   CRITICALITY_LABEL,
   createAssetSchema,
   isGone,
+  REGISTERS,
+  TEAM_LABEL,
   updateAssetSchema,
   type AssetDetail,
   type AssetStatus,
+  type Register,
   type UpdateAssetResponse,
   type VendorRow,
 } from '@bme/shared';
 import { FilePicker } from '@/components/FilePicker';
 import { api, useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useTwoTeams } from '@/lib/auth';
 import { parseForm, showApiFieldErrors, useLeaveGuard, useSingleFlight } from '@/lib/forms';
 import { uploadAll } from '@/lib/uploads';
 import { hospitalToday, moneyInputProps } from '@/lib/format';
 
 type Department = { id: string; name: string };
 type Location = { id: string; departmentId: string; name: string };
-type EquipmentType = { id: string; name: string; defaultPmsMonths: number | null; defaultCalibrationMonths?: number | null };
+type EquipmentType = { id: string; name: string; defaultPmsMonths: number | null; defaultCalibrationMonths?: number | null; register: Register };
 
 type Values = {
   equipmentTypeId?: string;
@@ -105,6 +108,7 @@ function FormSection({ title, hint, children }: { title: string; hint: string; c
 export function AssetForm({ asset }: { asset?: AssetDetail }) {
   const { message } = App.useApp();
   const { can } = useAuth();
+  const twoTeams = useTwoTeams();
   const router = useRouter();
   const [form] = Form.useForm<Values>();
   const [saving, setSaving] = useState(false);
@@ -186,6 +190,13 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
   // Existing equipment registered with no "last done" date shows as overdue at once. Say so before it happens.
   const monthsAgo = installed ? hospitalToday().diff(installed, 'month') : 0;
   const type = types.data?.find((t) => t.id === typeId);
+  // A machine stays with its team, so an existing one is offered its own register's types; someone who registers for
+  // both teams sees the types under each team's name.
+  const typeOption = (t: EquipmentType) => ({ value: t.id, label: t.name });
+  const offered = (types.data ?? []).filter((t) => !asset || t.register === asset.register);
+  const typeOptions: SelectProps['options'] = twoTeams && !asset
+    ? REGISTERS.map((r) => ({ label: TEAM_LABEL[r], title: TEAM_LABEL[r], options: offered.filter((t) => t.register === r).map(typeOption) })).filter((g) => g.options.length)
+    : offered.map(typeOption);
   const pmsLate = !asset && !lastPms && installed && monthsAgo > (pmsEvery ?? type?.defaultPmsMonths ?? 12);
   const calLate = !asset && !lastCal && installed && !!type?.defaultCalibrationMonths && monthsAgo > type.defaultCalibrationMonths;
 
@@ -228,7 +239,7 @@ export function AssetForm({ asset }: { asset?: AssetDetail }) {
               placeholder="Choose the equipment type"
               optionFilterProp="label"
               loading={types.loading}
-              options={(types.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              options={typeOptions}
               onChange={(id) => {
                 // New assets start from the type's usual PMS interval.
                 const t = types.data?.find((x) => x.id === id);

@@ -17,6 +17,13 @@ enum Criticality {
   most_critical
 }
 
+// Which team looks after equipment (docs/requirements-facility.md, decision G). Facility is the add-on, switched on
+// per install (hospital_settings.facilityEnabled).
+enum Register {
+  biomedical
+  facility
+}
+
 enum AssetStatus {
   active
   not_in_use
@@ -117,6 +124,8 @@ model HospitalSettings {
   backupLastAt      DateTime?
   backupLastError   String?
   backupLastErrorAt DateTime?
+  // The facility maintenance add-on (decision K): only the super admin turns it on. Off = nothing about it shows.
+  facilityEnabled   Boolean @default(false)
   // The address QR labels point at; null = the address they are printed from.
   labelBaseUrl      String?
   // Set by the daily job each time it runs, so a stopped job shows (health, Hospital settings).
@@ -167,6 +176,7 @@ model EquipmentType {
   code                     String   @unique
   defaultPmsMonths         Int?
   defaultCalibrationMonths Int?
+  register                 Register @default(biomedical)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
   createdBy                String?
@@ -282,6 +292,8 @@ model Asset {
   // Who sold it (often a distributor) and who services it, from the suppliers directory. The make stays as text.
   supplierId           String?
   serviceVendorId      String?
+  // The register of its equipment type, copied so every scoped query can filter on it (a machine never changes register).
+  register             Register    @default(biomedical)
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   createdBy            String?
@@ -303,6 +315,7 @@ model Asset {
 
   @@index([departmentId])
   @@index([status])
+  @@index([register])
   @@map("assets")
 }
 
@@ -459,6 +472,8 @@ model Complaint {
   closedAt        DateTime?
   closedBy        String?
   closeNote       String?
+  // The team it is for: its machine's register.
+  register        Register        @default(biomedical)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   createdBy       String?
@@ -474,6 +489,7 @@ model Complaint {
   @@index([assetId])
   @@index([departmentId])
   @@index([assignedToId])
+  @@index([register])
   @@map("complaints")
 }
 
@@ -659,6 +675,8 @@ model ConsumableItem {
   unitCost     Decimal? @db.Decimal(12, 2) // the latest price paid, or as entered
   notes        String?
   active       Boolean  @default(true)
+  // Each team keeps its own store (a filter for the chiller is not a ventilator part).
+  register     Register @default(biomedical)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdBy    String?

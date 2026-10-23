@@ -1,6 +1,6 @@
 // Demo/install seed. Safe to re-run: setup data is upserted, assets are only created on an empty register.
 import bcrypt from 'bcryptjs';
-import type { RoleName } from '@bme/shared';
+import type { Criticality, RoleName } from '@bme/shared';
 import { formatAssetCode } from './lib/assetCode';
 import { ensureRolesAndPermissions, ensureStarterTypes } from './lib/baseData';
 import { addMonths } from './lib/dates';
@@ -12,6 +12,7 @@ const departments = [
   { name: 'Biomedical Engineering', code: 'BME' },
   { name: 'Intensive Care Unit', code: 'ICU' },
   { name: 'Radiology', code: 'RAD' },
+  { name: 'Engineering Services', code: 'ENG' },
 ];
 
 const locations = [
@@ -19,12 +20,16 @@ const locations = [
   { dept: 'ICU', name: 'ICU 1', code: 'ICU1' },
   { dept: 'ICU', name: 'ICU 2', code: 'ICU2' },
   { dept: 'RAD', name: 'X-ray Room', code: 'XR1' },
+  { dept: 'ENG', name: 'DG Room', code: 'DGR' },
+  { dept: 'ENG', name: 'Plant Room', code: 'PLNT' },
+  { dept: 'ENG', name: 'Main Block', code: 'MAIN' },
 ];
 
 const users: Array<{ name: string; email: string; role: RoleName; dept?: string }> = [
   { name: 'Vendor Support', email: 'superadmin@demo.local', role: 'super_admin' },
   { name: 'Dr. Meera Shah (HOD)', email: 'admin@demo.local', role: 'admin' },
   { name: 'Ravi Patel', email: 'biomed@demo.local', role: 'biomed' },
+  { name: 'Suresh Mehta', email: 'maintenance@demo.local', role: 'maintenance' },
   { name: 'Sister Anita Desai', email: 'nursing@demo.local', role: 'nursing', dept: 'ICU' },
 ];
 
@@ -40,6 +45,16 @@ const assets = [
   ['INFP', 'Infusion Pump 2', 'B. Braun', 'Infusomat', 'ICU', 'ICU2', 'minor'],
   ['MON', 'Spare Monitor', 'Mindray', 'BeneVision N12', 'BME', 'WKSP', 'general'],
   ['DEFIB', 'Defibrillator Radiology', 'Philips', 'HeartStart XL+', 'RAD', 'XR1', 'critical'],
+] as const;
+
+// Facility equipment for the maintenance add-on (docs/requirements-facility.md), added once and with the add-on on.
+const facilityAssets = [
+  ['DG', 'DG Set 1 (500 kVA)', 'Cummins', 'C500D5', 'ENG', 'DGR', 'most_critical'],
+  ['CHLR', 'Chiller 1', 'Carrier', '30XW', 'ENG', 'PLNT', 'critical'],
+  ['AHU', 'AHU ICU', 'Blue Star', 'DSA 15', 'ICU', 'ICU1', 'critical'],
+  ['UPS', 'UPS ICU (20 kVA)', 'APC', 'Galaxy VS', 'ICU', 'ICU2', 'most_critical'],
+  ['LIFT', 'Bed Lift 1', 'Otis', 'Gen2', 'ENG', 'MAIN', 'critical'],
+  ['RO', 'RO Plant (Dialysis)', 'Ion Exchange', 'RO 500', 'ENG', 'PLNT', 'minor'],
 ] as const;
 
 
@@ -87,9 +102,9 @@ async function main() {
     });
   }
 
-  if ((await prisma.asset.count()) === 0) {
+  const addAssets = async (rows: ReadonlyArray<readonly [string, string, string, string, string, string, string]>) => {
     const today = new Date();
-    for (const [typeCode, name, make, model, deptCode, locCode, criticality] of assets) {
+    for (const [typeCode, name, make, model, deptCode, locCode, criticality] of rows) {
       const type = typeByCode.get(typeCode)!;
       const updated = await prisma.hospitalSettings.update({
         where: { id: settings.id },
@@ -115,13 +130,19 @@ async function main() {
           serialNo: `SN-${typeCode}-${String(updated.assetSeq).padStart(4, '0')}`,
           departmentId: deptByCode.get(deptCode)!.id,
           locationId: locByCode.get(locCode)!.id,
-          criticality,
+          criticality: criticality as Criticality,
+          register: type.register,
           installationDate,
           warrantyMonths: 24,
           warrantyEnd: addMonths(installationDate, 24),
         },
       });
     }
+  };
+  if ((await prisma.asset.count()) === 0) await addAssets(assets);
+  if ((await prisma.asset.count({ where: { register: 'facility' } })) === 0) {
+    await addAssets(facilityAssets);
+    await prisma.hospitalSettings.update({ where: { id: settings.id }, data: { facilityEnabled: true } });
   }
 
   // Give equipment that has no due dates yet its first ones, counted from installation.

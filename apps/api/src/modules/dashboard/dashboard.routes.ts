@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { isCritical, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
-import { currentUser, departmentScope, requirePermission } from '../../lib/auth';
+import { isCritical, registerQuerySchema, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
+import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { complaintInclude, machineDownMs, toComplaintRows } from '../complaints/complaints.service';
@@ -18,7 +18,7 @@ const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.lengt
 // only) and sections the person's role cannot see come back null.
 dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, res) => {
   const me = currentUser(req);
-  const scope = departmentScope(me);
+  const scope = scopeOf(me, registerQuerySchema.parse(req.query).register);
   const can = (code: (typeof me.permissions)[number]) => me.permissions.includes(code);
   const today = todayISO();
   const monthEnd = endOfMonthISO(today);

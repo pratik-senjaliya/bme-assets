@@ -2,7 +2,7 @@
 
 import { Alert, Button, Drawer, Timeline, Typography } from 'antd';
 import Link from 'next/link';
-import type { ComplaintDetail, ComplaintEvent } from '@bme/shared';
+import { TEAM_LABEL, type ComplaintDetail, type ComplaintEvent } from '@bme/shared';
 import { useState } from 'react';
 import { StepNote, useComplaintWork } from '@/components/ComplaintWork';
 import { DocumentList } from '@/components/DocumentList';
@@ -151,7 +151,7 @@ export function ComplaintDrawer({ id, onClose, onChanged }: { id: string | null;
               }}
               emptyText={canAttach ? 'No documents yet. Add a photo of the fault if it helps.' : 'No documents.'}
             />
-            {!canAttach && c.resolvedAt && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>This complaint is resolved: only the biomedical team can still add its service report or invoice.</div>}
+            {!canAttach && c.resolvedAt && <div style={{ color: COLORS.muted, fontSize: 12.5, marginTop: 8 }}>This complaint is resolved: only the {TEAM_LABEL[c.register].toLowerCase()} can still add its service report or invoice.</div>}
           </div>
           {c.expenses.length > 0 && (
             <div>

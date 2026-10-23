@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRightOutlined, CheckCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Grid, Row } from 'antd';
+import { Alert, Button, Card, Col, Grid, Row, Segmented } from 'antd';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import type { AssetRow, DashboardResponse, HospitalInfo, Paged } from '@bme/shared';
@@ -14,7 +14,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { DashboardSkeleton, EmptyState } from '@/components/Skeletons';
 import { DueText, Pill } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
 import { formatDate } from '@/lib/format';
 import { COLORS } from '@/theme';
 
@@ -69,9 +69,13 @@ const Quiet = ({ children, icon = <CheckCircleOutlined /> }: { children: ReactNo
 
 export default function Home() {
   const { user, can } = useAuth();
-  const dash = useFetch<DashboardResponse>('/dashboard');
+  // Whoever sees the whole hospital and both teams (the HOD) can look at one team's figures; the wards see their own.
+  const teamSwitch = useTwoTeams() && user?.role !== 'nursing';
+  const [register, setRegister] = useState('');
+  const team = register ? `register=${register}` : '';
+  const dash = useFetch<DashboardResponse>(`/dashboard${team && `?${team}`}`);
   // Machines not to use (an urgent fault not fixed, or a failed PMS / calibration), within the person's scope.
-  const unsafe = useFetch<Paged<AssetRow>>('/assets?condition=unsafe&pageSize=20');
+  const unsafe = useFetch<Paged<AssetRow>>(`/assets?condition=unsafe&pageSize=20${team && `&${team}`}`);
   const hospital = useFetch<HospitalInfo>('/hospital');
   const d = dash.data;
   const phone = Grid.useBreakpoint().md === false;
@@ -179,6 +183,9 @@ export default function Home() {
         subtitle={`${d?.scope === 'department' ? `${user?.roleLabel} · ${d.departmentName}` : user?.roleLabel} · ${formatDate(new Date())}`}
         action={can('complaint.create') && <Link href="/complaints"><Button type="primary">Raise complaint</Button></Link>}
       />
+      {teamSwitch && (
+        <Segmented aria-label="Equipment" style={{ marginBottom: 16 }} value={register} options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]} onChange={(v) => setRegister(String(v))} />
+      )}
       {dash.error && <Alert type="error" showIcon message="Could not load the dashboard" description={dash.error} action={<Button onClick={dash.reload}>Retry</Button>} />}
       {dash.loading && !d && <DashboardSkeleton header={false} />}
       {d && (

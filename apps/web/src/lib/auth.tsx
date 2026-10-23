@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { LoginInput, PermissionCode, SessionUser } from '@bme/shared';
+import { REGISTER_LABEL, REGISTERS, type LoginInput, type PermissionCode, type SessionUser } from '@bme/shared';
 import { api, ApiError, clearFetchCache } from './api';
 import { SIGNED_OUT_EVENT, type SignedOutReason } from './nav';
 
@@ -77,3 +77,10 @@ export function useAuth(): AuthState {
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
+
+// Does this person see both registers (the facility maintenance add-on is on and they look after, or see, both)? Only
+// then do screens offer to show one team's equipment, or say whose it is.
+export function useTwoTeams(): boolean {
+  return (useAuth().user?.registers.length ?? 0) > 1;
+}
+export const REGISTER_OPTIONS = REGISTERS.map((r) => ({ value: r, label: REGISTER_LABEL[r] }));

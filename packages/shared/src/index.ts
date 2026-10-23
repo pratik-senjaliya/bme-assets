@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 export type HealthResponse = {
   status: 'ok';
@@ -26,15 +26,24 @@ export type HealthResponse = {
 
 // ---------- Roles & permissions ----------
 
-export const ROLE_NAMES = ['super_admin', 'admin', 'biomed', 'nursing'] as const;
+export const ROLE_NAMES = ['super_admin', 'admin', 'biomed', 'maintenance', 'nursing'] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
 export const ROLE_LABELS: Record<RoleName, string> = {
   super_admin: 'Super admin',
   admin: 'Admin (Biomedical HOD)',
   biomed: 'Biomedical staff',
+  maintenance: 'Maintenance staff',
   nursing: 'Nursing staff',
 };
+
+// Which team looks after a piece of equipment (docs/requirements-facility.md, decision G). Facility is the add-on,
+// switched on per install by the super admin (decision K); while it is off only the biomedical register exists.
+export const REGISTERS = ['biomedical', 'facility'] as const;
+export type Register = (typeof REGISTERS)[number];
+export const REGISTER_LABEL: Record<Register, string> = { biomedical: 'Biomedical', facility: 'Facility' };
+// The team that works on each register, as people say it.
+export const TEAM_LABEL: Record<Register, string> = { biomedical: 'Biomedical team', facility: 'Maintenance team' };
 
 export const PERMISSIONS = [
   'asset.view',
@@ -60,6 +69,10 @@ export const PERMISSIONS = [
   'report.view',
   'notification.view',
   'consumable.manage',
+  // Which equipment a person works on (decision H): lists, records, notices and reports follow these, as they follow
+  // the department for nursing.
+  'register.biomedical',
+  'register.facility',
 ] as const;
 export type PermissionCode = (typeof PERMISSIONS)[number];
 
@@ -80,9 +93,11 @@ const BIOMED: PermissionCode[] = [
   'consumable.manage',
 ];
 
+export const REGISTER_PERMISSION: Record<Register, PermissionCode> = { biomedical: 'register.biomedical', facility: 'register.facility' };
+
 // Defaults seeded into the DB; hospitals can adjust them later.
 // The HOD's role always keeps these, so a mis-click in Roles cannot lock the hospital out of its own install.
-// A deputy HOD (gap review #19): a biomedical engineer the HOD trusts to approve, assign and hold complaints while the
+// A deputy HOD (gap review #19): a biomedical or maintenance engineer the HOD trusts to approve, assign and hold complaints while the
 // HOD is away. Given per person (users.deputy), on top of their role, so the role stays as it is for everyone else.
 export const DEPUTY_PERMISSIONS: PermissionCode[] = ['approval.decide', 'complaint.assign', 'complaint.hold', 'notification.view'];
 
@@ -93,9 +108,15 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, readonly PermissionCode[
   // condemnations and deletions are requests, and it cannot decide them.
   super_admin: PERMISSIONS.filter((p) => p !== 'asset.edit_key' && p !== 'approval.decide'),
   admin: PERMISSIONS.filter((p) => p !== 'settings.pattern'),
-  biomed: BIOMED,
-  nursing: ['asset.view', 'complaint.view', 'complaint.create', 'notification.view'],
+  biomed: [...BIOMED, 'register.biomedical'],
+  // The same work as the biomedical team, on the facility register.
+  maintenance: [...BIOMED, 'register.facility'],
+  // Wards see and report on everything in their own department, whichever team looks after it.
+  nursing: ['asset.view', 'complaint.view', 'complaint.create', 'notification.view', 'register.biomedical', 'register.facility'],
 };
+
+// The roles that can be named deputy HOD.
+export const DEPUTY_ROLES: RoleName[] = ['biomed', 'maintenance'];
 
 // ---------- Auth ----------
 
@@ -128,6 +149,8 @@ export type SessionUser = {
   permissions: PermissionCode[];
   // Set when the HOD gives or resets a password: nothing else works until the person chooses their own.
   mustChangePassword: boolean;
+  // The registers this person works on or sees (their register.* permissions; facility only while the add-on is on).
+  registers: Register[];
 };
 
 // ---------- Setup ----------
@@ -150,6 +173,7 @@ export const equipmentTypeSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,10}$/, '2–10 letters or digits'),
   defaultPmsMonths: z.number().int().positive().max(120).nullable().optional(),
   defaultCalibrationMonths: z.number().int().positive().max(120).nullable().optional(),
+  register: z.enum(REGISTERS).optional(), // biomedical when left out
 });
 export type EquipmentTypeInput = z.infer<typeof equipmentTypeSchema>;
 
@@ -169,7 +193,7 @@ const userBase = {
   role: z.enum(ROLE_NAMES),
   departmentId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
-  // Deputy HOD: biomedical staff only (DEPUTY_PERMISSIONS).
+  // Deputy HOD: biomedical or maintenance staff only (DEPUTY_PERMISSIONS, DEPUTY_ROLES).
   deputy: z.boolean().optional(),
 };
 
@@ -229,6 +253,7 @@ export const updateSettingsSchema = z.object({
   criticalDowntimeHours: z.number().int().min(1).max(720).optional(),
   complaintCloseDays: z.number().int().min(1).max(30).optional(),
   transfersEnabled: z.boolean().optional(),
+  facilityEnabled: z.boolean().optional(), // super admin only (decision K)
   // Who the wards call for a broken machine, shown to everyone (e.g. "Biomedical on call: 98250 00000, ext. 214").
   biomedContact: optionalText(200),
   // Shared ward PCs: sign out after this many minutes without use; 0 = never.
@@ -261,6 +286,7 @@ export type SettingsResponse = {
   criticalDowntimeHours: number;
   complaintCloseDays: number;
   transfersEnabled: boolean;
+  facilityEnabled: boolean;
   biomedContact: string | null;
   idleLogoutMinutes: number;
   smtpHost: string | null;
@@ -351,6 +377,7 @@ export const assetListQuerySchema = z.object({
   locationId: z.string().uuid().optional(),
   equipmentTypeId: z.string().uuid().optional(),
   criticality: z.enum(CRITICALITIES).optional(),
+  register: z.enum(REGISTERS).optional(), // one team's equipment, for people who see both
   // failed = its latest PMS or calibration failed; unsafe = that, or an urgent fault not yet fixed (gap review).
   condition: z.enum(['failed', 'unsafe']).optional(),
   // Condemned and not-in-use assets leave the active list; ask for them explicitly.
@@ -404,6 +431,7 @@ export type AssetRow = {
   ageMonths: number | null;
   nextPmsDue: string | null;
   nextCalibrationDue: string | null;
+  register: Register;
   // Is it safe to use? Its unresolved complaints (oldest first) and a failed latest PMS / calibration (gap review).
   openComplaints: OpenComplaintRef[];
   pmsFailedOn: string | null;
@@ -464,6 +492,7 @@ export const consumableItemSchema = z.object({
   unitCost,
   notes: optionalText(500),
   active: z.boolean().default(true),
+  register: z.enum(REGISTERS).optional(), // whose store; left out: the person's own (biomedical if they have both)
 });
 export type ConsumableItemInput = z.infer<typeof consumableItemSchema>;
 // A new item may start with what is on the shelf today.
@@ -504,6 +533,7 @@ export type ConsumableRow = {
   unitCost: number | null;
   notes: string | null;
   active: boolean;
+  register: Register;
   lastIssuedOn: string | null;
 };
 export type ConsumableMovementRow = {
@@ -632,6 +662,7 @@ export const complaintListQuerySchema = z.object({
   assignedTo: z.union([z.enum(['me', 'none']), z.string().uuid()]).optional(),
   assetId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
+  register: z.enum(REGISTERS).optional(),
   search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, problem text
   from: isoDateSchema.optional(), // raised on or after (hospital date)
   to: isoDateSchema.optional(), // raised on or before
@@ -646,8 +677,9 @@ export type ComplaintListQuery = z.infer<typeof complaintListQuerySchema>;
 // an engineer may only take an unassigned complaint for themselves.
 export const assignComplaintSchema = z.object({ userId: z.string().uuid().nullable() });
 export type AssignComplaintInput = z.infer<typeof assignComplaintSchema>;
-// The people a complaint can be assigned to, with how many unresolved complaints each already has.
-export type Assignee = { id: string; name: string; openCount: number };
+// The people a complaint can be assigned to, with how many unresolved complaints each already has and the registers
+// they work on (a complaint goes to someone of its own register's team).
+export type Assignee = { id: string; name: string; openCount: number; registers: Register[] };
 
 export type ComplaintRow = {
   id: string;
@@ -658,6 +690,7 @@ export type ComplaintRow = {
   criticality: Criticality;
   departmentId: string;
   departmentName: string;
+  register: Register;
   raisedById: string;
   raisedByName: string;
   description: string;
@@ -891,7 +924,7 @@ export type DueRow = {
   daysLeft: number; // negative = overdue
 };
 
-export const dueQuerySchema = z.object({ until: isoDateSchema.optional() });
+export const dueQuerySchema = z.object({ until: isoDateSchema.optional(), register: z.enum(REGISTERS).optional() });
 
 // ---------- Notifications ----------
 
@@ -957,7 +990,7 @@ export type TransferInfo = { toUnit: string; reason: string; requestedByName: st
 
 // What every signed-in person may know about the install: its name, and the optional parts it has turned on.
 // What every signed-in user may know about the hospital's set-up.
-export type HospitalInfo = { name: string; transfersEnabled: boolean; biomedContact: string | null; idleLogoutMinutes: number };
+export type HospitalInfo = { name: string; transfersEnabled: boolean; facilityEnabled: boolean; biomedContact: string | null; idleLogoutMinutes: number };
 
 export const deleteRequestSchema = z.object({
   targetType: z.enum(DELETABLE_TARGETS),
@@ -1065,6 +1098,9 @@ export type DashboardDueItem = {
 };
 export type DashboardTopAsset = { assetId: string; assetCode: string; assetName: string; breakdowns: number; downtimeHours: number };
 export type DashboardExpiry = { kind: 'warranty' | 'contract'; label: string; assetId: string; assetCode: string; assetName: string; date: string; daysLeft: number };
+// One team's equipment on the dashboard (or both, left out), for people who see both registers.
+export const registerQuerySchema = z.object({ register: z.enum(REGISTERS).optional() });
+
 export type DashboardResponse = {
   scope: 'hospital' | 'department';
   departmentName: string | null;
@@ -1120,6 +1156,7 @@ export const reportQuerySchema = z
     criticality: z.enum(CRITICALITIES).optional(),
     assetStatus: z.enum([...ASSET_STATUSES, 'all']).optional(),
     complaintStatus: z.enum(COMPLAINT_STATUSES).optional(),
+    register: z.enum(REGISTERS).optional(), // one team's equipment, for people who see both
     // json = for the screen; xlsx and pdf are downloads. Excel stays the default so existing links keep working.
     format: z.enum(['json', 'xlsx', 'pdf']).default('xlsx'),
   })
@@ -1132,7 +1169,7 @@ export const monthSchema = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use a month like 2026-10')
   .refine((m) => m >= '2000-01' && m <= '2100-12', 'Use a month between 2000 and 2100');
-export const monthlyReportQuerySchema = z.object({ month: monthSchema, format: z.enum(['json', 'xlsx', 'pdf']).default('json') });
+export const monthlyReportQuerySchema = z.object({ month: monthSchema, format: z.enum(['json', 'xlsx', 'pdf']).default('json'), register: z.enum(REGISTERS).optional() });
 // A month whose report was saved on the 1st of the next month (what management was sent), newest first.
 export type SavedMonthlyReport = { month: string; savedAt: string };
 
@@ -1140,7 +1177,7 @@ export type SavedMonthlyReport = { month: string; savedAt: string };
 
 // Evidence for an inspection (NABH and similar), for a period and optionally one department: one ZIP file.
 export const auditPackQuerySchema = z
-  .object({ from: reportDateSchema, to: reportDateSchema, departmentId: z.string().uuid().optional() })
+  .object({ from: reportDateSchema, to: reportDateSchema, departmentId: z.string().uuid().optional(), register: z.enum(REGISTERS).optional() })
   .refine((q) => q.from <= q.to, { message: 'The start date is after the end date', path: ['from'] })
   .refine((q) => q.to.slice(0, 4) <= String(Number(q.from.slice(0, 4)) + 5), { message: 'Choose a period of five years or less', path: ['to'] });
 export type AuditPackQuery = z.infer<typeof auditPackQuerySchema>;

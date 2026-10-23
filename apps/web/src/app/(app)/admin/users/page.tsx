@@ -3,7 +3,7 @@
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ROLE_LABELS, ROLE_NAMES, createUserSchema, updateUserSchema, type RoleName, type UserRow } from '@bme/shared';
+import { DEPUTY_ROLES, ROLE_LABELS, ROLE_NAMES, createUserSchema, updateUserSchema, type HospitalInfo, type RoleName, type UserRow } from '@bme/shared';
 import { DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Pill, StatusTag } from '@/components/StatusTag';
@@ -22,13 +22,15 @@ function UsersPageScreen() {
   const { user: me } = useAuth();
   const users = useFetch<UserRow[]>('/users');
   const departments = useFetch<Department[]>('/departments');
+  const hospital = useFetch<HospitalInfo>('/hospital');
   const [form] = Form.useForm<FormValues>();
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
   const role = Form.useWatch('role', form);
 
   // Only the super admin can hand out the super admin role.
-  const roleOptions = ROLE_NAMES.filter((r) => r !== 'super_admin' || me?.role === 'super_admin').map((r) => ({
+  // Maintenance staff only where the facility maintenance add-on is on.
+  const roleOptions = ROLE_NAMES.filter((r) => (r !== 'super_admin' || me?.role === 'super_admin') && (r !== 'maintenance' || hospital.data?.facilityEnabled || (editing !== 'new' && editing?.role === 'maintenance'))).map((r) => ({
     value: r,
     label: ROLE_LABELS[r],
   }));
@@ -50,7 +52,7 @@ function UsersPageScreen() {
     const input = parseForm(form, isNew ? createUserSchema : updateUserSchema, {
       ...form.getFieldsValue(),
       username: form.getFieldValue('username') ?? null,
-      deputy: form.getFieldValue('role') === 'biomed' && !!form.getFieldValue('deputy'),
+      deputy: DEPUTY_ROLES.includes(form.getFieldValue('role')) && !!form.getFieldValue('deputy'),
       password: form.getFieldValue('password') || undefined,
       departmentId: form.getFieldValue('departmentId') ?? null,
     });
@@ -174,7 +176,7 @@ function UsersPageScreen() {
           <Form.Item label="Role" name="role" rules={[{ required: true }]}>
             <Select options={roleOptions} />
           </Form.Item>
-          {role === 'biomed' && (
+          {DEPUTY_ROLES.includes(role) && (
             <Form.Item
               label="Deputy HOD"
               name="deputy"

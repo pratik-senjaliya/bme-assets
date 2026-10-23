@@ -26,6 +26,7 @@ import {
   type PurchaseOrderRow,
   type ServiceContractRow,
   type TimelineEvent,
+  TEAM_LABEL,
 } from '@bme/shared';
 import { AssetApprovalBanners } from '@/components/AssetApprovalBanners';
 import { DataTable } from '@/components/DataTable';
@@ -37,7 +38,7 @@ import type { DeleteTarget } from '@/components/RequestApprovalModals';
 import { CriticalityTag, DueTag, StatusTag, WarrantyTag } from '@/components/StatusTag';
 import { COLORS } from '@/theme';
 import { api, useFetch } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useTwoTeams } from '@/lib/auth';
 import { daysFromToday, formatAge, formatDate, formatDateTime, formatMoney, formatSize, hospitalToday, moneyInputProps, todayIST } from '@/lib/format';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 import { KIND_LABEL, uploadAll } from '@/lib/uploads';
@@ -237,6 +238,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 const Sub = ({ children }: { children: React.ReactNode }) => <div style={{ fontWeight: 500, color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{children}</div>;
 
 function Overview({ a }: { a: AssetDetail }) {
+  const twoTeams = useTwoTeams();
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card>
@@ -250,6 +252,7 @@ function Overview({ a }: { a: AssetDetail }) {
             <span className="code">{a.assetCode}</span>
           </Descriptions.Item>
           <Descriptions.Item label="Equipment type">{a.equipmentTypeName}</Descriptions.Item>
+          {twoTeams && <Descriptions.Item label="Looked after by">{TEAM_LABEL[a.register]}</Descriptions.Item>}
           <Descriptions.Item label="Serial number">{a.serialNo ?? '—'}</Descriptions.Item>
           {a.tagNo && <Descriptions.Item label="Hospital tag no">{a.tagNo}</Descriptions.Item>}
           <Descriptions.Item label="Installed">{formatDate(a.installationDate)}</Descriptions.Item>

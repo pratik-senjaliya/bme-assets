@@ -1,8 +1,8 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
-import { UNRESOLVED_STATUSES, type AssetDetail, type AssetRow, type Criticality, type VendorCard, type WarrantyStatus } from '@bme/shared';
+import { REGISTER_LABEL, UNRESOLVED_STATUSES, type AssetDetail, type AssetRow, type Criticality, type Register, type VendorCard, type WarrantyStatus } from '@bme/shared';
 import { auditMany } from '../../lib/audit';
-import { currentUser, departmentScope } from '../../lib/auth';
+import { currentUser, scopeOf } from '../../lib/auth';
 import { formatAssetCode } from '../../lib/assetCode';
 import { addMonths, daysBetween, isoDateOrNull, parseDate, todayISO } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
@@ -61,6 +61,7 @@ export function toAssetRow(a: AssetWithRefs): AssetRow {
     ageMonths,
     nextPmsDue: isoDateOrNull(a.nextPmsDue),
     nextCalibrationDue: isoDateOrNull(a.nextCalibrationDue),
+    register: a.register,
     openComplaints: a.complaints.map((c) => ({ id: c.id, complaintNo: c.complaintNo, status: c.status, urgent: c.urgent, raisedAt: c.raisedAt.toISOString() })),
     pmsFailedOn: isoDateOrNull(a.pmsFailedOn),
     calibrationFailedOn: isoDateOrNull(a.calibrationFailedOn),
@@ -159,6 +160,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
   ];
   const byId = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]));
   const [dept, loc, type] = [byId(departments), byId(locations), byId(types)];
+  for (const t of types) assertWorksOn(req, t);
 
   const { id } = await tx.hospitalSettings.findFirstOrThrow({ select: { id: true } });
   const settings = await tx.hospitalSettings.update({
@@ -207,6 +209,7 @@ export async function createAssets(tx: Db, req: Request, inputs: NewAsset[]) {
       openingCalibrationOn,
       supplierId: i.supplierId ?? null,
       serviceVendorId: i.serviceVendorId ?? null,
+      register: equipmentType.register,
       // First due dates run from the last PMS / calibration done before this system (existing equipment), else from
       // installation; after that PMS and calibration records move them on.
       nextPmsDue: firstDue(openingPmsOn ?? installationDate, pmsFrequencyMonths),
@@ -252,10 +255,18 @@ export const SCHEDULE_FIELDS = ['installationDate', 'pmsFrequencyMonths', 'calib
 // Long enough for large imports while other creates wait on the counter row.
 export const CREATE_TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
 
-// The one way to load an asset for a request. Department scope is applied here, so nursing never sees
-// another department's asset, and a foreign id looks exactly like a missing one (404).
+// Equipment of a type is registered by people who work on that type's register (decision H).
+export function assertWorksOn(req: Request, type: { name: string; register: Register }) {
+  if (req.user && !req.user.registers.includes(type.register)) {
+    const message = `${type.name} is ${REGISTER_LABEL[type.register].toLowerCase()} equipment, which you do not look after`;
+    throw new HttpError(403, message, { fieldErrors: { equipmentTypeId: [message] } });
+  }
+}
+
+// The one way to load an asset for a request. Department and register scope are applied here, so nursing never sees
+// another department's asset nor one team the other's, and a foreign id looks exactly like a missing one (404).
 export async function findScopedAsset(req: Request, id: string = idOf(req)) {
-  const asset = await prisma.asset.findFirst({ where: { id, ...departmentScope(currentUser(req)) }, include: assetInclude });
+  const asset = await prisma.asset.findFirst({ where: { id, ...scopeOf(currentUser(req)) }, include: assetInclude });
   if (!asset) throw new HttpError(404, 'Asset not found');
   return asset;
 }

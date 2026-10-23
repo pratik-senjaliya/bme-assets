@@ -40,7 +40,7 @@ const toTemplateRow = (t: Prisma.PmsTemplateGetPayload<{ include: { equipmentTyp
 pmsRouter.get('/pms-templates', requireAnyPermission('pms.perform', 'setup.manage'), async (req, res) => {
   const typeId = typeof req.query.equipmentTypeId === 'string' ? req.query.equipmentTypeId : undefined;
   const rows = await prisma.pmsTemplate.findMany({
-    where: typeId ? { equipmentTypeId: typeId } : {},
+    where: { ...(typeId && { equipmentTypeId: typeId }), equipmentType: { register: { in: currentUser(req).registers } } },
     include: { equipmentType: true },
     orderBy: [{ equipmentTypeId: 'asc' }, { version: 'desc' }],
   });
@@ -206,8 +206,8 @@ pmsRouter.post('/assets/:id/pms/oem', requirePermission('pms.perform'), upload.s
 // ---------- Due list ---------- (must come before /pms/:id)
 
 pmsRouter.get('/pms/due', requirePermission('pms.perform'), async (req, res) => {
-  const { until } = dueQuerySchema.parse(req.query);
-  res.json(await dueList(req, 'nextPmsDue', until));
+  const { until, register } = dueQuerySchema.parse(req.query);
+  res.json(await dueList(req, 'nextPmsDue', until, register));
 });
 
 pmsRouter.get('/pms/:id', requirePermission('pms.perform'), async (req, res) => {
