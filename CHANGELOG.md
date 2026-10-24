@@ -6,7 +6,7 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
-## 1.5.0 (November 2026)
+## 1.5.0 (23 October 2026)
 
 - **Facility reports (facility add-on):** the dashboard has a Facility card for the maintenance team and the HOD (ward
   complaints open and over target, licences expired or ending, readings still to take or out of range, PMS due by run
@@ -14,7 +14,7 @@ by themselves when the API starts.
   or ending) and, like the audit pack, now has an "All equipment / Biomedical / Facility" switch. The audit pack adds
   "12 Logbook.xlsx" when it covers facility equipment.
 
-## 1.4.0 (November 2026)
+## 1.4.0 (23 October 2026)
 
 - **Logbook (facility add-on):** the plant-room logbook on screen. On a machine's Logbook tab the team sets what is
   read (run hours, diesel level, temperatures, TDS, pressures, energy and water meters), its unit, normal range and how
@@ -27,7 +27,7 @@ by themselves when the API starts.
 - **New report:** Consumption and readings (meter use per month, readings out of range, PMS by run hours).
 - New permission "Take logbook readings".
 
-## 1.3.0 (November 2026)
+## 1.3.0 (23 October 2026)
 
 - **Statutory licences and inspections (facility add-on):** Equipment > Licences keeps lift licences, fire NOC, DG
   pollution certificates, electrical inspector's approvals, PESO licences, pressure vessel inspections, water test
@@ -37,7 +37,7 @@ by themselves when the API starts.
   one as history. "Licences" on My work lists those expired or ending. New report: Compliance register; the audit pack
   adds it and a Licences folder with the documents. New permission "Keep statutory licences".
 
-## 1.2.0 (November 2026)
+## 1.2.0 (23 October 2026)
 
 - **Ward complaints without a machine (facility add-on):** "Raise complaint" now offers "Something else in the ward":
   what kind of problem (Electrical, Plumbing and water, AC and ventilation, Civil, Carpentry and furniture, Lift, Fire
@@ -52,7 +52,7 @@ by themselves when the API starts.
 - **Maintenance contact for the wards**, shown next to the biomedical one.
 - **New report:** Ward complaints by trade (by trade, by location, response and resolution times, over target).
 
-## 1.1.0 (October 2026)
+## 1.1.0 (23 October 2026)
 
 - **Facility maintenance add-on (first part):** the maintenance team's equipment (DG sets, chillers, AHUs, UPS, lifts,
   RO plant) in the same register, PMS, contracts, complaints, reminders and reports, kept apart from the biomedical
@@ -63,7 +63,7 @@ by themselves when the API starts.
   Starter facility types with PMS checklists are added when the add-on is first switched on. A maintenance engineer
   can be deputy HOD.
 
-## 1.0.0 (October 2026)
+## 1.0.0 (22 October 2026)
 
 The first numbered release: everything built so far, as installed for the first hospitals.
 
