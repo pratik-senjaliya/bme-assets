@@ -9,6 +9,7 @@ import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import type { ComplaintRow, Paged } from '@bme/shared';
 import { CardSkeleton, ComplaintCard, ToClose, useComplaintWork } from '@/components/ComplaintWork';
 import { PageHeader } from '@/components/PageHeader';
+import { TradeFilter } from '@/components/TradeFilter';
 import { EmptyState } from '@/components/Skeletons';
 import { api, useFetch } from '@/lib/api';
 import { REGISTER_OPTIONS, useAuth, useTwoTeams } from '@/lib/auth';
@@ -78,6 +79,7 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
   // Someone who sees both teams' complaints (the HOD) can look at one team's board.
   const twoTeams = useTwoTeams();
   const [register, setRegister] = useState('');
+  const [tradeId, setTradeId] = useState<string>();
   // The board is watched for a while: refresh it every minute (new complaints, waiting times), but not while the
   // tab is hidden.
   const [tick, setTick] = useState(0);
@@ -90,19 +92,21 @@ function Board({ version, onChanged, onOpen }: { version: number; onChanged: () 
 
   return (
     <>
-      {twoTeams && (
-        <Segmented
-          aria-label="Equipment"
-          style={{ marginBottom: 14 }}
-          value={register}
-          options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]}
-          onChange={(v) => setRegister(String(v))}
-        />
-      )}
+      <Space wrap size={12} style={{ marginBottom: 14 }}>
+        {twoTeams && (
+          <Segmented
+            aria-label="Equipment"
+            value={register}
+            options={[{ value: '', label: 'All equipment' }, ...REGISTER_OPTIONS]}
+            onChange={(v) => (setRegister(String(v)), setTradeId(undefined))}
+          />
+        )}
+        <TradeFilter value={tradeId} onChange={setTradeId} register={register || undefined} />
+      </Space>
       <Row gutter={16}>
         {COLUMNS.map((col) => (
           <Col key={col.status} xs={24} md={12} xl={6}>
-            <BoardColumn {...col} register={register} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
+            <BoardColumn {...col} register={register} tradeId={tradeId} version={version * 10_000 + tick} onOpen={onOpen} actions={actions} />
           </Col>
         ))}
       </Row>
@@ -118,6 +122,7 @@ function BoardColumn({
   title,
   empty,
   register,
+  tradeId,
   version,
   onOpen,
   actions,
@@ -126,11 +131,12 @@ function BoardColumn({
   title: string;
   empty: string;
   register: string;
+  tradeId?: string;
   version: number;
   onOpen: (id: string) => void;
   actions: (c: ComplaintRow) => ReactNode;
 }) {
-  const team = register ? `&register=${register}` : '';
+  const team = `${register ? `&register=${register}` : ''}${tradeId ? `&tradeId=${tradeId}` : ''}`;
   const list = useFetch<Paged<ComplaintRow>>(`/complaints?status=${status}${team}&pageSize=${status === 'done' ? 10 : 50}&k=${version}`);
   // Open and in-progress columns show 50 at a time; "Show more" loads the next 50, so every complaint can be worked on.
   const [more, setMore] = useState<ComplaintRow[]>([]);

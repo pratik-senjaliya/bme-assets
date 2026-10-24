@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { CRITICALITY_LABEL, isCritical, type Kpi, type ReportData } from '@bme/shared';
 import { addDaysISO, addMonths, daysBetween, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
+import { expenseScope } from '../../lib/auth';
 import { HttpError } from '../../lib/errors';
 import { sendMail, smtpConfigured } from '../../lib/mail';
 import { facilityOn, hospitalScope, usersWithPermissions } from '../../lib/people';
@@ -127,7 +128,7 @@ export async function buildMonthlyReport(month: string, viewer: Viewer, now = ne
 
   // ---- Spend ----
   const spendIn = async (a: string, b: string) => {
-    const r = await prisma.serviceExpense.aggregate({ _sum: { amount: true }, where: { date: { gte: parseDate(a), lte: parseDate(b) }, asset: { ...c.scope } } });
+    const r = await prisma.serviceExpense.aggregate({ _sum: { amount: true }, where: { date: { gte: parseDate(a), lte: parseDate(b) }, ...expenseScope(c.scope) } });
     return Number(r._sum.amount ?? 0);
   };
   const [spend, spendFy] = await Promise.all([spendIn(from, to), spendIn(fyStart(month), to)]);

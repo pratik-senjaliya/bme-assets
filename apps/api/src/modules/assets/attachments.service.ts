@@ -81,7 +81,7 @@ export async function assetIdOfOwner(ownerType: string, ownerId: string): Promis
     case 'service_log':
       return (await prisma.serviceLog.findUnique(id))?.assetId;
     case 'service_expense':
-      return (await prisma.serviceExpense.findUnique(id))?.assetId;
+      return (await prisma.serviceExpense.findUnique(id))?.assetId ?? undefined;
     case 'service_contract':
       return (await prisma.serviceContract.findUnique(id))?.assetId;
     case 'purchase_order':

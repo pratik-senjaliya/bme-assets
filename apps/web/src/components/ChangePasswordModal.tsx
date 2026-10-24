@@ -4,12 +4,14 @@ import { App, Form, Input, Modal, Typography } from 'antd';
 import { useState } from 'react';
 import { changePasswordSchema } from '@bme/shared';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { parseForm, showApiFieldErrors, useSingleFlight } from '@/lib/forms';
 
 // Everyone can change their own password. The current one is asked for, so a PC left signed in cannot be used to
 // take over the account. `required`: a password given by the HOD must be replaced before anything else (cannot be closed).
 export function ChangePasswordModal({ open, onClose, required = false, onSignOut }: { open: boolean; onClose: () => void; required?: boolean; onSignOut?: () => void }) {
   const { message } = App.useApp();
+  const { refresh } = useAuth();
   const [form] = Form.useForm<{ currentPassword: string; newPassword: string; confirm: string }>();
   const [saving, setSaving] = useState(false);
 
@@ -26,6 +28,7 @@ export function ChangePasswordModal({ open, onClose, required = false, onSignOut
     setSaving(true);
     try {
       await api('/auth/password', { body: input });
+      if (!required) await refresh(); // the change starts a fresh session: its new end time
       message.success(required ? 'Password changed. Welcome!' : 'Password changed. Use the new one next time you sign in.');
       onClose();
     } catch (e) {

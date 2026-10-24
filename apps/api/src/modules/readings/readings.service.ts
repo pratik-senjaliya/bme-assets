@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { addDaysISO, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import type { HoursDueRow, ReadingEvery, ReadingKind, ReadingRow, ReadingTypeRow, RunHoursInfo } from '@bme/shared';
@@ -78,10 +78,40 @@ export async function runHoursInfo(asset: { id: string; pmsEveryHours: number | 
   return { pmsEveryHours: asset.pmsEveryHours, lastPmsHours: asset.lastPmsHours, hoursNow, pmsDueAtHours, hoursLeft: pmsDueAtHours != null && hoursNow != null ? Math.round((pmsDueAtHours - hoursNow) * 10) / 10 : null };
 }
 
-// Machines whose PMS by hours is due within `within` hours (or past it), for My work and the logbook.
+// The latest reading that still counts (not corrected) for each reading type, in one query.
+export async function latestEffective(typeIds: string[]) {
+  if (!typeIds.length) return new Map<string, { takenAt: Date; outOfRange: boolean }>();
+  const rows = await prisma.$queryRaw<{ readingTypeId: string; takenAt: Date; outOfRange: boolean }[]>`
+    SELECT DISTINCT ON (r."readingTypeId") r."readingTypeId", r."takenAt", r."outOfRange"
+    FROM readings r
+    WHERE r."readingTypeId" = ANY(${typeIds}) AND NOT EXISTS (SELECT 1 FROM readings c WHERE c."correctsId" = r.id)
+    ORDER BY r."readingTypeId", r."takenAt" DESC`;
+  return new Map(rows.map((r) => [r.readingTypeId, r]));
+}
+
+// The run-hours meter now (latest reading that counts) and at its first reading, for many machines in two queries.
+async function runHoursOf(assetIds: string[]) {
+  const pick = (order: Prisma.Sql) => prisma.$queryRaw<{ assetId: string; value: number }[]>`
+    SELECT DISTINCT ON (r."assetId") r."assetId", r.value
+    FROM readings r JOIN reading_types t ON t.id = r."readingTypeId"
+    WHERE r."assetId" = ANY(${assetIds}) AND t."runHours" AND NOT EXISTS (SELECT 1 FROM readings c WHERE c."correctsId" = r.id)
+    ORDER BY r."assetId", r."takenAt" ${order}`;
+  if (!assetIds.length) return { now: new Map<string, number>(), first: new Map<string, number>() };
+  const [latest, earliest] = await Promise.all([pick(Prisma.sql`DESC`), pick(Prisma.sql`ASC`)]);
+  return { now: new Map(latest.map((r) => [r.assetId, r.value])), first: new Map(earliest.map((r) => [r.assetId, r.value])) };
+}
+
+// Machines whose PMS by hours is due within `within` hours (or past it), for My work, the logbook and the dashboard.
+// Same rule as runHoursInfo, for all of them at once.
 export async function hoursDue(where: Prisma.AssetWhereInput, within = 25): Promise<HoursDueRow[]> {
   const assets = await prisma.asset.findMany({ where: { ...where, status: 'active', pmsEveryHours: { not: null } }, select: { id: true, assetCode: true, name: true, pmsEveryHours: true, lastPmsHours: true } });
-  const rows = await Promise.all(assets.map(async (a) => ({ a, info: await runHoursInfo(a) })));
+  const meters = await runHoursOf(assets.map((a) => a.id));
+  const rows = assets.map((a) => {
+    const hoursNow = meters.now.get(a.id) ?? null;
+    const from = a.lastPmsHours ?? meters.first.get(a.id) ?? null;
+    const pmsDueAtHours = a.pmsEveryHours != null && from != null ? from + a.pmsEveryHours : null;
+    return { a, info: { hoursNow, pmsDueAtHours, hoursLeft: pmsDueAtHours != null && hoursNow != null ? Math.round((pmsDueAtHours - hoursNow) * 10) / 10 : null } };
+  });
   return rows
     .filter(({ info }) => info.hoursLeft != null && info.hoursLeft <= within)
     .map(({ a, info }) => ({ assetId: a.id, assetCode: a.assetCode, assetName: a.name, hoursNow: info.hoursNow!, pmsDueAtHours: info.pmsDueAtHours!, hoursLeft: info.hoursLeft! }))

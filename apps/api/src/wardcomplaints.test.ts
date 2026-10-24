@@ -27,6 +27,7 @@ async function cleanUp() {
   await prisma.notification.deleteMany({ where: { OR: [{ complaintId: { in: complaints } }, { assetId: { in: assets } }, { message: { contains: 'Medical gases are now' } }] } });
   await prisma.approvalRequest.deleteMany({ where: { targetId: { in: [...assets, ...complaints] } } });
   await prisma.complaintStep.deleteMany({ where: { complaintId: { in: complaints } } });
+  await prisma.serviceExpense.deleteMany({ where: { complaintId: { in: complaints } } });
   await prisma.complaint.deleteMany({ where: { id: { in: complaints } } });
   await prisma.asset.deleteMany({ where: { id: { in: assets } } });
   await prisma.equipmentType.deleteMany({ where: { name: { startsWith: PREFIX } } });
@@ -108,10 +109,9 @@ describe('Ward complaints without a machine', () => {
     assert.match(notice?.message ?? '', /URGENT.*Plumbing and water · ICU 1/);
 
     assert.equal((await call(base, maint, 'POST', `/complaints/${c.id}/start`, {})).status, 200);
-    // Costs are booked on a machine; a ward fault has none.
-    const withCost = await call(base, admin, 'POST', `/complaints/${c.id}/resolve`, { resolutionNotes: 'Washer replaced', costs: [{ type: 'spare_part', description: 'Washer', amount: 20 }] });
-    assert.equal(withCost.status, 400);
-    const resolved = (await (await call(base, maint, 'POST', `/complaints/${c.id}/resolve`, { resolutionNotes: 'Washer replaced' })).json()) as ComplaintRow;
+    // A part bought for a ward fault is booked on the complaint itself (it has no machine).
+    const resolved = (await (await call(base, maint, 'POST', `/complaints/${c.id}/resolve`, { resolutionNotes: 'Washer replaced', costs: [{ type: 'spare_part', description: 'Washer', amount: 20 }] })).json()) as ComplaintRow;
+    assert.deepEqual((await prisma.serviceExpense.findMany({ where: { complaintId: c.id } })).map((e) => [e.assetId, Number(e.amount)]), [[null, 20]]);
     assert.equal(resolved.status, 'resolved');
     assert.equal(resolved.downtimeSeconds, null);
     assert.ok(resolved.resolutionSeconds != null);

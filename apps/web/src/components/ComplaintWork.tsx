@@ -239,7 +239,7 @@ export function useComplaintWork(onChanged: () => void) {
             <Input.TextArea rows={4} maxLength={2000} showCount />
           </Form.Item>
           {/* Parts and bills can be booked here, dated today and linked to this complaint (also later on the asset). */}
-          {can('expense.manage') && resolving?.assetId && (
+          {can('expense.manage') && (
             <Form.List name="costs">
               {(fields, { add, remove }) => (
                 <>

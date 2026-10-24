@@ -54,6 +54,8 @@ await prisma.asset.deleteMany({ where: { equipmentTypeId: { in: types.map((t) =>
 await prisma.equipmentType.deleteMany({ where: { id: { in: types.map((t) => t.id) } } }).catch((e) => console.log('type left:', String(e).slice(0, 80)));
 await prisma.location.deleteMany({ where: { department: { code: 'E2D' } } });
 await prisma.department.deleteMany({ where: { code: 'E2D' } }).catch(() => {});
+// Sign-in locks are kept in the database now: clear the test logins' ones.
+await prisma.loginAttempt.deleteMany({ where: { key: { startsWith: 'e2e.' } } });
 const users = await prisma.user.deleteMany({ where: { email: { startsWith: 'e2e.' } } }).catch((e) => { console.log('users left (referenced):', String(e).slice(0, 60)); return { count: 0 }; });
 console.log('e2e users removed:', users.count);
 console.log({ assets: ids.length, complaints: complaints.length, files: files.length });

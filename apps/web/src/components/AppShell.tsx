@@ -34,6 +34,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { APP_VERSION, type ApprovalRow, type HospitalInfo, type PermissionCode } from '@bme/shared';
 import { ChangePasswordModal } from '@/components/ChangePasswordModal';
+import { SessionEndWarning } from '@/components/SessionEndWarning';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ShellSkeleton } from '@/components/Skeletons';
@@ -295,6 +296,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         )}
         <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
+        <SessionEndWarning endsAt={user.sessionEndsAt} onExtended={refresh} onSignOut={() => void logout()} />
       </Layout>
     </Layout>
   );
