@@ -149,11 +149,8 @@ const EXTRA_TYPES: { code: string; name: string; pms: number; cal: number | null
   { code: 'PHOT', name: 'Phototherapy Unit', pms: 6, cal: 12, checks: ['Irradiance within range', 'Lamp hours noted', 'Fan works'] },
   { code: 'SUCT', name: 'Suction Apparatus', pms: 6, cal: null, checks: ['Vacuum reaches -500 mmHg', 'Jar and tubing intact', 'Overflow valve works'] },
   { code: 'AUTO', name: 'Autoclave', pms: 3, cal: 12, checks: ['Door gasket and lock', 'Bowie-Dick test passed', 'Safety valve works'] },
-  { code: 'FIRE', name: 'Fire Pump', pms: 1, cal: null, register: 'facility', checks: ['Weekly run test done', 'Jockey pump auto start', 'Pressure at header normal'] },
   { code: 'PANL', name: 'LT Electrical Panel', pms: 6, cal: null, register: 'facility', checks: ['Thermography: no hot spots', 'Busbar tightness', 'Earth resistance within limits'] },
   { code: 'PUMP', name: 'Water Pump', pms: 3, cal: null, register: 'facility', checks: ['No leakage at gland', 'Motor current normal', 'Foot valve and float switch'] },
-  { code: 'COMP', name: 'Medical Air Compressor', pms: 3, cal: 12, medicalGas: true, checks: ['Dryer and filters changed as due', 'Dew point within limits', 'Changeover works'] },
-  { code: 'VAC', name: 'Medical Vacuum Pump', pms: 3, cal: null, medicalGas: true, checks: ['Vacuum at plant normal', 'Bacterial filter changed', 'Duplex changeover'] },
 ];
 
 // [type, name, make, model, dept, location, criticality, age in years, cost (Rs), supplier index, service vendor index]
@@ -216,8 +213,8 @@ const ASSETS: Spec[] = [
   // Medical gases: biomedical until the hospital says otherwise (Hospital settings).
   ['O2P', 'Oxygen PSA Plant 500 LPM', 'Inox', 'PSA-500', 'ENG', 'GAS', 'most_critical', 3.1, 6500000, 11, 11],
   ['MGM', 'O2 Manifold Main', 'Inox', 'Auto 2x10', 'ENG', 'GAS', 'most_critical', 6.0, 450000, 11, 11],
-  ['COMP', 'Medical Air Compressor', 'Atlas Copco', 'GA 11', 'ENG', 'GAS', 'critical', 6.0, 950000, 11, 11],
-  ['VAC', 'Medical Vacuum Plant', 'Busch', 'R5 RA 0100', 'ENG', 'GAS', 'critical', 6.0, 780000, 11, 11],
+  ['MAC', 'Medical Air Compressor', 'Atlas Copco', 'GA 11', 'ENG', 'GAS', 'critical', 6.0, 950000, 11, 11],
+  ['MVP', 'Medical Vacuum Plant', 'Busch', 'R5 RA 0100', 'ENG', 'GAS', 'critical', 6.0, 780000, 11, 11],
   // Facility equipment (the maintenance team).
   ['DG', 'DG Set 1 (500 kVA)', 'Cummins', 'C500D5', 'ENG', 'DGR', 'most_critical', 6.0, 4200000, 7, 7],
   ['DG', 'DG Set 2 (320 kVA)', 'Cummins', 'C320D5', 'ENG', 'DGR', 'most_critical', 3.0, 2900000, 7, 7],
@@ -232,7 +229,7 @@ const ASSETS: Spec[] = [
   ['LIFT', 'Bed Lift 2', 'Otis', 'Gen2', 'ENG', 'MAIN', 'critical', 6.0, 3200000, 9, 9],
   ['LIFT', 'Passenger Lift', 'Otis', 'Gen2 Life', 'ENG', 'MAIN', 'minor', 6.0, 2400000, 9, 9],
   ['RO', 'RO Plant (Dialysis)', 'Ion Exchange', 'RO 500', 'ENG', 'PLNT', 'critical', 4.5, 1150000, 6, null],
-  ['FIRE', 'Fire Hydrant Pump', 'Kirloskar', 'DB 125/26', 'ENG', 'PLNT', 'most_critical', 6.0, 680000, 6, null],
+  ['FIREP', 'Fire Hydrant Pump', 'Kirloskar', 'DB 125/26', 'ENG', 'PLNT', 'most_critical', 6.0, 680000, 6, null],
   ['PANL', 'Main LT Panel', 'Schneider', 'Okken', 'ENG', 'MAIN', 'most_critical', 6.0, 2200000, 10, null],
   ['PUMP', 'Domestic Water Pump', 'Kirloskar', 'KDS 538', 'ENG', 'TERR', 'minor', 6.0, 95000, 6, null],
 ];
@@ -661,6 +658,13 @@ async function main() {
       const spare = chance(0.55);
       await prisma.serviceExpense.create({
         data: { assetId: p.asset.id, complaintId: c.id, type: spare ? 'spare_part' : 'repair', description: spare ? pick(['Flow sensor', 'Battery pack', 'Power supply board', 'Cable assembly', 'Keypad membrane', 'Cooling fan', 'Contactor', 'Bearing set', 'Pressure switch']) : `Repair visit: ${pick(['fault tracing', 'board repair', 'recalibration', 'motor rewinding'])}`, amount: round(between(spare ? 600 : 1500, Math.min(p.asset.cost * 0.08, spare ? 45000 : 60000)), 50), date: parseDate(isoDate(resolvedAt)), vendor: p.asset.spec[10] != null ? vendors[p.asset.spec[10]].name : 'Local vendor', createdAt: resolvedAt, createdBy: eng.id },
+      });
+      expenses++;
+    }
+    // Parts and bills on ward complaints without a machine (a tap washer, a tube light), booked against the complaint.
+    if (!p.asset && resolvedAt && chance(0.3)) {
+      await prisma.serviceExpense.create({
+        data: { assetId: null, complaintId: c.id, type: 'spare_part', description: pick(['Tap washer and spindle', 'LED tube light', 'Door closer', 'Switch and socket', 'AC filter set', 'Flush valve', 'Oxygen outlet valve']), amount: round(between(150, 4500), 10), date: parseDate(isoDate(resolvedAt)), vendor: 'Local vendor', createdAt: resolvedAt, createdBy: eng.id },
       });
       expenses++;
     }

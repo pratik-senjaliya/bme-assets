@@ -9,6 +9,7 @@ import type { ComplaintRow, Paged } from '@bme/shared';
 import { ComplaintDrawer } from '@/components/ComplaintDrawer';
 import { DataTable } from '@/components/DataTable';
 import { PhoneFilters } from '@/components/PhoneFilters';
+import { TradeFilter } from '@/components/TradeFilter';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Pill, StatusTag } from '@/components/StatusTag';
 import { useFetch } from '@/lib/api';
@@ -26,6 +27,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
   const [text, setText] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [departmentId, setDepartmentId] = useState<string>();
+  const [tradeId, setTradeId] = useState<string>();
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
     ...(status !== 'all' && { status }),
     ...(text && { search: text }),
     ...(departmentId && { departmentId }),
+    ...(tradeId && { tradeId }),
     ...(range?.[0] && { from: range[0].format('YYYY-MM-DD') }),
     ...(range?.[1] && { to: range[1].format('YYYY-MM-DD') }),
     ...(sort.by && { sortBy: sort.by, order: sort.order }),
@@ -59,7 +62,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
   const sortOf = (key: string) => (sort.by === key ? (sort.order === 'asc' ? ('ascend' as const) : ('descend' as const)) : null);
   const complaints = useFetch<Paged<ComplaintRow>>(`/complaints?${qs}&k=${reloadKey}`);
   const phone = Grid.useBreakpoint().md === false;
-  const filtered = !!(text || departmentId || range?.[0] || range?.[1] || status !== 'all');
+  const filtered = !!(text || departmentId || tradeId || range?.[0] || range?.[1] || status !== 'all');
 
   return (
     <>
@@ -73,10 +76,11 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <PhoneFilters active={[departmentId, range?.[0] || range?.[1]].filter(Boolean).length}>
+        <PhoneFilters active={[departmentId, tradeId, range?.[0] || range?.[1]].filter(Boolean).length}>
           {departments.data && (
             <Select allowClear placeholder="Department" aria-label="Department" style={{ minWidth: 190 }} value={departmentId} options={departments.data.map((d) => ({ value: d.id, label: d.name }))} onChange={(v) => (setDepartmentId(v), setPage(1))} />
           )}
+          {!assetId && <TradeFilter value={tradeId} onChange={(v) => (setTradeId(v), setPage(1))} />}
           <DatePicker.RangePicker
             allowEmpty={[true, true]}
             format="DD MMM YYYY"
@@ -95,6 +99,7 @@ export function ComplaintsHistory({ assetId, reloadKey = 0, onChanged }: { asset
               setText('');
               setStatus('all');
               setDepartmentId(undefined);
+              setTradeId(undefined);
               setRange(null);
               setPage(1);
             }}

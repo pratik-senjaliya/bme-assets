@@ -19,19 +19,19 @@ const PREFIX = 'HTEST-';
 
 before(async () => {
   ({ server, base } = startServer());
-  resetLoginThrottle();
+  await resetLoginThrottle();
   [admin, biomed, nursing] = await Promise.all(['admin', 'biomed', 'nursing'].map((r) => login(base, `${r}@demo.local`)));
 });
 after(async () => {
   await prisma.asset.deleteMany({ where: { name: { startsWith: PREFIX } } });
-  resetLoginThrottle();
+  await resetLoginThrottle();
   server.close();
   await prisma.$disconnect();
 });
 
 describe('Login lock (brute-force protection)', () => {
   it('locks one login after the allowed wrong passwords, even for the right password, and says for how long', async () => {
-    resetLoginThrottle();
+    await resetLoginThrottle();
     const email = 'nursing@demo.local';
     for (let i = 0; i < config.loginMaxFailures; i++) assert.equal((await signIn(email, `wrong-${i}`)).status, 401);
     const blocked = await signIn(email, PASSWORD);
@@ -40,12 +40,12 @@ describe('Login lock (brute-force protection)', () => {
     // Other people are not affected, and the lock is in the audit log.
     assert.equal((await signIn('biomed@demo.local', PASSWORD)).status, 200);
     assert.ok(await prisma.auditLog.findFirst({ where: { action: 'auth.login_locked' }, orderBy: { at: 'desc' } }), 'lock not audited');
-    resetLoginThrottle();
+    await resetLoginThrottle();
     assert.equal((await signIn(email, PASSWORD)).status, 200, 'the lock can be cleared');
   });
 
   it('a correct password clears the count, so a few slips never add up to a lock', async () => {
-    resetLoginThrottle();
+    await resetLoginThrottle();
     for (let round = 0; round < 3; round++) {
       for (let i = 0; i < config.loginMaxFailures - 1; i++) await signIn('nursing@demo.local', 'slip');
       assert.equal((await signIn('nursing@demo.local', PASSWORD)).status, 200);
@@ -55,7 +55,7 @@ describe('Login lock (brute-force protection)', () => {
 
 describe('Changing your own password', () => {
   it('needs the current password, and then the old one stops working (and it is put back)', async () => {
-    resetLoginThrottle();
+    await resetLoginThrottle();
     const email = 'biomed@demo.local';
     const NEW = 'Changed@12345';
     let cookie = (await signIn(email, PASSWORD).then((r) => r.headers.get('set-cookie')))!.split(';')[0];
@@ -73,7 +73,7 @@ describe('Changing your own password', () => {
       assert.equal((await post('/auth/password', { currentPassword: 'x', newPassword: 'Another@12345' })).status, 401, 'signed-out people cannot use it');
     } finally {
       await call(base, cookie, 'POST', '/auth/password', { currentPassword: NEW, newPassword: PASSWORD });
-      resetLoginThrottle();
+      await resetLoginThrottle();
     }
     assert.equal((await signIn(email, PASSWORD)).status, 200, 'the demo password is back');
     // Changing the password ended biomed's other sessions, including the one the later tests use: sign in again.

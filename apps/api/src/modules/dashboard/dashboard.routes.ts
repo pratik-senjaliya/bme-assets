@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import { isCritical, registerQuerySchema, type DashboardFacility, UNRESOLVED_STATUSES, type ChartSpec, type DashboardDueItem, type DashboardExpiry, type DashboardMonth, type DashboardResponse, type DashboardTopAsset, type Kpi } from '@bme/shared';
-import { currentUser, scopeOf, requirePermission } from '../../lib/auth';
+import { currentUser, expenseScope, scopeOf, requirePermission } from '../../lib/auth';
 import { addMonths, daysFromToday, endOfMonthISO, isoDate, monthInTz, parseDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { prisma } from '../../lib/prisma';
 import { complaintInclude, machineDownMs, toComplaintRows } from '../complaints/complaints.service';
+import type { ReadingEvery } from '@bme/shared';
 import { licenceInclude, toLicenceRows } from '../licences/licences.routes';
-import { hoursDue, toTypeRows, typeInclude } from '../readings/readings.service';
+import { hoursDue, latestEffective, periodStart } from '../readings/readings.service';
 import { facilityOn } from '../../lib/people';
 import type { Scope } from '../../lib/auth';
 
@@ -30,37 +31,10 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   const firstMonth = isoDate(addMonths(parseDate(`${today.slice(0, 7)}-01`), -5)).slice(0, 7);
   const monthKeys = Array.from({ length: 6 }, (_, i) => isoDate(addMonths(parseDate(`${firstMonth}-01`), i)).slice(0, 7));
 
-  const dueWhere = (field: 'nextPmsDue' | 'nextCalibrationDue'): Prisma.AssetWhereInput => ({
-    status: 'active',
-    [field]: { not: null, lte: parseDate(monthEnd) },
-    ...scope,
-  });
-  const dueAssets = async (field: 'nextPmsDue' | 'nextCalibrationDue', kind: DashboardDueItem['kind']): Promise<DashboardDueItem[]> => {
-    const orderBy: Prisma.AssetOrderByWithRelationInput = { [field]: 'asc' };
-    const assets = await prisma.asset.findMany({ where: dueWhere(field), orderBy });
-    return assets.map((a) => {
-      const due = a[field]!;
-      return { kind, assetId: a.id, assetCode: a.assetCode, assetName: a.name, dueDate: isoDate(due), daysLeft: daysFromToday(due) };
-    });
-  };
-
+  // Everything is asked for at once, and nothing twice (gap review #12: on the cloud demo each query crosses regions):
+  // the active equipment gives the count, the due items, uptime and ages; the 12 months of breakdowns give the 6-month
+  // trend too. The open complaints and the facility figures are fetched alongside, not after.
   const showDue = can('pms.perform') || can('calibration.manage');
-  const [activeAssets, openComplaints, pmsDue, calDue, pendingApprovals, complaints, openRows, department] = await Promise.all([
-    prisma.asset.count({ where: { status: 'active', ...scope } }),
-    prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope } }),
-    can('pms.perform') ? dueAssets('nextPmsDue', 'pms') : [],
-    can('calibration.manage') ? dueAssets('nextCalibrationDue', 'calibration') : [],
-    can('approval.decide') ? prisma.approvalRequest.count({ where: { status: 'pending' } }) : null,
-    can('complaint.view')
-      ? prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${firstMonth}-01`) }, assetId: { not: null }, ...scope }, select: { raisedAt: true, resolvedAt: true } })
-      : [],
-    can('complaint.view')
-      ? prisma.complaint.findMany({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude, orderBy: { raisedAt: 'asc' }, take: 8 })
-      : [],
-    scope.departmentId ? prisma.department.findUnique({ where: { id: scope.departmentId } }) : null,
-  ]);
-
-  // ---- The richer picture: the last 12 months and the next 6, scoped like everything above. ----
   const now = new Date();
   const first12 = isoDate(addMonths(parseDate(`${today.slice(0, 7)}-01`), -11)).slice(0, 7);
   const keys12 = monthsFrom(first12, 12);
@@ -70,15 +44,33 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
   const ahead = monthsFrom(today.slice(0, 7), 6);
   const aheadEnd = parseDate(endOfMonthISO(`${ahead[ahead.length - 1]}-01`));
 
-  const [liveAssets, history, expenses, contracts] = await Promise.all([
+  const [openComplaints, pendingApprovals, openList, department, facility, liveAssets, history, expenses, contracts] = await Promise.all([
+    prisma.complaint.count({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope } }),
+    can('approval.decide') ? prisma.approvalRequest.count({ where: { status: 'pending' } }) : null,
+    can('complaint.view')
+      ? prisma.complaint.findMany({ where: { status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude, orderBy: { raisedAt: 'asc' }, take: 8 }).then(toComplaintRows)
+      : [],
+    scope.departmentId ? prisma.department.findUnique({ where: { id: scope.departmentId } }) : null,
+    facilityFigures(me, scope),
     prisma.asset.findMany({ where: { status: 'active', ...scope }, select: { id: true, assetCode: true, name: true, criticality: true, installationDate: true, createdAt: true, warrantyEnd: true, nextPmsDue: true, nextCalibrationDue: true, department: { select: { name: true } } } }),
     can('complaint.view')
       ? // Breakdowns: complaints about a machine (a ward fault without one has no downtime).
       prisma.complaint.findMany({ where: { raisedAt: { gte: zonedDayStart(`${first12}-01`) }, assetId: { not: null }, ...scope }, select: { raisedAt: true, startedAt: true, resolvedAt: true, assetId: true, asset: { select: { assetCode: true, name: true, status: true } } } })
       : [],
-    showCosts ? prisma.serviceExpense.findMany({ where: { date: { gte: parseDate(`${first12}-01`) }, asset: { ...scope } }, select: { date: true, type: true, amount: true } }) : [],
+    showCosts ? prisma.serviceExpense.findMany({ where: { date: { gte: parseDate(`${first12}-01`) }, ...expenseScope(scope) }, select: { date: true, type: true, amount: true } }) : [],
     showCover ? prisma.serviceContract.findMany({ where: { endDate: { gte: parseDate(today), lte: parseDate(isoDate(new Date(parseDate(today).getTime() + 60 * DAY))) }, asset: { status: 'active', ...scope } }, select: { type: true, vendor: true, endDate: true, asset: { select: { id: true, assetCode: true, name: true } } } }) : [],
   ]);
+
+  const activeAssets = liveAssets.length;
+  // Due this month or overdue, soonest first (the equipment above is the active equipment in scope).
+  const dueItems = (field: 'nextPmsDue' | 'nextCalibrationDue', kind: DashboardDueItem['kind']): DashboardDueItem[] =>
+    liveAssets
+      .filter((a) => a[field] && isoDate(a[field]!) <= monthEnd)
+      .sort((x, y) => x[field]!.getTime() - y[field]!.getTime() || x.assetCode.localeCompare(y.assetCode))
+      .map((a) => ({ kind, assetId: a.id, assetCode: a.assetCode, assetName: a.name, dueDate: isoDate(a[field]!), daysLeft: daysFromToday(a[field]!) }));
+  const pmsDue = can('pms.perform') ? dueItems('nextPmsDue', 'pms') : [];
+  const calDue = can('calibration.manage') ? dueItems('nextCalibrationDue', 'calibration') : [];
+  const complaints = history.filter((c) => c.raisedAt >= zonedDayStart(`${firstMonth}-01`));
 
   const historyByAsset = new Map<string, { raisedAt: Date; resolvedAt: Date | null }[]>();
   for (const c of history) historyByAsset.get(c.assetId!)?.push(c) ?? historyByAsset.set(c.assetId!, [c]);
@@ -183,13 +175,13 @@ dashboardRouter.get('/dashboard', requirePermission('asset.view'), async (req, r
     overdue: showDue ? items.filter((i) => i.daysLeft < 0).length : null,
     pendingApprovals,
     dueSoon: showDue ? items.slice(0, 8) : null,
-    openList: await toComplaintRows(openRows),
+    openList,
     months,
     kpis,
     charts,
     topBreakdowns,
     expiring: expiring && expiring.slice(0, 8),
-    facility: await facilityFigures(me, scope),
+    facility,
   };
   res.json(body);
 });
@@ -201,18 +193,30 @@ async function facilityFigures(me: ReturnType<typeof currentUser>, scope: Scope)
   const facilityOnly = { ...scope, register: { in: ['facility' as const] } };
   const can = (p: (typeof me.permissions)[number]) => me.permissions.includes(p);
   const [ward, licences, types, hours] = await Promise.all([
-    toComplaintRows(await prisma.complaint.findMany({ where: { tradeId: { not: null }, status: { in: UNRESOLVED_STATUSES }, ...scope }, include: complaintInclude })),
+    // Only what the two figures need; "over target" is worked out as on the complaint itself (toComplaintRows).
+    prisma.complaint.findMany({ where: { tradeId: { not: null }, status: { in: UNRESOLVED_STATUSES }, ...scope }, select: { raisedAt: true, startedAt: true, trade: { select: { responseHours: true } } } }),
     can('licence.manage') ? prisma.licence.findMany({ where: { register: scope.register, renewal: null }, include: licenceInclude }).then(toLicenceRows) : [],
-    can('reading.record') ? prisma.readingType.findMany({ where: { active: true, asset: { ...facilityOnly, status: 'active' } }, include: typeInclude }).then(toTypeRows) : [],
+    can('reading.record') ? prisma.readingType.findMany({ where: { active: true, asset: { ...facilityOnly, status: 'active' } }, select: { id: true, every: true } }).then(lastReadings) : [],
     can('reading.record') ? hoursDue(facilityOnly) : [],
   ]);
+  const nowMs = Date.now();
   return {
     wardOpen: ward.length,
-    wardOverTarget: ward.filter((c) => c.overResponseTarget).length,
+    wardOverTarget: ward.filter((c) => c.trade?.responseHours != null && ((c.startedAt ?? new Date(nowMs)).getTime() - c.raisedAt.getTime()) / 1000 > c.trade.responseHours * 3600).length,
     licencesExpired: licences.filter((l) => l.status === 'expired').length,
     licencesEnding: licences.filter((l) => l.status === 'ending').length,
     readingsMissed: types.filter((t) => t.dueNow).length,
-    readingsOutOfRange: types.filter((t) => t.last?.outOfRange).length,
+    readingsOutOfRange: types.filter((t) => t.outOfRange).length,
     pmsHoursDue: hours.length,
   };
+}
+
+// Each reading type's latest reading that still counts, in one query: whether one is owed now and whether it was out of
+// range (the same rules as the logbook's dueNow and last.outOfRange).
+async function lastReadings(types: { id: string; every: string }[]) {
+  const last = await latestEffective(types.map((t) => t.id));
+  return types.map((t) => {
+    const r = last.get(t.id);
+    return { dueNow: !r || r.takenAt < periodStart(t.every as ReadingEvery), outOfRange: !!r?.outOfRange };
+  });
 }

@@ -13,7 +13,7 @@ const optionalText = (max: number) =>
 
 // The release running (gap review #27): shown in the account menu and Hospital settings, and by /health, so support
 // knows which version a hospital has. Raised with every release; what changed is in CHANGELOG.md.
-export const APP_VERSION = '1.5.1';
+export const APP_VERSION = '1.6.1';
 
 export type HealthResponse = {
   status: 'ok';
@@ -155,6 +155,8 @@ export type SessionUser = {
   mustChangePassword: boolean;
   // The registers this person works on or sees (their register.* permissions; facility only while the add-on is on).
   registers: Register[];
+  // When this sign-in ends (from /auth/me and /auth/login), so the screen can warn before it does.
+  sessionEndsAt?: string;
 };
 
 // ---------- Setup ----------
@@ -695,7 +697,8 @@ export const complaintListQuerySchema = z.object({
   // 'me' = assigned to whoever is asking, 'none' = nobody yet, or one person's id.
   assignedTo: z.union([z.enum(['me', 'none']), z.string().uuid()]).optional(),
   assetId: z.string().uuid().optional(),
-  tradeId: z.string().uuid().optional(),
+  // A trade's ward complaints, or 'none' for complaints about a machine.
+  tradeId: z.union([z.literal('none'), z.string().uuid()]).optional(),
   departmentId: z.string().uuid().optional(),
   register: z.enum(REGISTERS).optional(),
   search: z.string().trim().max(100).optional(), // complaint no., asset ID or name, trade, location, problem text

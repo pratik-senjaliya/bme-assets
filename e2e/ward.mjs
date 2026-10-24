@@ -46,7 +46,8 @@ await step('Maintenance starts and resolves it; the card shows how long it took,
   await card(p, cmp.complaintNo).getByRole('button', { name: 'Resolve' }).click();
   const dlg = p.locator('.ant-modal', { hasText: `Resolve ${cmp.complaintNo}` });
   expect(/resolution clock/.test(await dlg.innerText()), 'resolve dialog talks about downtime');
-  expect(!(await dlg.getByRole('button', { name: /Add a part or cost/ }).count()), 'costs offered without a machine');
+  // Parts and bills can be booked on a ward fault too (they go on the complaint, which has no machine).
+  expect((await dlg.getByRole('button', { name: /Add a part or cost/ }).count()) === 1, 'no way to book a cost on a ward fault');
   await dlg.locator('textarea').fill('Washer replaced');
   await dlg.getByRole('button', { name: 'Mark resolved' }).click();
   await dlg.waitFor({ state: 'hidden' }); // closes once saved (the start's toast may still be showing)

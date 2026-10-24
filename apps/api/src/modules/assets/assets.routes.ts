@@ -456,6 +456,11 @@ async function scopedOwnerAsset(req: Request, ownerType: AttachmentOwnerType, ow
     if (!l) throw new HttpError(404, 'Not found');
     return l.asset;
   }
+  // A cost booked on a ward complaint without a machine: the complaint's scope.
+  if (ownerType === 'service_expense') {
+    const e = await prisma.serviceExpense.findUnique({ where: { id: ownerId }, select: { assetId: true, complaintId: true } });
+    if (e && !e.assetId && e.complaintId) return scopedOwnerAsset(req, 'complaint', e.complaintId);
+  }
   const assetId = await assetIdOfOwner(ownerType, ownerId);
   const asset = assetId ? await prisma.asset.findFirst({ where: { id: assetId, ...scopeOf(currentUser(req)) } }) : null;
   if (!asset) throw new HttpError(404, 'Not found');

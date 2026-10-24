@@ -38,9 +38,12 @@ export const STARTER_TYPES = [
   { name: 'UPS', code: 'UPS', defaultPmsMonths: 3, defaultCalibrationMonths: null, register: 'facility' },
   { name: 'Lift', code: 'LIFT', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
   { name: 'RO Plant', code: 'RO', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
+  { name: 'Fire Pump', code: 'FIREP', defaultPmsMonths: 1, defaultCalibrationMonths: null, register: 'facility' },
   // Medical gases: their team is the hospital's medical gas setting (biomedical until it says otherwise).
   { name: 'Oxygen Plant', code: 'O2P', defaultPmsMonths: 1, defaultCalibrationMonths: 12, medicalGas: true },
   { name: 'Medical Gas Manifold', code: 'MGM', defaultPmsMonths: 3, defaultCalibrationMonths: 12, medicalGas: true },
+  { name: 'Medical Air Compressor', code: 'MAC', defaultPmsMonths: 3, defaultCalibrationMonths: 12, medicalGas: true },
+  { name: 'Medical Vacuum Plant', code: 'MVP', defaultPmsMonths: 3, defaultCalibrationMonths: 12, medicalGas: true },
 ] as const;
 
 // What a ward fault without a machine can be about (decision J), with response targets the hospital can change.
@@ -84,6 +87,23 @@ const PMS_TEMPLATES: Record<string, Item[]> = {
     check('changeover', 'Automatic changeover between banks works'),
     check('alarms', 'Area alarm panel works'),
     reading('pressure', 'Line pressure', 'bar', 4, 5),
+    remarks,
+  ],
+  MAC: [
+    check('visual', 'Visual inspection: no leaks, compressors and dryers running, no unusual noise'),
+    check('drain', 'Receiver and filter drains work; no water in the line'),
+    check('changeover', 'Duty / standby changeover works'),
+    check('alarms', 'Plant and area alarms work'),
+    reading('pressure', 'Line pressure', 'bar', 4, 5),
+    reading('dewpoint', 'Dew point at plant outlet', '°C', -60, -40),
+    remarks,
+  ],
+  MVP: [
+    check('visual', 'Visual inspection: pumps running, no unusual noise, oil level correct'),
+    check('filters', 'Bacterial filters and drain flask checked, changed as due'),
+    check('changeover', 'Duty / standby changeover works'),
+    check('alarms', 'Plant and area alarms work'),
+    reading('vacuum', 'Line vacuum', 'kPa', -90, -60),
     remarks,
   ],
   VENT: [
@@ -161,6 +181,14 @@ const PMS_TEMPLATES: Record<string, Item[]> = {
     check('levelling', 'Levelling at every floor'),
     check('emergency', 'Alarm, intercom, emergency light and rescue device work'),
     check('machine', 'Machine room: brakes, ropes and oil level'),
+    remarks,
+  ],
+  FIREP: [
+    check('visual', 'Visual inspection: pump room clear, no leaks, valves open'),
+    check('autostart', 'Jockey and main pump start automatically on pressure drop'),
+    check('diesel', 'Diesel pump: fuel, oil and battery levels, test run'),
+    check('panel', 'Control panel lamps, alarms and selector switches work'),
+    reading('pressure', 'System pressure at header', 'bar', 7, 10),
     remarks,
   ],
   RO: [

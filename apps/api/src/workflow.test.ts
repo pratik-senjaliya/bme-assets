@@ -246,7 +246,9 @@ describe('Backups', () => {
   it('Hospital settings show the last backup; a failed or stopped one reaches the HOD once a day', async () => {
     const settings = async () => (await (await call(base, admin, 'GET', '/settings')).json()) as SettingsResponse;
     const run = () => call(base, admin, 'POST', '/reminders/run');
-    const told = () => prisma.notification.count({ where: { userId: ids.adminUser, type: 'system', createdAt: { gte: startedAt } } });
+    // Backup notices only: the same check also warns about a nearly full disk, which this machine may have.
+    const backupNotice = { type: 'system', message: { contains: 'ackup' } };
+    const told = () => prisma.notification.count({ where: { userId: ids.adminUser, ...backupNotice, createdAt: { gte: startedAt } } });
 
     // Nothing backs up here (the hosted demo): nothing to say.
     assert.equal((await run()).status, 200);
@@ -261,12 +263,12 @@ describe('Backups', () => {
     await run();
     await run();
     assert.equal(await told(), 1);
-    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'system' }, orderBy: { createdAt: 'desc' } })).message, /failed/i);
+    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, ...backupNotice }, orderBy: { createdAt: 'desc' } })).message, /failed/i);
 
     // Stopped: the last one is more than two days old.
     await prisma.notification.deleteMany({ where: { type: 'system', createdAt: { gte: startedAt } } });
     await prisma.hospitalSettings.updateMany({ data: { backupLastAt: new Date(Date.now() - 3 * 86_400_000), backupLastError: null, backupLastErrorAt: null } });
     await run();
-    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, type: 'system' } })).message, /no backup/i);
+    assert.match((await prisma.notification.findFirstOrThrow({ where: { userId: ids.adminUser, ...backupNotice } })).message, /no backup/i);
   });
 });

@@ -118,7 +118,7 @@ usersRouter.patch('/:id', validate(updateUserSchema), async (req, res) => {
     return row;
   });
   // The locked-out message says to ask the HOD for a reset; the reset must then let them in.
-  if (password) recordSuccess(before.email);
+  if (password) await recordSuccess(before.email);
   res.json(toRow(await prisma.user.findUniqueOrThrow({ where: { id: user.id }, include })));
 });
 

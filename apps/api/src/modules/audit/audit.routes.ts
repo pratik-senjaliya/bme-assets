@@ -35,7 +35,7 @@ async function labels(rows: { entityType: string; entityId: string | null; befor
   departments.forEach((d) => map.set(`department:${d.id}`, d.name));
   locations.forEach((l) => map.set(`location:${l.id}`, l.name));
   types.forEach((t) => map.set(`equipment_type:${t.id}`, t.name));
-  OF_ASSET.forEach((t, i) => (ofAsset[i] as { id: string; asset: { assetCode: string } }[]).forEach((r) => map.set(`${t}:${r.id}`, r.asset.assetCode)));
+  OF_ASSET.forEach((t, i) => (ofAsset[i] as { id: string; asset: { assetCode: string } | null }[]).forEach((r) => r.asset && map.set(`${t}:${r.id}`, r.asset.assetCode)));
   return (r: { entityType: string; entityId: string | null; before: unknown; after: unknown }) => {
     if (r.entityId && map.has(`${r.entityType}:${r.entityId}`)) return map.get(`${r.entityType}:${r.entityId}`)!;
     const copy = ((r.after ?? r.before) ?? {}) as Record<string, unknown>;
