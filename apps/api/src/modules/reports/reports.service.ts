@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import { LICENCE_KIND_LABEL, ASSET_STATUS_LABEL, COMPLAINT_STATUS_LABEL, CONDEMN_REASON_LABEL, CONDEMN_REASONS, CRITICAL_LEVELS, CRITICALITIES, CRITICALITY_LABEL, isCritical, isLowStock, REGISTER_LABEL, REPORTS, type ChartSpec, type Kpi, type ReportColumn, type ReportData, type ReportQuery, type ReportSheetData, type ReportType, type ValueFmt, type CondemnReason } from '@bme/shared';
-import { currentUser, scopeOf, type Scope } from '../../lib/auth';
+import { currentUser, expenseScope, scopeOf, type Scope } from '../../lib/auth';
 import { addDaysISO, addMonths, daysFromToday, isoDate, monthInTz, parseDate, prettyDate, todayISO, zonedDayStart } from '../../lib/dates';
 import { HttpError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
@@ -509,17 +509,22 @@ async function equipmentAge(wb: Collector, c: Ctx) {
     [...types].map(([type, ys]) => ({ type, count: ys.length, avg: ys.reduce((s, y) => s + y, 0) / ys.length, max: Math.max(...ys) })).sort((x, y) => y.avg - x.avg));
 }
 
+// What a cost was for: the machine, or for a ward complaint without one, its trade and place.
+type ExpenseWithRefs = { asset: { assetCode: string; name: string } | null; complaint: { trade: { name: string } | null; location: { name: string } | null } | null };
+const whatOf = (e: ExpenseWithRefs) => e.asset?.name ?? [e.complaint?.trade?.name, e.complaint?.location?.name].filter(Boolean).join(' · ');
+const labelOf = (e: ExpenseWithRefs) => (e.asset ? `${e.asset.assetCode} ${e.asset.name}` : whatOf(e));
+
 async function expenses(wb: Collector, c: Ctx) {
   const rows = await prisma.serviceExpense.findMany({
-    where: { date: { gte: parseDate(c.from), lte: parseDate(c.to) }, asset: { ...c.scope } },
-    include: { asset: { include: { equipmentType: true, department: true } }, complaint: true },
+    where: { date: { gte: parseDate(c.from), lte: parseDate(c.to) }, ...expenseScope(c.scope) },
+    include: { asset: { include: { equipmentType: true, department: true } }, complaint: { include: { trade: true, location: true, department: true } } },
     orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
   });
   addSheet(wb, 'Expenses', [
     { header: 'Date', key: 'date', fmt: 'date' }, { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Department', key: 'dept', width: 22 },
     { header: 'Asset status', key: 'status' }, { header: 'Type', key: 'type' }, { header: 'Description', key: 'desc', width: 34 }, { header: 'Vendor', key: 'vendor', width: 20 },
     { header: 'Complaint', key: 'complaint' }, { header: 'Amount', key: 'amount', fmt: 'money', width: 16 },
-  ], rows.map((e) => ({ date: e.date, code: e.asset.assetCode, name: e.asset.name, dept: e.asset.department.name, status: STATUS_LABEL[e.asset.status], type: e.type === 'spare_part' ? 'Spare part' : 'Repair', desc: e.description, vendor: e.vendor, complaint: e.complaint?.complaintNo, amount: Number(e.amount) })), ['amount']);
+  ], rows.map((e) => ({ date: e.date, code: e.asset?.assetCode ?? null, name: whatOf(e), dept: (e.asset?.department ?? e.complaint?.department)?.name ?? null, status: e.asset ? STATUS_LABEL[e.asset.status] : 'Ward complaint', type: e.type === 'spare_part' ? 'Spare part' : 'Repair', desc: e.description, vendor: e.vendor, complaint: e.complaint?.complaintNo, amount: Number(e.amount) })), ['amount']);
 
   const sum = (xs: typeof rows) => xs.reduce((t, e) => t + Number(e.amount), 0);
   const repairs = sum(rows.filter((e) => e.type === 'repair'));
@@ -534,12 +539,14 @@ async function expenses(wb: Collector, c: Ctx) {
     data: monthKeys(c.from, c.to).map((m) => ({ label: monthLabel(m), repair: sum(rows.filter((e) => e.type === 'repair' && isoDate(e.date).slice(0, 7) === m)), spare: sum(rows.filter((e) => e.type === 'spare_part' && isoDate(e.date).slice(0, 7) === m)) })),
   });
   const spendByAsset = new Map<string, number>();
-  for (const e of rows) spendByAsset.set(`${e.asset.assetCode} ${e.asset.name}`, (spendByAsset.get(`${e.asset.assetCode} ${e.asset.name}`) ?? 0) + Number(e.amount));
+  for (const e of rows) spendByAsset.set(labelOf(e), (spendByAsset.get(labelOf(e)) ?? 0) + Number(e.amount));
   wb.charts.push({ ...oneSeries('spend-by-asset', 'Equipment with the highest spend', 'bar', 'Spend', top([...spendByAsset].sort((a, b) => b[1] - a[1]), 10), 'money'), print: false });
   const byAsset = new Map<string, { name: string; count: number; repair: number; spare: number }>();
   for (const e of rows) {
-    const t = byAsset.get(e.asset.assetCode) ?? { name: e.asset.name, count: 0, repair: 0, spare: 0 };
-    byAsset.set(e.asset.assetCode, { ...t, count: t.count + 1, repair: t.repair + (e.type === 'repair' ? Number(e.amount) : 0), spare: t.spare + (e.type === 'spare_part' ? Number(e.amount) : 0) });
+    // Ward costs without a machine are grouped by trade.
+    const key = e.asset?.assetCode ?? `Ward: ${e.complaint?.trade?.name ?? 'other'}`;
+    const t = byAsset.get(key) ?? { name: e.asset?.name ?? `Ward complaints · ${e.complaint?.trade?.name ?? 'other'}`, count: 0, repair: 0, spare: 0 };
+    byAsset.set(key, { ...t, count: t.count + 1, repair: t.repair + (e.type === 'repair' ? Number(e.amount) : 0), spare: t.spare + (e.type === 'spare_part' ? Number(e.amount) : 0) });
   }
   addSheet(wb, 'By asset', [
     { header: 'Asset ID', key: 'code', width: 26 }, { header: 'Asset', key: 'name', width: 26 }, { header: 'Entries', key: 'count', fmt: 'int' }, { header: 'Repairs', key: 'repair', fmt: 'money', width: 16 },

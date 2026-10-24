@@ -22,21 +22,21 @@ authRouter.post('/login', validate(loginSchema), async (req, res) => {
   // Wrong tries count per person, whichever of their names is typed (an unknown name counts on its own).
   const key = user?.email ?? login;
   try {
-    assertNotLocked(key);
+    await assertNotLocked(key);
   } catch (e) {
     await audit(prisma, req, { action: 'auth.login_blocked', entityType: 'user', actorId: null, after: { email: login } });
     throw e;
   }
   const ok = !!user && user.active && (await bcrypt.compare(password, user.passwordHash));
   if (!ok) {
-    const locked = recordFailure(key);
+    const locked = await recordFailure(key);
     await audit(prisma, req, { action: locked ? 'auth.login_locked' : 'auth.login_failed', entityType: 'user', actorId: null, after: { email: login } });
     throw new HttpError(401, 'Wrong email, username or password');
   }
-  recordSuccess(key);
+  await recordSuccess(key);
   await audit(prisma, req, { action: 'auth.login', entityType: 'user', entityId: user.id, actorId: user.id });
-  setSessionCookie(res, user.id, user.sessionVersion);
-  res.json(await loadSessionUser(user.id));
+  const sessionEndsAt = setSessionCookie(res, user.id, user.sessionVersion);
+  res.json({ ...(await loadSessionUser(user.id)), sessionEndsAt });
 });
 
 authRouter.post('/logout', authenticate, async (req, res) => {
@@ -50,16 +50,16 @@ authRouter.post('/logout', authenticate, async (req, res) => {
 authRouter.post('/password', authenticate, validate(changePasswordSchema), async (req, res) => {
   const me = currentUser(req);
   const { currentPassword, newPassword } = req.body as ChangePasswordInput;
-  assertNotLocked(me.email);
+  await assertNotLocked(me.email);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: me.id } });
   if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
-    recordFailure(me.email);
+    await recordFailure(me.email);
     throw new HttpError(400, 'Your current password is not right', { fieldErrors: { currentPassword: ['Not right'] } });
   }
   // Every other session (another computer, a copied cookie) ends; this one gets a fresh cookie and carries on.
   const updated = await prisma.user.update({ where: { id: me.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10), sessionVersion: { increment: 1 }, mustChangePassword: false } });
   setSessionCookie(res, me.id, updated.sessionVersion);
-  recordSuccess(me.email);
+  await recordSuccess(me.email);
   await audit(prisma, req, { action: 'auth.password_change', entityType: 'user', entityId: me.id });
   res.status(204).end();
 });
@@ -80,6 +80,13 @@ authRouter.post('/forgot', validate(forgotPasswordSchema), async (req, res) => {
   res.status(204).end();
 });
 
+// Still working when the session is about to end ("Stay signed in"): a fresh session for the same person, who must
+// still be active with the same password (authenticate checks both).
+authRouter.post('/refresh', authenticate, async (req, res) => {
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: currentUser(req).id }, select: { sessionVersion: true } });
+  res.json({ sessionEndsAt: setSessionCookie(res, currentUser(req).id, me.sessionVersion) });
+});
+
 authRouter.get('/me', authenticate, (req, res) => {
-  res.json(currentUser(req));
+  res.json({ ...currentUser(req), sessionEndsAt: req.sessionEndsAt });
 });

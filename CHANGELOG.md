@@ -6,6 +6,21 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.6.0 (24 October 2026)
+
+- **Costs on ward complaints:** parts and bills can be booked when resolving a ward complaint that has no machine (a
+  tap, a light, a door). The expenses report lists them as "Ward complaint", grouped by trade.
+- **Machine or trade filter** on the complaints board and history: one trade's ward complaints (Electrical,
+  Plumbing…), or only complaints about a machine.
+- **New starter types with PMS checklists:** Fire Pump (maintenance), Medical Air Compressor and Medical Vacuum Plant
+  (with whichever team looks after medical gases). New installs get them; an existing hospital adds them under
+  Admin > Equipment types.
+- **Stay signed in:** two minutes before the 12-hour sign-in ends, a message offers to carry on, so a long PMS is not
+  cut off at submit.
+- **Sign-in lock kept in the database:** five wrong passwords lock a login for 15 minutes, and a server restart no
+  longer lifts it.
+- **Faster dashboard:** its figures come from fewer database queries, asked for at once.
+
 ## 1.5.0 (23 October 2026)
 
 - **Facility reports (facility add-on):** the dashboard has a Facility card for the maintenance team and the HOD (ward

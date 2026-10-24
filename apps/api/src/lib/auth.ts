@@ -1,4 +1,5 @@
 import type { Request, RequestHandler, Response } from 'express';
+import type { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { ROLE_LABELS, type PermissionCode, type Register, type RoleName, type SessionUser } from '@bme/shared';
 import { config } from './config';
@@ -11,6 +12,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: SessionUser;
+      sessionEndsAt?: string; // when the session token runs out
     }
   }
 }
@@ -25,9 +27,11 @@ const cookieOptions = {
 } as const;
 
 // The token carries the user's session version; changing the password raises it, which ends every other session.
-export function setSessionCookie(res: Response, userId: string, sessionVersion: number) {
+// Returns when the new session ends.
+export function setSessionCookie(res: Response, userId: string, sessionVersion: number): string {
   const token = jwt.sign({ sub: userId, v: sessionVersion }, config.jwtSecret, { expiresIn: `${config.sessionHours}h` });
   res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: config.sessionHours * 3600_000 });
+  return new Date((jwt.decode(token) as { exp: number }).exp * 1000).toISOString();
 }
 
 export function clearSessionCookie(res: Response) {
@@ -65,9 +69,10 @@ export const authenticate: RequestHandler = async (req, res, next) => {
   let version = 0;
   try {
     if (token) {
-      const claims = jwt.verify(token, config.jwtSecret) as { sub: string; v?: number };
+      const claims = jwt.verify(token, config.jwtSecret) as { sub: string; v?: number; exp: number };
       userId = claims.sub;
       version = claims.v ?? 0;
+      req.sessionEndsAt = new Date(claims.exp * 1000).toISOString();
     }
   } catch {
     // fall through to 401
@@ -123,6 +128,8 @@ export function departmentScope(user: SessionUser): { departmentId?: string } {
 // Prisma `where` on assets and complaints (both carry `departmentId` and `register`), or under `asset:` for records
 // of an asset. `register` narrows it to one team's equipment for people who see both (never widens it).
 export type Scope = { departmentId?: string; register?: { in: Register[] } };
+// Service expenses in a scope: those on its machines, and those booked on its ward complaints without a machine.
+export const expenseScope = (scope: Scope): Prisma.ServiceExpenseWhereInput => ({ OR: [{ asset: { ...scope } }, { assetId: null, complaint: { ...scope } }] });
 export function scopeOf(user: SessionUser, register?: Register): Scope {
   return { ...departmentScope(user), register: { in: register ? user.registers.filter((r) => r === register) : user.registers } };
 }

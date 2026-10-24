@@ -25,7 +25,7 @@ const startedAt = new Date();
 before(async () => {
   await cleanUp();
   ({ server, base } = startServer());
-  resetLoginThrottle();
+  await resetLoginThrottle();
   [admin, biomed, nursing] = await Promise.all(['admin', 'biomed', 'nursing'].map((r) => login(base, `${r}@demo.local`)));
   const [icu, rad, icu1, icu2, xr1, b, n] = await Promise.all([
     prisma.department.findUniqueOrThrow({ where: { code: 'ICU' } }),
@@ -67,7 +67,7 @@ async function cleanUp() {
 
 after(async () => {
   await cleanUp();
-  resetLoginThrottle();
+  await resetLoginThrottle();
   server.close();
   await prisma.$disconnect();
 });
@@ -256,7 +256,7 @@ describe('15. Passwords and sessions', () => {
   const cookieOf = (res: Response) => (res.headers.get('set-cookie') ?? '').split(';')[0];
 
   it('changing your password ends your other sessions and keeps this one', async () => {
-    resetLoginThrottle();
+    await resetLoginThrottle();
     assert.equal((await call(base, admin, 'POST', '/users', { name: `${PREFIX}Nurse`, email, password: 'First@12345', role: 'nursing', departmentId: ids.icu })).status, 201);
     const s1 = cookieOf(await signIn('First@12345'));
     const s2 = cookieOf(await signIn('First@12345'));
@@ -270,7 +270,7 @@ describe('15. Passwords and sessions', () => {
   it('the HOD’s reset ends sessions and lifts the login lock', async () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });
     const s = cookieOf(await signIn('Second@12345'));
-    for (let i = 0; i < config.loginMaxFailures; i++) recordFailure(email);
+    for (let i = 0; i < config.loginMaxFailures; i++) await recordFailure(email);
     assert.equal((await signIn('Second@12345')).status, 429, 'locked');
     assert.equal((await call(base, admin, 'PATCH', `/users/${user.id}`, { name: user.name, email, role: 'nursing', departmentId: ids.icu, active: true, password: 'Third@12345' })).status, 200);
     assert.equal((await call(base, s, 'GET', '/auth/me')).status, 401, 'old session ended');

@@ -53,7 +53,7 @@ complaintsRouter.get('/', requirePermission('complaint.view'), async (req, res) 
     ...(q.escalated && { status: 'in_progress' as const, escalatedAt: { not: null } }),
     ...(q.assignedTo && { assignedToId: q.assignedTo === 'me' ? me.id : q.assignedTo === 'none' ? null : q.assignedTo }),
     ...(q.assetId && { assetId: q.assetId }),
-    ...(q.tradeId && { tradeId: q.tradeId }),
+    ...(q.tradeId && { tradeId: q.tradeId === 'none' ? null : q.tradeId }),
     ...(q.departmentId && { departmentId: q.departmentId }),
     // Dates are the hospital's calendar days, not UTC days.
     ...((q.from || q.to) && { raisedAt: { ...(q.from && { gte: zonedDayStart(q.from) }), ...(q.to && { lt: zonedDayStart(addDaysISO(q.to, 1)) }) } }),
@@ -274,13 +274,10 @@ complaintsRouter.post('/:id/resolve', requirePermission('complaint.resolve'), va
     'complaint.resolve',
     'Start the complaint before resolving it (or it is already resolved)',
     {
-      // Costs are booked against a machine (service expenses); a ward fault without one has none to book them on.
-      check: (b) => {
-        if (costs.length && !b.assetId) throw new HttpError(400, 'Costs can only be booked on a complaint about a machine');
-      },
+      // Booked against the machine, or (a ward fault without one) against the complaint alone.
       extra: async (tx, b) => {
         for (const cost of costs) {
-          const row = await tx.serviceExpense.create({ data: { ...cost, vendor: cost.vendor ?? null, date: parseDate(todayISO()), assetId: b.assetId!, complaintId: b.id, createdBy: me.id } });
+          const row = await tx.serviceExpense.create({ data: { ...cost, vendor: cost.vendor ?? null, date: parseDate(todayISO()), assetId: b.assetId, complaintId: b.id, createdBy: me.id } });
           await audit(tx, req, { action: 'service_expense.create', entityType: 'service_expense', entityId: row.id, after: row });
         }
       },

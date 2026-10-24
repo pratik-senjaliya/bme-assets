@@ -77,8 +77,10 @@ await step('Bell: shows reminders, opening one goes to the asset and marks it re
   const before = +(/(\d+) unread/.exec(await bell.getAttribute('aria-label'))?.[1] ?? 0);
   await bell.click(); await ap.locator('.ant-popover .ant-list-item').first().waitFor();
   const first = ap.locator('.ant-popover .ant-list-item').first(); await first.click();
-  await ap.waitForURL(/\/(assets|approvals)/, { timeout: 25000 }).catch(() => undefined); // the first visit to a page compiles it in dev
-  expect(/\/(assets|approvals)/.test(ap.url()), `went to ${ap.url()}`);
+  // Each notice opens what it is about (a machine, Approvals, a complaint, Hospital settings for a server notice…);
+  // which one is newest depends on what ran before, so any of them will do as long as it leaves the dashboard.
+  await ap.waitForURL((u) => u.pathname !== '/', { timeout: 25000 }).catch(() => undefined); // the first visit to a page compiles it in dev
+  expect(new URL(ap.url()).pathname !== '/', `stayed on ${ap.url()}`);
   // The count refreshes a moment after the page changes.
   let mid = before;
   for (let i = 0; i < 20 && mid >= before && before > 0; i++) { await ap.waitForTimeout(300); mid = +(/(\d+) unread/.exec(await ap.locator('button[aria-label^="Reminders"]').getAttribute('aria-label'))?.[1] ?? 0); }

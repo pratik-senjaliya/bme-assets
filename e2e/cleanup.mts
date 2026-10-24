@@ -12,7 +12,8 @@ const files = await prisma.attachment.findMany({ where: { ownerId: { in: owners 
 const root = path.resolve(process.env.STORAGE_PATH ?? 'apps/api/uploads');
 for (const f of files) await rm(path.join(root, f.filePath), { force: true });
 await prisma.attachment.deleteMany({ where: { ownerId: { in: owners } } });
-await prisma.serviceExpense.deleteMany({ where: { assetId: { in: ids } } });
+// Costs on ward complaints have no machine: remove them with their complaint.
+await prisma.serviceExpense.deleteMany({ where: { OR: [{ assetId: { in: ids } }, { complaintId: { in: complaints.map((c) => c.id) } }] } });
 await prisma.complaint.deleteMany({ where: { id: { in: complaints.map((c) => c.id) } } });
 await prisma.serviceLog.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.purchaseOrder.deleteMany({ where: { assetId: { in: ids } } });
@@ -54,6 +55,8 @@ await prisma.asset.deleteMany({ where: { equipmentTypeId: { in: types.map((t) =>
 await prisma.equipmentType.deleteMany({ where: { id: { in: types.map((t) => t.id) } } }).catch((e) => console.log('type left:', String(e).slice(0, 80)));
 await prisma.location.deleteMany({ where: { department: { code: 'E2D' } } });
 await prisma.department.deleteMany({ where: { code: 'E2D' } }).catch(() => {});
+// Sign-in locks are kept in the database now: clear the test logins' ones.
+await prisma.loginAttempt.deleteMany({ where: { key: { startsWith: 'e2e.' } } });
 const users = await prisma.user.deleteMany({ where: { email: { startsWith: 'e2e.' } } }).catch((e) => { console.log('users left (referenced):', String(e).slice(0, 60)); return { count: 0 }; });
 console.log('e2e users removed:', users.count);
 console.log({ assets: ids.length, complaints: complaints.length, files: files.length });

@@ -624,7 +624,8 @@ model ComplaintStep {
 
 model ServiceExpense {
   id          String      @id @default(uuid())
-  assetId     String
+  // Null for a cost booked on a ward complaint without a machine (its complaint says where and what).
+  assetId     String?
   complaintId String?
   type        ExpenseType
   description String
@@ -635,7 +636,7 @@ model ServiceExpense {
   updatedAt   DateTime    @updatedAt
   createdBy   String?
 
-  asset     Asset      @relation(fields: [assetId], references: [id])
+  asset     Asset?     @relation(fields: [assetId], references: [id], onDelete: Restrict)
   complaint Complaint? @relation(fields: [complaintId], references: [id])
 
   @@map("service_expenses")
@@ -837,4 +838,15 @@ model ConsumableMovement {
   @@index([date])
   @@index([assetId])
   @@map("consumable_movements")
+}
+
+// Wrong passwords per login, so the sign-in lock survives a restart and holds across API instances (the lock rules are
+// in lib/loginThrottle.ts). `key` is the person's email, or what was typed when no login matches.
+model LoginAttempt {
+  key         String    @id
+  failures    Int       @default(0)
+  since       DateTime  @default(now())
+  lockedUntil DateTime?
+
+  @@map("login_attempts")
 }
