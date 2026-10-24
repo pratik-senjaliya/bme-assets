@@ -13,6 +13,8 @@ export function TradeFilter({ value, onChange, register }: { value?: string; onC
   return (
     <Select
       allowClear
+      showSearch
+      optionFilterProp="label"
       placeholder="Machine or trade"
       aria-label="Machine or trade"
       style={{ minWidth: 200 }}

@@ -16,6 +16,7 @@ await step('Complaints board: "Machine or trade" shows one trade’s ward faults
   const p = admin.page;
   await p.goto(BASE + '/complaints'); await settle(p);
   await p.getByRole('combobox', { name: 'Machine or trade' }).click();
+  await p.keyboard.type('Plumb');
   await p.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: 'Plumbing and water' }).click();
   await settle(p);
   const cards = await p.locator('.ant-card .ant-card').allInnerTexts();
