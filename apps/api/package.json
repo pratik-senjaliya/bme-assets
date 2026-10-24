@@ -14,6 +14,7 @@
     "test": "tsx --env-file=.env --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "bootstrap": "node dist/bootstrap.js",
     "db:seed:history": "tsx --env-file=.env src/seedDemoHistory.ts",
+    "db:demo": "prisma migrate reset --force --skip-seed && tsx --env-file=.env src/seedDemo.ts",
     "db:seed:prod": "node dist/seed.js"
   },
   "prisma": {

@@ -6,6 +6,14 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## 1.5.1 (November 2026)
+
+- **Full demo hospital:** `npm run db:demo -w apps/api` replaces a demo database with a complete hospital and about
+  18 months of history in every module (equipment, purchases, contracts, PMS, calibration certificates, breakdowns and
+  ward complaints, expenses, consumables, licences, logbook readings, approvals, saved monthly reports, reminders and
+  the audit log), so every screen and report has realistic data to show. It wipes the database first: never run it on
+  a hospital's real data. New demo logins are listed in CLAUDE.md.
+
 ## 1.5.0 (November 2026)
 
 - **Facility reports (facility add-on):** the dashboard has a Facility card for the maintenance team and the HOD (ward

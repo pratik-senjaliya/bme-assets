@@ -52,6 +52,7 @@ npm run dev:web             # http://localhost:3000 shows API + DB status
 npm run typecheck
 npm test -w apps/api         # integration tests, serial; need the migrated + seeded database
 npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
+npm run db:demo -w apps/api  # WIPES the database, then builds the full demo hospital with ~18 months of history
 ```
 
 ## Conventions
@@ -108,6 +109,8 @@ npm run prisma:migrate -w apps/api -- --name <name>   # after schema changes
 - [x] Facility add-on, F5: facility reports (branch `facility-f5`). `DashboardResponse.facility` (`facilityFigures` in `dashboard.routes.ts`: ward complaints open / over target, licences expired / ending, readings missed / out of range, PMS due by hours; for people with `complaint.start` when the view includes the facility register, else null), shown as the Facility card. The monthly report adds `facilitySection` (ward complaints by trade, readings out of range in the month, licences expired or ending as at today) when it covers the facility register; the monthly report and audit pack screens have the register switch (`?register=`, a filtered monthly report is made from the records, never the saved copy). Audit pack adds `12 Logbook.xlsx` (report `consumption`) when facility is in scope. Tests: `apps/api/src/facilityreports.test.ts`, `e2e/facilityreports.mjs`. All five facility phases are built; later ideas are in `docs/requirements-facility.md`.
 
 Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, maintenance@, nursing@ `demo.local`.
+
+Full demo (`npm run db:demo -w apps/api`, `src/seedDemo.ts`; resets the database first, refuses to run on one that has equipment): Shalby Demo Hospital with 8 departments, 13 users (also kiran@ deputy HOD, neha@, imran@ maintenance, and ward logins nicu@, ot@, er@, rad@, ward@; some sign in by username, e.g. `ward.sister`), 12 suppliers with contacts, ~75 machines (biomedical, medical gases, facility) with POs, warranties, AMC/CMC contracts and service visits, ~18 months of PMS (some by the OEM with reports, a few failed), calibrations with certificate PDFs, ~300 complaints (breakdowns and ward faults by trade, every status, holds, escalations, reopenings, expenses, photos), consumables stock for both teams, licences with renewal chains and documents, 6 months of logbook readings (DG run hours with PMS by hours), a condemned, a transferred and a not-in-use machine, pending approvals, six saved monthly reports, reminders, notifications and an audit trail. Same password for all. Generated files go to storage like real uploads. Dates follow today, so it never looks stale; a fixed random seed keeps it repeatable.
 
 Update this Status section at the end of each phase.
 
