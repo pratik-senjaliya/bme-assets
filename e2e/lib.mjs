@@ -57,7 +57,10 @@ export const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 
 const labelled = (page, label, scope = page) => scope.locator('.ant-form-item').filter({ has: page.locator('label', { hasText: new RegExp(`^\\s*${label}`) }) }).first();
 export async function pick(page, label, text, scope = page) {
-  await labelled(page, label, scope).locator('.ant-select').click();
+  const select = labelled(page, label, scope).locator('.ant-select');
+  await select.click();
+  // A long list only draws the options in view: where the list takes typing, narrow it first.
+  if (await select.evaluate((el) => el.classList.contains('ant-select-show-search'))) await page.keyboard.type(text);
   await page.locator('.ant-select-dropdown:visible .ant-select-item-option', { hasText: text }).first().click();
 }
 export async function fillDate(page, label, text, scope = page) {

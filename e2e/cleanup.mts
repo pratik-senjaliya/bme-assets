@@ -12,7 +12,8 @@ const files = await prisma.attachment.findMany({ where: { ownerId: { in: owners 
 const root = path.resolve(process.env.STORAGE_PATH ?? 'apps/api/uploads');
 for (const f of files) await rm(path.join(root, f.filePath), { force: true });
 await prisma.attachment.deleteMany({ where: { ownerId: { in: owners } } });
-await prisma.serviceExpense.deleteMany({ where: { assetId: { in: ids } } });
+// Costs on ward complaints have no machine: remove them with their complaint.
+await prisma.serviceExpense.deleteMany({ where: { OR: [{ assetId: { in: ids } }, { complaintId: { in: complaints.map((c) => c.id) } }] } });
 await prisma.complaint.deleteMany({ where: { id: { in: complaints.map((c) => c.id) } } });
 await prisma.serviceLog.deleteMany({ where: { assetId: { in: ids } } });
 await prisma.purchaseOrder.deleteMany({ where: { assetId: { in: ids } } });
