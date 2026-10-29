@@ -23,7 +23,7 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
-      - key: WEB_ORIGIN # the Vercel URL, e.g. https://bme-demo.vercel.app
+      - key: WEB_ORIGIN # the Vercel URL; the live demo is https://bme-assets.vercel.app
         sync: false
       - key: APP_TIMEZONE
         value: Asia/Kolkata

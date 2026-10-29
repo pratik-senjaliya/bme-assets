@@ -6,6 +6,15 @@ account menu, in Admin > Hospital settings > System and at `/api/v1/health`. Upg
 Versions are `major.minor.patch`: a new minor version adds features, a patch only fixes. Database changes are applied
 by themselves when the API starts.
 
+## Unreleased
+
+- **Demo logins on the sign-in page (cloud demo only):** on `*.vercel.app` the sign-in page lists six sample logins
+  with their roles and the shared password; picking one signs in. A hospital's own install (any other address) never
+  shows them.
+- **Docs:** the live demo address is https://bme-assets.vercel.app (`docs/deployment.md`, `CLAUDE.md`, `render.yaml`
+  had an old example); `docs/deployment.md` shows the current state of the demo and how to reload the full demo
+  hospital into it.
+
 ## 1.6.1 (24 October 2026)
 
 - **Full demo hospital:** `npm run db:demo -w apps/api` replaces a demo database with a complete hospital and about

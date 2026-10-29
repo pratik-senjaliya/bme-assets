@@ -12,6 +12,17 @@ import { parseForm, useSingleFlight } from '@/lib/forms';
 import { useDocumentTitle } from '@/lib/title';
 import { COLORS } from '@/theme';
 
+// Sample logins, shown only on the cloud demo (served from *.vercel.app); a hospital's own install never shows them.
+const DEMO_PASSWORD = 'Demo@1234';
+const DEMO_LOGINS = [
+  ['admin@demo.local', 'Biomedical HOD'],
+  ['biomed@demo.local', 'Biomedical engineer'],
+  ['kiran@demo.local', 'Deputy HOD'],
+  ['maintenance@demo.local', 'Maintenance (facility)'],
+  ['nursing@demo.local', 'Nursing, ICU'],
+  ['superadmin@demo.local', 'Super admin (vendor)'],
+] as const;
+
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
   const router = useRouter();
@@ -19,6 +30,7 @@ export default function LoginPage() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [signedOut, setSignedOut] = useState<'expired' | 'idle' | null>(null);
+  const [demo, setDemo] = useState(false);
   // Five wrong passwords lock a login, and Caps Lock is the usual cause: say when it is on.
   const [caps, setCaps] = useState(false);
   // "Forgot password": the HOD is told and sets a new one (no email needed).
@@ -32,6 +44,7 @@ export default function LoginPage() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setSignedOut(q.get('idle') === '1' ? 'idle' : q.get('expired') === '1' ? 'expired' : null);
+    setDemo(window.location.hostname.endsWith('.vercel.app'));
   }, []);
   useEffect(() => {
     if (!loading && user) router.replace(nextPage());
@@ -104,6 +117,27 @@ export default function LoginPage() {
               Sign in
             </Button>
           </Form>
+          {demo && (
+            <section aria-label="Demo logins" style={{ marginTop: 20, padding: '12px 14px', border: `1px solid ${COLORS.line}`, borderRadius: 8, background: COLORS.surfaceAlt }}>
+              <div style={{ fontWeight: 600, color: COLORS.ink, marginBottom: 2 }}>Demo logins</div>
+              <div style={{ color: COLORS.muted, fontSize: 12.5, marginBottom: 8 }}>
+                Password for all: <span className="code">{DEMO_PASSWORD}</span>. Pick one to sign in.
+              </div>
+              {DEMO_LOGINS.map(([email, role]) => (
+                <Button
+                  key={email}
+                  type="text"
+                  block
+                  disabled={submitting}
+                  style={{ display: 'block', height: 'auto', padding: '5px 8px', textAlign: 'left', whiteSpace: 'normal', lineHeight: 1.4 }}
+                  onClick={() => { form.setFieldsValue({ email, password: DEMO_PASSWORD }); form.submit(); }}
+                >
+                  <span className="code" style={{ display: 'block', fontSize: 12.5 }}>{email}</span>
+                  <span style={{ display: 'block', color: COLORS.muted, fontSize: 12 }}>{role}</span>
+                </Button>
+              ))}
+            </section>
+          )}
           <Typography.Paragraph type="secondary" style={{ margin: '20px 0 0', fontSize: 13 }}>
             Forgot your password?{' '}
             <Button type="link" size="small" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => { forgotForm.setFieldsValue({ login: form.getFieldValue('email') }); setForgot('ask'); }}>

@@ -10,13 +10,15 @@ The browser only talks to the Vercel URL, so the login cookie is first-party.
 
 ## Current state
 
+**Live demo: https://bme-assets.vercel.app** (health: `https://bme-assets.vercel.app/api/v1/health`).
+
 | Piece | State |
 |---|---|
-| Supabase project `bme-assets-demo` (ref `uxxixezpmhqaxrmlnbki`, Mumbai, `https://uxxixezpmhqaxrmlnbki.supabase.co`) | Created. Private bucket `bme-files` (10 MB, PDF/JPG/PNG) created. **Tables not created yet:** Render's `prisma migrate deploy` creates them on first start. |
-| Database password / connection strings | Not available to automation. Set or reset the password in Supabase → Project Settings → Database, then build the two strings below. |
-| Render API | Not created (needs the dashboard: no automation access). It stays on Render; Vercel only needs its URL as `API_URL`. |
-| `API_URL` on Vercel | Not set yet: needs the Render URL (`https://<service>.onrender.com`) and the Vercel project. Set it for Production and Preview; it is read at runtime, so no rebuild is needed. |
-| Vercel project `bme-assets-web` | Not created: the Vercel connector got `403 forbidden` for scope `pratik-senjaliyas-projects` and must be re-authorized, or create it by hand (step 3). |
+| Supabase project `bme-assets-demo` (ref `uxxixezpmhqaxrmlnbki`, Mumbai, `https://uxxixezpmhqaxrmlnbki.supabase.co`) | Running. Private bucket `bme-files` (10 MB, PDF/JPG/PNG). |
+| Render API | Running (version 1.6.1 on 29 Oct 2026). Its URL is Vercel's `API_URL`; `WEB_ORIGIN` = `https://bme-assets.vercel.app`. |
+| Vercel web | Running at `https://bme-assets.vercel.app`. The project is not under the Vercel login connected to Claude, so automation cannot see it. |
+| Demo data | Full demo hospital (`npm run db:demo`), loaded 29 Oct 2026 from a local machine with the Render values in `apps/api/.env.live` (gitignored); see "Reloading the full demo" below. |
+| Database password / connection strings | Not available to automation: copy them from Render → the API service → Environment. |
 
 ## 1. Supabase (database + files)
 
@@ -64,7 +66,17 @@ The browser never learns the API address: it calls `/api/v1/*` on the web origin
 | `admin@demo.local` | Admin (HOD) |
 | `superadmin@demo.local` | Super admin (vendor) |
 
-Change `SEED_PASSWORD` before seeding if the link is shared widely.
+Change `SEED_PASSWORD` before seeding if the link is shared widely. The full demo adds more logins (deputy HOD, maintenance, ward logins): see the demo line in `CLAUDE.md`.
+
+### Reloading the full demo
+
+It **wipes the live database** first. Put the Render values (`DATABASE_URL`, `DIRECT_URL`, `STORAGE_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET`, `APP_TIMEZONE`) in `apps/api/.env.live`, then:
+
+```bash
+cd apps/api && set -a && . ./.env.live && set +a && npm run db:demo
+```
+
+Values already in the environment win over `.env`, so both Prisma and the seed go to Supabase. It takes about 6 minutes over the network; generated certificates and photos go to the Supabase bucket.
 
 ## Click path for the demo
 
