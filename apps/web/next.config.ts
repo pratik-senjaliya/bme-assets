@@ -6,6 +6,8 @@ import type { NextConfig } from 'next';
 //
 // NEXT_OUTPUT=standalone is set only by the Docker build (apps/web/Dockerfile): it produces a small self-contained
 // server for the hospital install. Vercel and `next dev` are unaffected.
+
+// Test to trigger deploymnent
 const standalone = process.env.NEXT_OUTPUT === 'standalone';
 
 const nextConfig: NextConfig = {
