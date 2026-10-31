@@ -11,6 +11,11 @@ by themselves when the API starts.
 - **Demo logins on the sign-in page (cloud demo only):** on `*.vercel.app` the sign-in page lists six sample logins
   with their roles and the shared password; picking one signs in. A hospital's own install (any other address) never
   shows them.
+- **Walkthrough video tooling** (`tools/walkthrough-video/`, nothing in the app changes): records the product
+  walkthrough shown in meetings, every module in about 13 minutes, with captions and an optional English voice-over,
+  against its own demo database so no real data is touched. How to re-make it: its `README.md`.
+- **Session log** (`docs/session-log.md`): what each working session did, decided and left open, so work can continue
+  from another device with the same context.
 - **Docs:** the live demo address is https://bme-assets.vercel.app (`docs/deployment.md`, `CLAUDE.md`, `render.yaml`
   had an old example); `docs/deployment.md` shows the current state of the demo and how to reload the full demo
   hospital into it.

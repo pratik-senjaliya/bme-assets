@@ -2,6 +2,18 @@
 
 Context for Claude Code sessions. Read this first, then `docs/architecture.md` and `docs/implementation-plan.md`.
 
+## Keeping context between sessions
+
+Work happens in several places (Claude Code on the laptop, claude.ai/code, the Claude mobile app), and each new
+session starts with only what is in the repo. So, in every session:
+
+1. **Start:** read this file and the newest entries and "Open items" in `docs/session-log.md`.
+2. **Finish (before pushing):** add an entry at the top of `docs/session-log.md` (date, branch, what was done, decisions
+   and why, what is left), update "Open items", tick or add the line in **Status** below, and write user-facing changes
+   in `CHANGELOG.md` (under "Unreleased"; raise `APP_VERSION` in shared when releasing).
+3. Push the branch. A session on another device sees only what is pushed to GitHub, and starts from `main` unless told
+   otherwise, so say in the log which branch holds unmerged work.
+
 ## What this is
 
 A web app for a hospital's **biomedical engineering (BME) department** to track every piece of medical equipment from purchase order to condemnation: asset register, lifecycle history, PMS (preventive maintenance), calibration, complaints/breakdowns, service expenses, HOD approvals, reminders, dashboard and Excel reports.
@@ -109,6 +121,8 @@ npm run db:demo -w apps/api  # WIPES the database, then builds the full demo hos
 - [x] Facility add-on, F5: facility reports (branch `facility-f5`). `DashboardResponse.facility` (`facilityFigures` in `dashboard.routes.ts`: ward complaints open / over target, licences expired / ending, readings missed / out of range, PMS due by hours; for people with `complaint.start` when the view includes the facility register, else null), shown as the Facility card. The monthly report adds `facilitySection` (ward complaints by trade, readings out of range in the month, licences expired or ending as at today) when it covers the facility register; the monthly report and audit pack screens have the register switch (`?register=`, a filtered monthly report is made from the records, never the saved copy). Audit pack adds `12 Logbook.xlsx` (report `consumption`) when facility is in scope. Tests: `apps/api/src/facilityreports.test.ts`, `e2e/facilityreports.mjs`. All five facility phases are built; later ideas are in `docs/requirements-facility.md`.
 
 - [x] Pending improvements (review of 24 Oct 2026, migration `20261104000000_ward_costs_login_lock`): starter types Fire Pump (`FIREP`, facility) and Medical Air Compressor / Medical Vacuum Plant (`MAC`, `MVP`, medical gas: their team follows the medical gas setting), each with a PMS checklist (new installs and the seed; an existing install adds them under Admin > Equipment types). Complaint lists take `tradeId=<trade>|none` (none = complaints about a machine); the board and History have a "Machine or trade" picker (`components/TradeFilter.tsx`, shown only where there are trades). Costs on ward complaints: `service_expenses.assetId` is optional (a CHECK requires a machine or a complaint), Resolve books costs on a complaint without a machine, the expenses register lists them as "Ward complaint" (grouped by trade), and spend everywhere uses `expenseScope(scope)` in `lib/auth.ts` (the machine's scope, or the complaint's). The sign-in lock lives in `login_attempts` (`lib/loginThrottle.ts`, async), so a restart does not lift it; e2e cleanup clears the test logins' locks. Session end: `SessionUser.sessionEndsAt` (from `/auth/login` and `/auth/me`), `POST /auth/refresh` starts a fresh session for an active login, and two minutes before the end the screen asks "Stay signed in / Sign out" (`components/SessionEndWarning.tsx`). Dashboard: one round of queries instead of three, nothing fetched twice (count, due items and the 6-month trend come from the active equipment and the 12-month history), facility figures without loading every row, and the latest reading per type and run hours per machine in single queries (`latestEffective`, `runHoursOf` in `readings.service.ts`; `hoursDue` also serves My work and the logbook): 54 → 35 statements for the HOD, 45 → 26 for maintenance. Tests: `apps/api/src/improvements.test.ts`, `e2e/improvements.mjs`.
+
+- [x] Walkthrough video (branch `walkthrough-video`, no app change): `tools/walkthrough-video/` records the ~13-minute product walkthrough for meetings (desktop web app, 1920×1080, captions, cursor, chapter cards, optional English voice-over by Piper) against a separate demo database `bme_video` with production servers on :3100 / :4100 (`setup.sh`, `record.sh`, `stop.sh`; narration text in `lines.mjs`). Every take needs a fresh `setup.sh` because it changes data. How to re-make it and what demo records it uses: its `README.md`. Session-to-session context now lives in `docs/session-log.md` (see "Keeping context between sessions" above).
 
 Demo logins after `npm run db:seed -w apps/api` (password `Demo@1234`): superadmin@, admin@, biomed@, maintenance@, nursing@ `demo.local`.
 
