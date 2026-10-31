@@ -18,7 +18,7 @@ the top: date, branch, what was done, decisions, open items. Keep each entry sho
 - `tools/walkthrough-video` was made portable after the videos were recorded (fixed ids replaced by lookups, paths
   from the environment); it is syntax-checked but has not been run end to end since. Do a `FAST=1` dry run first.
 
-## 2026-10-31 · branch `walkthrough-video` · Walkthrough video for meetings
+## 2026-10-31 · branch `walkthrough-video` (merged into `main`) · Walkthrough video for meetings
 
 - Made the product walkthrough video for stakeholder meetings, like the earlier Site Diary walkthrough: 1920×1080
   recording of the desktop web app (not phones, as asked), production build (no dev-server compile time), full demo
